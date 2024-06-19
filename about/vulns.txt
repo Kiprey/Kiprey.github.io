@@ -1,0 +1,7 @@
+**Facebook**
+
+- [CVE-2021-24044](https://www.facebook.com/security/advisories/cve-2021-24044)：A type confusion error with a low chance of RCE in Facebook Hermes
+- [CVE-2021-24045](https://www.facebook.com/security/advisories/cve-2021-24045)：A type confusion vulnerability in Facebook Hermes
+- [CVE-2022-27809](https://hhvm.com/blog/2022/03/29/security-update.html)：HHVM incorrect integer conversion in `array_fill` leads to uninitialized variable reference
+- [CVE-2022-27810](https://www.facebook.com/security/advisories/CVE-2022-27810)：stack-overflow in `hermes::vm::JSProxy::getNamed`
+- CVE-2022-36762：Type Confusion in `hermes::vm::HadesGC`
