@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="保研，计算机,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    2022年信息安全专业保研历程 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-baoyan-note"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  2022年信息安全专业保研历程
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/11/baoyan-note/" class="article-date">
+  <time datetime="2022-11-13T16:00:00.000Z" itemprop="datePublished">2022-11-14</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">11.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">38 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录着本人 2022 年秋季保研求学的经历。</p>
+<p>考虑到各个院校的保密需求，这篇经验帖在推免生填报系统关闭后的一段时间发布。</p>
+<a id="more"></a>
+<h2 id="二、个人情况">二、个人情况</h2>
+<ul>
+<li>
+<p><strong>学校：末流985</strong></p>
+</li>
+<li>
+<p>专业：信息安全</p>
+</li>
+<li>
+<p>GPA: 3.79/4.00</p>
+</li>
+<li>
+<p><strong>排名：1/42</strong></p>
+</li>
+<li>
+<p>奖项：一些校级和省级奖项，一个国三水奖；有国励，无国家奖学金。</p>
+<blockquote>
+<p>本专业每年只有一个国奖，年年国奖不是同一个人，年年国奖第二名都是我。本科永远的痛 T_T</p>
+</blockquote>
+</li>
+<li>
+<p>实习经历</p>
+<ul>
+<li>大二寒假：长沙本地静态分析研发</li>
+<li>大二暑假：<strong>腾讯</strong>安全玄武实验室</li>
+</ul>
+</li>
+<li>
+<p>科研经历：大三年<strong>大半年</strong>的<strong>清华网研院实习</strong>。实习期间主要参与对比试验的进行、部分论文的撰写以及另一个项目的代码编写。</p>
+</li>
+<li>
+<p>论文：清华实习期间混了篇 <strong>Usenix Security 2023</strong>（安全国际四大顶会之一） 在投论文 <strong>三作</strong>。</p>
+</li>
+<li>
+<p>项目：<strong>无科研项目</strong>，有一个产出较多的 <strong>Fuzzer</strong>，挖掘到诸多知名厂商的漏洞，<strong>获得过漏洞致谢和较丰厚的漏洞赏金</strong>。</p>
+</li>
+<li>
+<p>科研兴趣：软件与操作系统安全</p>
+</li>
+<li>
+<p>目标：华五往上<strong>学硕</strong>。</p>
+<blockquote>
+<p>不考虑专硕，几万几万的学费掏不出来（本科每年 8k 学费都要死要活的，几 w 学费怕不是要砸锅卖铁）</p>
+<p>不考虑直博，直博目前没有想法，不能为了冲院校而直博，这个得慎之又慎。</p>
+</blockquote>
+</li>
+</ul>
+<blockquote>
+<p>粗体标注了一些个人认为略微可以算是重点的东西。</p>
+</blockquote>
+<p>最终去向：<strong>清华大学网络科学与网络空间研究院</strong>。</p>
+<p><img src="/2022/11/baoyan-note/%5DTSY%25A%7BP0MFJSWU8JUJ6SU7.png" alt="img"></p>
+<h2 id="三、夏令营">三、夏令营</h2>
+<h3 id="1-整体情况">1. 整体情况</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">院系</th>
+<th style="text-align:center">入营情况</th>
+<th style="text-align:left">备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">北大计算机</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">材料晚了一天提交，没交上（绝了）</td>
+</tr>
+<tr>
+<td style="text-align:center">北大软微</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:center">北大信工</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">可能要联系导师</td>
+</tr>
+<tr>
+<td style="text-align:center">清华深圳研究院</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">可能要联系导师</td>
+</tr>
+<tr>
+<td style="text-align:center">清华网研院</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">优先进直博，至于硕士可能是冲的人太多了，院校 title 不好被筛掉了</td>
+</tr>
+<tr>
+<td style="text-align:center">复旦计算机</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left">纯纯的只按照院校 title 和 rank 筛，入营送衣服和本子</td>
+</tr>
+<tr>
+<td style="text-align:center">国防科大</td>
+<td style="text-align:center">/</td>
+<td style="text-align:left">报了就没再管了</td>
+</tr>
+<tr>
+<td style="text-align:center">哈工深</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">今年 bar 感觉格外的高</td>
+</tr>
+<tr>
+<td style="text-align:center">华科计算机</td>
+<td style="text-align:center">没入</td>
+<td style="text-align:left">bar 高</td>
+</tr>
+<tr>
+<td style="text-align:center">南大计院</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left">听说 1k 人的大海营</td>
+</tr>
+<tr>
+<td style="text-align:center">南大软院</td>
+<td style="text-align:center">入营（放弃）</td>
+<td style="text-align:left">时间和南大计院冲了</td>
+</tr>
+<tr>
+<td style="text-align:center">人大信科</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left">筛人不纯粹按照 title 和 rank，而是会结合自身经历等等来筛，非常的有意思。</td>
+</tr>
+<tr>
+<td style="text-align:center">上交软院</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:center">武大网安</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left"></td>
+</tr>
+<tr>
+<td style="text-align:center">中科大网安</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left">听说 985 bar 低稳进，入营送大礼包（但是后期鸽掉中科大夏令营则得为大礼包付费）</td>
+</tr>
+<tr>
+<td style="text-align:center">中科院计算所</td>
+<td style="text-align:center"><strong>入营</strong></td>
+<td style="text-align:left">入了但退出面试</td>
+</tr>
+<tr>
+<td style="text-align:center">中科院信工所</td>
+<td style="text-align:center">半入营（放弃）</td>
+<td style="text-align:left">入了但是感觉没筛人，而且学校放假材料要盖章，同时也入了一些不错的学校，就没再管了</td>
+</tr>
+</tbody>
+</table>
+<p>总结：</p>
+<ul>
+<li>华五的学校基本都入了（人大、南大、复旦、上交、中科大）</li>
+<li>清北除了北大软微以外，都没让我入…</li>
+</ul>
+<blockquote>
+<p>还是太菜了…</p>
+</blockquote>
+<h3 id="2-具体情况">2. 具体情况</h3>
+<blockquote>
+<p>整个夏令营高峰期差不多是两周左右，以下按面试时间排序。</p>
+</blockquote>
+<h4 id="a-复旦计算机">a. 复旦计算机</h4>
+<h5 id="入营">入营</h5>
+<p>复旦入营是纯纯的卡 title 和 rank，只要 title 好 rank 够就直接放你进去，实习经历科研经历论文啥的在入营阶段是一点也不看。</p>
+<p>入营的营员都会发一件文化衫和一个复旦的本子，比较友好。</p>
+<blockquote>
+<p>不友好的是发的文化衫<strong>我穿不下</strong>（就不能先统计一下吗，捂脸）</p>
+</blockquote>
+<p>复旦今年入 300 人，但是可能只招收 50 个左右，最大头的招生部分还是留在了预推免。</p>
+<h5 id="时间表">时间表</h5>
+<ul>
+<li>7.1 上午：复旦模拟面试</li>
+<li>7.4 上午：复旦开幕式</li>
+<li>7.5：上午复旦机试，下午复旦英语面试</li>
+<li>7.6 上午：复旦专业面试</li>
+</ul>
+<blockquote>
+<p>复旦大学的时间貌似一直都是这样摊的比较开，不过幸好它比较早开营，没怎么和其他学校撞上。</p>
+</blockquote>
+<h5 id="开幕式">开幕式</h5>
+<p>复旦入营就会寄一件文化衫 + 本子。开幕式的时候要求全体营员身穿文化衫，一批一批集体合照，但问题是…</p>
+<ul>
+<li>复旦没有统计身高啥的，发的文化衫是面向 175 cm 的，对我一个快到 190 的壮汉属实是不太能套的进（捂脸）</li>
+<li>腾讯会议对同时打开的摄像头数量貌似有限制，有不少同学在开幕式要打开摄像头合照的时候，被腾讯会议拦截摄像头打开请求，要求再等一段时间再打开…（包括我）</li>
+<li>合影的时候，有好几个同学的腾讯会议背景还是清华网研院的图片（清华网研院比复旦早开幕，估计是网研院那边有要求要换背景），合影时属实有点尴尬（笑）</li>
+</ul>
+<h5 id="机试">机试</h5>
+<p>复旦的机试一直都和其他学校不太一样，2小时3道题，自己编测试样例然后测试，提交时把自己写的题解（包括解题思路、时间复杂度、自己编写的测试样例等等）和代码打包交上去。提供的 OJ 只能反馈是否 Compile Error 或者 Submit，其他的都无法反馈。</p>
+<p>第一题我用的图拓扑排序，第二题要用单调栈+线段树，第三题有点类似与背包问题，应该要用 DP。当时只做出来了第一题，第二题卡太久时间结果愣是没做出来。</p>
+<h5 id="英语面试">英语面试</h5>
+<p>英语面试的问题和<strong>自己的自我介绍高度相关</strong>，貌似英语面的时候那边没有考生的材料，有点奇怪。面试的时候是一个老师以及一个有点像是研究生的学姐在面，整个过程一直都是学姐提问，老师没问问题。</p>
+<p>自我介绍里提了一句<strong>辅助完成论文的编写</strong>，后面的英语问答全部都是问这方面的（捂脸）。例如问了:</p>
+<ul>
+<li>写的论文哪部分</li>
+<li>你是如何写的 Related work，可以分享一下经验吗</li>
+<li>Fuzzing 的背景</li>
+</ul>
+<p>等等，答得也只能说一般般，先前准备的英语模板问题根本没用上。</p>
+<h5 id="专业面试">专业面试</h5>
+<p>专业面试是五个老师面，每个老师都会问问题。问的问题主要围绕我的腾讯实习经历、fuzzer 工具、408、机考题等等，总体还是<strong>围绕自我介绍</strong>。</p>
+<blockquote>
+<p>这里要插一句了，看上去面试的老师好像真的没有考生的相关材料，感觉有点奇怪。</p>
+</blockquote>
+<p>408 主要问的我操作系统缺页中断相关的内容，以及 http 和 https 的差别，还有 https 在什么情况下会被中间人攻击等。</p>
+<p>机考题问了我第二题怎么做。机考题应该是必问项，有的同学会被问第三题有的会被问第二题，因此即便当时机考时做不出来也要事后立即求助他人去了解剩余不会做的题目的做法。</p>
+<p>老师会专门问一下有没有<strong>科研项目</strong>，我那个 Fuzzer 不能算是科研，但是我也只能把它捞出来说了。边上有个老师提问这个工具挖到的漏洞有没有漏洞证明啥的，我说有，拿到了几个 CVE 编号和漏洞赏金。还问了一下这个是怎么检测到漏洞的，我就把 Address Sanitizer 搬出来简单扯了两句。</p>
+<p>整体上答得还行。</p>
+<h5 id="结果">结果</h5>
+<p>寄了，连 waiting list 都没有呜呜。后来仔细想了一下应该有几种原因：</p>
+<ol>
+<li>竞争压力有点大。我报的是 ym 老师的智能系统组，学硕大概 15 进 2，而且这个组好像没有弄 waiting list。</li>
+<li>没联系导师。不过这个可能性有点小，因为入营便立刻联系老师的学生同样有没进的。</li>
+<li>方向不大对头。我本科阶段做的一直是和模糊测试有关，但他们那边主要做的还是软件代码分析这一块，模糊测试貌似不怎么做。</li>
+</ol>
+<p>仔细想想还是第三个原因可能性更大一点，因为面试的时候好像那些老师对我的内容不太感兴趣，一度出现了没什么老师想问问题的沉默尴尬局面。</p>
+<h4 id="b-人大信院">b. 人大信院</h4>
+<h5 id="入营-2">入营</h5>
+<p>人大信院是最早开放夏令营报名的（5月20日截至），因此被冲烂了，报的人太多。先前说六月中旬出结果，结果六月中旬了之后还没出来，通知最上方的是一个叫做<strong>王老吉奖学金推荐情况公示</strong>的通知。因此很多绿群群友就戏称人大信院为王老吉。</p>
+<p>这个王老吉公示的浏览量我是看着他从 200 变成现在的 8k+ 的，被冲烂了已经…</p>
+<p><img src="/2022/11/baoyan-note/image-20220714161625917.png" alt="image-20220714161625917"></p>
+<p>人大先前以为报的人太多，筛材料的时候会把自己筛掉，结果后来竟然入营了，真是意外之喜。看来人大应该是会综合材料来筛选，不是简单的 title + rank 筛法。</p>
+<p>人大是一个小而精的学校，学校虽然不大但是地理位置真的就是在黄金地带（中关村），因此去人大确实非常的赚。（而且人大这几年计算机一直在高速发展）</p>
+<h5 id="时间表-2">时间表</h5>
+<p>7.3 下午人大信院专业面试。</p>
+<p>人大还有笔试，可以用 CSP 抵。有笔试就有模拟环节，不过我用 CSP 抵掉了就省略了这两个环节，不然就和南大笔试冲突了。今年 CSP 300 抵的分数没有去年多，本来以为抵掉就亏了，不过貌似今年的笔试题比去年要难很多，实际上还是赚了。</p>
+<h5 id="专业面试-2">专业面试</h5>
+<p>人大考核受限于保密条例，不会在这里说明更多细节，只能说点自己的经历。（人大对面试题的保密性要求非常高，面试前强调一下，面试后又强调一下）</p>
+<p>英语面是我面的最差的一次，磕磕绊绊几秒钟卡一下然后蹦出几个单词，主要还是有点紧张，就没答上来。这个环节可能是因为比较难，所以分数占比应该会稍微比较高（猜测）。</p>
+<p>后面的面试就没啥了，比较顺利，老师也不会为难你。只要你完成回答后半秒内没有继续回答，老师就会直接切换到下一个问题，不会继续刁难，非常舒服。</p>
+<h5 id="导师面">导师面</h5>
+<p>面完后的那个晚上，面我的那个导师打电话联系我并简单的聊了聊相关的工作（声音很好听人也挺大牛的）。因为我本科阶段在模糊测试方面接触的比较多，老师也希望我能来人大。不过他也坦言导师在面试过程中的影响很有限，主要还是看自己。</p>
+<h5 id="结果-2">结果</h5>
+<p><strong>面试结束后的记录</strong>：</p>
+<p>一个字，寄！可能还是英语面太拉跨了，同时竞争压力也有点大。原先信安是 25 进 2，结果笔试的时候筛掉了一部分，实际上参与面试的就只有 15 个左右。</p>
+<p>只希望自己排在 waiting list 靠前的位置，这样应该能候补上。按照往年的情况，人大信安这块可以候补到第七左右。</p>
+<p>人大结果出的很快，它是分的三天来面试，分别面直博、学硕和专硕。面完的第二天就会发邮件，例如在人大面专硕的那一天就能收到学硕的邮件（如果有）。</p>
+<p><strong>后续</strong>：好家伙，还真给我发<strong>优营</strong>了，真是太感动了。今年信安优营有 3 个，真是让我感动的不行。</p>
+<h4 id="c-北大软微">c. 北大软微</h4>
+<h5 id="入营-3">入营</h5>
+<p>北大软微今年貌似是第一次开夏令营，先前都只有预推免，因此很多人猜测软微这是要搞什么大动作。</p>
+<p>首先是材料递交申请，软微会先筛掉一部分材料不合格的，之后让材料合格的同学<strong>选择一篇论文做一个文献阅读笔记</strong>，之后专家再来根据这个笔记筛选。等这个流程全部都通过后才算是入营，今年入营 212 人，只有一半能留下。</p>
+<p>论文选择主要有五个方向，选的那个方向的论文读就是你最终选择的方向。五个方向分别是：</p>
+<ul>
+<li>系统软件（泛在操作系统、数联网系统软件等）</li>
+<li>高可信软件（软件与系统安全、区块链与隐私计算等）</li>
+<li>领域智能软件（大数据机器学习、分布式智能运维等）</li>
+<li>领域智能软件（多模态知识计算、程序分析与理解等）</li>
+<li>领域智能软件 (智能计算与感知等)</li>
+</ul>
+<p>下面三个方向不考虑。我本来是想选第二个方向的论文的，但是那个方向列出来的论文我看着难受，一半都是机器学习，剩下的有区块链什么的，因此我最终选择的是方向1中的一篇，将污点分析技术与大数据引擎结合来进行隐私保护的论文。</p>
+<p>文献阅读笔记要求至少 1.5k 字，但是很多 2k 字的都没入营，入营的我简单统计了一下基本上都是 4k 字往上走（包括我）。</p>
+<blockquote>
+<p>个人感觉这不是卷，只是因为 2k 字实在太少了，不好描述论文讲的内容。</p>
+</blockquote>
+<h5 id="时间表-3">时间表</h5>
+<ul>
+<li>7.10 上午北大软微开营</li>
+<li>7.10 下午北大软微课题组座谈会</li>
+<li>7.11-7.12 北大软微面试</li>
+</ul>
+<h5 id="开营">开营</h5>
+<p>之前的北大软微以就业为导向，去那边的基本上就是面向就业，因为可以放实习，很多同学过去后都可以实习一两年，非常舒服，甚至绿群里流传着《软微圣经》这样神奇的东西…</p>
+<p>但是！从今年开始，一切都变了。今年面向推免生的软微，要<strong>面向科研方向</strong>招生。换句话说，今年招的专硕不再是<strong>普通工程硕士</strong>，而是<strong>前沿工程硕士</strong>，招专硕过去搞科研但<strong>没有论文指标</strong>，看的总感觉有点奇怪。</p>
+<p>今年软微招生的老师有一半是来自于北大信工那边的老师，挺多老师的实验室设立在燕园（北大本部）。因此对于方向1来说（我只知道方向1），软微3年 = 大兴 1年 + 1.5年北大燕园科研 + 0.5 年实习。</p>
+<p>燕园科研学校不会分配住宿（人家本部自己都住不下了怎么会分给别人…），因此软微等要去燕园做科研的话，学生要自己找房子租，不过院系补贴 2.5k + 老师实验室科研补贴应该可以涵盖燕园房租（房租大概3k+），因此实际上还算挺香的，就连北大信科也是在昌平那么偏远的地方。</p>
+<p>非常罕见的是，今年软微院长说<strong>没有开预推免</strong>，软微会把入营的营员都放入 waiting list 中以防止鸽穿。</p>
+<blockquote>
+<p>不过这个看具体方向，有些方向的老师就说不准备 waiting list 了，鸽穿就鸽穿。</p>
+<p>我寻思着应该是他们在信科也有招生名额，不缺软微这几个，所以很有底气。</p>
+</blockquote>
+<h5 id="专业面试-3">专业面试</h5>
+<p>面试的话要准备一个自我介绍 PPT，像老师展示自己的实力。面试的 j 老师非常的和蔼，整体上面试非常的轻松愉快。</p>
+<p>英语面试真就是走个过场，老师问我你还报了哪些学校的夏令营，我说我报了复旦的夏令营，但是被他们拒绝了；我还报了清华的夏令营，但是连营都没入（捂脸）。</p>
+<p>但是！面试老师说，我的专业性太强了（因为我本科阶段主要还是搞的软件安全，并且出漏洞了），他们方向1这边主要还是做系统软件。j 老师挺想收我的，但是他是<strong>之前</strong>搞得安全，现在已经不搞了，因此把我推给了方向2的老师。</p>
+<p>结果方向2老师没有打电话给我（导师会打电话发 offer 确认学生来不来的）。面试完的第二天晚上 j 老师给我打了个电话，以为方向2老师已经给我打电话了，结果没有，怪尴尬的（捂脸）。后来我又主动发邮件 + 找学长内推方向2的 s 老师，结果石沉大海，我估计软微要寄。</p>
+<h5 id="结果-3">结果</h5>
+<p>一直没收到方向2老师的电话，是真的寄了… 看着隔壁计科专业 rk1 rk2 分别上岸 pkucs 和 thusz，属实是羡慕极了。</p>
+<p>优营名单出来的那一刻还是写了封邮件给 j 老师，希望后面要是有鸽子就考虑一下我。</p>
+<p>可惜没拿到 pkuss 保底。</p>
+<h5 id="题外话">题外话</h5>
+<p>今年 pku 计算机和深圳研究院都是弱 com，只要有老师要你就可以上岸。可惜当时从哪里听说 pku cs 是强 com，所以就没联系导师，可惜。</p>
+<p>虽然软微今年面向科研招生，但是实际上也有一些不怎么管学生的导师，跟着他们应该还是和之前一样能去实习。</p>
+<h4 id="d-上交软院">d. 上交软院</h4>
+<h5 id="入营-4">入营</h5>
+<p>上交软院想冲一下 ipads 实验室，那边搞系统真的是非常的强，可以说是国内搞 OS 最强的实验室。x 老师学术能力非常强，而且和蔼，还帅（滑稽）。四月末的时候发了个邮件尝试联系他，收到了一个标准回复。</p>
+<p>不过没想到的是他竟然真的翻看了我的博客，而且还因为我博客中记录了关于 uCore 课程的笔记（uCore 课程笔记我记的贼详细，可以说应该没有人在 uCore 上的笔记比我更详细了），于是就把我的博客推给了 uCore 作者之一——清华大学计算机系 chyyuu 老师，之后…</p>
+<p><img src="/2022/11/baoyan-note/image-20220714165628686.png" alt="image-20220714165628686"></p>
+<p>属实是把我感动到了呜呜。后来和 chyyuu 老师打了个电话唠嗑唠嗑，简单聊了聊这方面的内容，也为我增加了点夏令营的信心，挺感谢这两位老师的。</p>
+<h5 id="时间表-4">时间表</h5>
+<ul>
+<li>7.9 交软演练</li>
+<li>7.11 上午交软开营，下午交软机试</li>
+<li>7.12 上午交软报告</li>
+<li>7.13 交软专业面试</li>
+</ul>
+<h5 id="开营-2">开营</h5>
+<p>开营那天上午，我赶着去自习室准备听开营，结果电动车出车祸了撞人了呜呜，那天上午便带着伤者去医院检查，开营完全没听。后来听绿群群友说，ipads 只招收推免生 5-7 个左右。虽然 2021 年招收了这些人：</p>
+<p><img src="/2022/11/baoyan-note/image-20220714165910483.png" alt="image-20220714165910483"></p>
+<p>但是实际上里面也有些考研、联合培养啥的，推免生招的确实很少，竞争压力非常激烈。</p>
+<p>而且交软入营的人大概有100出头，一开始报 ipads  的就有 50+，可想而知这里面的竞争是有多激烈…</p>
+<h5 id="机考">机考</h5>
+<p>上交软院的机考出了名的具有特色，是种超大型模拟题（能做3小时的那种模拟题）。今年的模拟题主要是要手动实现机器学习中的决策树，不涉及图形界面，难度稍微降低了点。不过我的做题策略有点问题，我是先把代码写的差不多之后再来做测试，因此后面时间来不及测试完全部代码，只测试了一半的代码，不知道机考会怎么算分。</p>
+<p>在机考前，交软会发放 VPN 账户和远程虚拟环境的访问账户和密码，要求我们自己去配置交软远程机器的环境（自己配置 IDE 等）。后面机考的代码编写全都要起一个远程桌面连接，在远程环境下完成，并且在远程桌面下录屏。</p>
+<p>远程环境的配置：CPU 至强系列，内存 16 GB，磁盘空间 80 GB，也算够用，我装了 Visual Studio、VSCode、PyCharm 等，还拷贝 C++ 文档、Python 文档至远程环境上，后来发现只用上了 VS，文档啥的完全没用上。</p>
+<p>但远程环境也有点问题：</p>
+<ol>
+<li>磁盘性能卡顿。磁盘是 HDD，因此稍微操作一下电脑，整个磁盘活动率就达到 100%，新建个 文件夹都会卡上好久（一定概率）。第一次用 VS 编译 hello world 时花了 10s … 不过后来还好，只要事先把 VS 开好，等一切都加载完成后就没什么大问题。</li>
+<li>网络环境。网络环境的波动会极大的影响自己操作远程环境的舒适程度。听说有人在考试时因为远程环境卡成 PPT 愤然弃考…</li>
+</ol>
+<p>上交机考原定是 15:00 开始，但是由于一直都有同学无法连上远程 VPN，因此一直拖到了后面大概 16:30 才开始。那天下午机试正好和软微面试冲突了，原来是打算先面完软微后再来迟到的参与上交机考，但是那天真就非常巧合的遇上了 VPN 连接失败的事故，以至于面完软微后刚好可以参与上交机考。但同样非常巧合的是，那天软微是最后一个面我的（简直绝了…）。</p>
+<p>我所在的那个云考场老师之前说得等所有人进了考场后才能发放题目，我面完软微后就紧急去问绿群群友他们的监考老师手机号，然后打电话找到了我所在的云考场会议号，接下来才开始机试，属实是感动到了。</p>
+<p><strong>机考分数没到 60 将不能参加后续的面试</strong>。</p>
+<h5 id="专业面试-4">专业面试</h5>
+<p>ipads 的面试和往年一样，看论文然后到时候提问。面试流程大概是先用 PPT 介绍一下自己，然后中间提问论文最后英语面。</p>
+<p>面试的老师非常的和蔼随和，但是问题是<strong>真的刁钻</strong>…</p>
+<p>一开始我以为提问论文是考验你对论文的熟悉程度，于是考前读了两遍论文并且熟悉论文中的每一个点，就连评估那块的数据我都差点背下来了。但是老师提问的是对论文的<strong>科研开放思维</strong>，例如你觉得某某检查应该放到哪里来检查，硬件还是软件；某某东西在论文里是只能在一个 CPU 上做的，但我要是想让他在多个 CPU 上并行处理，你觉得该怎么做等等。其他人问到的问题我不太晓得，但是我问到的问题都是这种非常开放性的东西。</p>
+<p>真的是完全答不上来…哑口无言属于是。主要是那些问题不是可以脱口而出的东西，需要花些时间理顺逻辑，不过在当时的情况下已经没法暂停思考了，只能想到什么说什么，已经白给了…</p>
+<p>英语面的时候让我用英语介绍一个自己的项目，随便介绍一个，我就挑了先前混的那片论文简单讲了讲。</p>
+<p>面的时候老师着重的问了我的代码能力，我说那个 Fuzzer 2w 行代码我写了大概 1.2w 行这样。</p>
+<p>整体面试还是非常轻松愉快的，总时间卡死 20 分钟，答不上问题老师会引导。只能怪自己还是太菜了呜呜…安慰自己喜提 ipads 面试体验卡。</p>
+<h5 id="结果-4">结果</h5>
+<p>上交无论什么院的考核，结果都是八月底出，这个和其他学校不太一样。其他学校都是面试后的一周内甚至三天内出，上交就会慢一点。直博出的比直硕早，大概八月中旬前就会出，貌似比较水（看院系）。</p>
+<p>不过无所谓了，反正面试比较惨，排名应该会很后面，面完已经开始摆烂了。</p>
+<p>而且通常来讲，上交软院的名额会优先分配给已经进组实习的同学（猜测），因此对于外校生来说，想拿到学硕的可能性会更低。</p>
+<p>以及，骑电动车要走绿道呜呜赔惨了。</p>
+<blockquote>
+<p>果然，后来发邮件给了个替补第六，约等于寄。</p>
+</blockquote>
+<h4 id="e-武大网安">e. 武大网安</h4>
+<h5 id="入营-5">入营</h5>
+<p>武大网安当初是随便报的一个，感觉自己可能大概率不会来这里，不过还是为了刷刷面试经验就报了这个。</p>
+<h5 id="时间表-5">时间表</h5>
+<p>7.11 下午 开营（没听，因为在进行软微面试和交软机考）</p>
+<p>7.12 专业面试（我排到下午了）</p>
+<p>7.13 上午闭营</p>
+<h5 id="面试">面试</h5>
+<p>武大网安的面试顺序是在群视频中直播抽签过程，整个过程非常快，我刚好轮到下午。</p>
+<p>面试的时间非常短，一个人大概也就七八分钟，我是下午第6个，结果大概开始面试35分钟后就轮到我面了 … 当时我设备啥的还在调试，非常凑巧就赶上了。</p>
+<p>武大网安面试的方式是最奇怪的一个，监考端用腾讯会议（没啥问题），但是面试端用 QQ 视频，这个就有点神奇了（捂脸）。</p>
+<p>问的问题主要是围绕那片三作论文以及 Fuzzer 工具，应该是面向论文和项目提问。</p>
+<p>问的时候问了我：**你有什么奖项吗？**这个属实是我的缺点… 回答：我在竞赛方面没有特别突出，只拿了一些校级和省级奖项（捂脸）。</p>
+<h5 id="结果-5">结果</h5>
+<p>优营，不过我放弃掉了，因为在出最终优营名单之前中科大 offer 下发了，所以想赶紧释放武大 offer 尽可能地把机会留给后面的同学。</p>
+<h4 id="f-南大计算机">f. 南大计算机</h4>
+<h5 id="时间表-6">时间表</h5>
+<p>7.4 下午：南大模拟面试</p>
+<p>7.7 下午：南大笔试</p>
+<p>7.13-7.14 专业面试</p>
+<h5 id="笔试">笔试</h5>
+<p>南大今年貌似开了千人海营，因此要通过笔试筛掉一大半。笔试 1小时 81道题（单选多选题都有，纯选择题），多选题<strong>多选漏选错选均不得分</strong>，设计的考点包含数据结构、读代码模拟执行的结果、计网操作系统啥的，还有 linux 相关的题目。涉及的考点非常复杂，覆盖面非常广，不只 408，还有 Java lambda 表达式的字节码是什么表示等这种奇怪题目。</p>
+<p>笔试很具有区分度，筛掉了一大半的人（听说是 2k 进 200，小道消息），感觉笔试就是筛选那些<strong>运气</strong>和基础不错的学生（捂脸）</p>
+<h5 id="实验室面">实验室面</h5>
+<p>南大要求在院系面试前自己选择参与众多实验室的面试，因此我选择了唯一一个搞漏洞挖掘的实验室——SecLab。</p>
+<p>Seclab 的 m 老师也非常的强，在很多学校都做过学术报告（本人有幸在清华实习期间聆听过 m 老师的报告，很有意思）。</p>
+<p>虽然在实验室面时没有见到 m 老师，但实验室面时那几位面我的同学也是非常的 nice，有一位博士生还是最强大脑选手（膜拜）。</p>
+<p>最后面的都很开心，结果后续院系考核寄了，属实是无语住了…</p>
+<h5 id="专业面试-5">专业面试</h5>
+<p>运气好过了笔试，结果面试是真的硬核…网上找了一圈都没看到什么南大面试的面经，我是第二天面的，根据前一天绿群群佬的面试经历来看，南大会比较喜欢考离散数据结构。但是这两天被车祸事故折腾的要死要活的，一点都没准备，结果面试直接寄了… 属实是祸不单行（捂脸），只好安慰自己<strong>祸依福所依，福依祸所伏</strong>了…</p>
+<p>面试流程大概是这样：</p>
+<ul>
+<li>
+<p>面试不问项目不问经历不问科研不问自我介绍，就纯纯的问专业课。</p>
+</li>
+<li>
+<p>进去之后，第一问，请你用<strong>英语</strong>，描述 Kruskal 算法解决了什么问题，算法过程是什么样的，开销是多少</p>
+<blockquote>
+<p>是不是很硬核，捂脸，答得巨烂。</p>
+</blockquote>
+</li>
+<li>
+<p>之后的问题都是中文。先问离散再问数据结构，最后问了个操作系统的题目以及一个开放题。</p>
+<p>南大面试貌似非常注重离散数学，因此最好要多复习复习。（我就吃了这个亏）</p>
+<p>开放题问的是在课外主要做什么？我：我做了一个项目 balabala… 感觉这个回答的非常差劲，我估计不是他们想要的那种回答。</p>
+</li>
+</ul>
+<p>可以说南大的面试是我所有面试中，表现最差的（比人大面试表现还差）。虽然面试是彻彻底底的寄了，不过按照往年的面经来看，南大貌似会被鸽穿，感觉还是有戏，晚点再看看。</p>
+<h5 id="结果-6">结果</h5>
+<p>waiting list 80 左右。已经完全不抱希望了，毕竟寄的这么惨…</p>
+<p>貌似南大进了夏令营之后就不能再参加预推免了，感觉更没戏了…</p>
+<p>虽然听说往年南大被鸽穿到候补 80+ ，不过预推免的 waiting list 和夏令营的一起排，因此估计我的 waiting list 排序会更后面一点。</p>
+<h4 id="g-中科大网安">g. 中科大网安</h4>
+<h5 id="入营-6">入营</h5>
+<p>入营即送大礼包：</p>
+<p><img src="/2022/11/baoyan-note/8995B3A7F4C274967CB4BB3DAFBDD6FA.jpg" alt="img"></p>
+<h5 id="专业面试-6">专业面试</h5>
+<p>面试分为两轮，每轮每个人10分钟，需要做 PPT 展示。两轮中只有一轮会有英语问答环节，ppt展示和专业课抽题做答两轮都有。</p>
+<h5 id="结果-7">结果</h5>
+<p>优营。感觉中科大优营对于 985 院校学生来说很好拿。我们这第一届网安学院夏令营 136 进 100 个优营。</p>
+<p>不过有了优营之后<strong>还需要立即联系老师</strong>，在推免系统填报前和老师双选，否则优营作废。</p>
+<p>我个人的建议是最好在拿到<strong>优营之后</strong>联系老师，因为老师可能更愿意接触那些有优营资格的学生。</p>
+<p>我先前联系了一位偏向密码学应用的老师，老师理解也愿意一直为我保留名额直到我冲完清北，所以其实我后面要鸽掉他还挺难受的，受到了自己道德上的谴责呜呜。</p>
+<h4 id="h-中科院计算所">h. 中科院计算所</h4>
+<h5 id="入营-7">入营</h5>
+<p>某天中午吃饭的时候突然就接到了中科院计算所老师的电话，邀请我晚上和老师简单聊聊。</p>
+<p>其实入营我还挺惊讶的，不过个人对中科院的所不是很感兴趣，因为科研氛围太过浓厚，我还是更想去一个多元化的大学，过个丰富的研究生生活（笑）。</p>
+<p>有点尴尬的是当时中科院计算所的意向导师，我在填完之后就已经忘得一干二净，还是后面和导师简短 1 对 1 面试时才从腾讯会议名上想起来…（后来发现不只我一个人把意向老师忘了，笑）</p>
+<h5 id="简短面试">简短面试</h5>
+<p>被拉到微信群里后才知道原来面试的不只是我一个，平均每个人的面试时间是 10 分钟。</p>
+<p>意向导师会让你先做个自我介绍（毕竟老师啥材料都没有，根本不知道你的优势是什么），因此自我介绍要好好答。</p>
+<p>之后老师针对我的实习经历与科研经历进行了一些提问，例如这个工作做的是什么等等，都是一些比较好回答的问题。</p>
+<p>最后老师问了我一句“你调试过 Linux 源代码没有”，我说有且调试过今年年初爆发的 Dirty Pipe 漏洞，老师就让我介绍了一下，在介绍过程中频频点头，最后点评了一句回答的挺清晰的。</p>
+<p>基本上简短面试问的也不长，比较轻松愉快。不过意向导师说自己只有专硕名额，让我自己做抉择来考虑要不要参加他的面试考核。</p>
+<h5 id="结果-8">结果</h5>
+<p>在简短面试之后我就跑路了，因为自己还是更偏向于去<strong>大学</strong>深造，同时专硕也不太满足自己的预期。</p>
+<h3 id="3-夏令营的一点总结与经验">3. 夏令营的一点总结与经验</h3>
+<ul>
+<li>
+<p>在<strong>入营</strong>的时候，title 和 rank <strong>至关重要</strong>，尤其是对于那些筛人时暴力 title &amp; rank 筛的学校，这里点名复旦。之前在绿群里看到一个末流211 rk1 多篇论文 + 多个国奖的佬，没入复旦计算机。当时看到他的消息时感觉这个有点戏剧化…</p>
+<p>虽然 title 是由高考成绩决定，已经无法改变，但是 rank 确实可以再挣扎挣扎，<strong>rank 会直接影响到你是否能够入营</strong>。</p>
+</li>
+<li>
+<p>ACM 慎重。除非拿 ACM 金，否则最好不要放弃科研和 rank。ACM 确实也是有优势的，有些学校对 ACMer 非常的青睐，但个人认为在上面的投入不如其他方面的性价比高。不过 ACMer 确实会在导师面等获取额外的印象分，这个看个人情况。</p>
+</li>
+<li>
+<p>rank 和 title 会对入营起到很大的影响，但是在面试和导师面中，rank 和 title 反而是最不重要的，重要的是 <strong>科研经历与产出 &gt; 项目经历 &gt;= 竞赛经历 &gt;= 大厂实习经历 &gt;&gt; rank</strong>。导师更看重你的科研能力而不是 rank。同时<strong>有些</strong>学校的院系面试都只是走个过场，真正决定你留不留的下来的还是看材料，因此这些东西还是非常重要的。纯 rank 选手必须在专业课上打下非常扎实的基础，否则科研比不过、项目没有、竞赛没有，那基本上就毫无亮点。如果想着以后保研，公司实习的事情就可以稍微放放，应该把更多的经历花在科研实习上。</p>
+</li>
+<li>
+<p>如果想冲<strong>强组牛导</strong>，<strong>一定要提前去参与课题组实习</strong>，最少实习一学期起步。提前实习可以<strong>提早占坑提早内定</strong>，同时夏令营时也可以很舒服的通过。不要想着只用嘴皮子就能套几个牛导，人家早就有实习生直接进组实习了。</p>
+<p>实习也是双方选择的一个过程，在实习的过程中导师可以确定是否要你，你也可以确定这个组的氛围如何，是不是自己想去的那样，和先前的想象是否存在点出入。</p>
+<p>同理，报那种<strong>以实验室为单位进行考核</strong>的院校，没有提前联系导师会吃大亏，这种实验室会优先收实习生（例如上交 ipads）。收的人越少，在没提前联系导师的情况下就越进不去。</p>
+</li>
+<li>
+<p><strong>鸽导师慎重</strong>，尤其是同领域内的导师。我在整个夏令营阶段套的导师不多，只有五位。但是这五位导师真就相互认识，有些甚至是很好的朋友，我联系的导师几乎每个都问过我一遍你为啥不冲一下清华…因此最好在和导师聊的时候，实诚一点，让导师知道你可能不来的想法，提前打好预防针，同时也让老师知道你的难处。</p>
+<p>当然，这点仁者见仁智者见智，有些同学鸽导师真是一个比一个狠…对于自己的发展来说，也不能说是做的不对，只能说还是得根据自身情况和导师角度来考虑。同时也为自己的学弟学妹们考虑，<strong>最好别用本校下届学子的福禄来为自己的前途铺路</strong>。</p>
+</li>
+</ul>
+<blockquote>
+<p>总结：套磁<strong>进组实习</strong> <strong>&gt;&gt;</strong> 科研经历与产出 &gt; 项目经历 &gt;= 竞赛经历 &gt;= <strong>大厂</strong>实习经历。</p>
+<p>事实上面试的时候还挺多导师问我关于腾讯实习的经历。</p>
+</blockquote>
+<h2 id="四、预推免">四、预推免</h2>
+<p>预推免的处境会比夏令营更难！整体上来看，大部分学校（包括中九那些）预推免的 bar 都会提高，可能之前夏令营是 rank 5% 能进，那预推免就会到 3% 了。预推免招的大部分都是 waiting list，老师收的大部分还是夏令营的营员。不过好在有一门<strong>国三</strong>水奖在预推免之前出结果了，同时绩点又上去了 0.01，因此我的处境稍微好些。</p>
+<p>预推免时目前有了人大信院学硕和中科大学硕（武大被我放掉了，预推免系统没填）。由于人大 seclab 老师做的方向和我也很贴切，同时人大地理位置非常优越（北京四环以内），因此除了清北以外，人大 offer 对我来说应该算是最优解了，所以在预推免时就简单冲击其他华五学校的夏令营。这里稍微点一下华五学校的预推免情况：</p>
+<ul>
+<li>
+<p>人大：信院没有预推免。</p>
+</li>
+<li>
+<p>南大：参加了夏令营就不准再参加预推免，但是预推免系统还是要填的。</p>
+</li>
+<li>
+<p>复旦：主要的名额都在预推免，不过那里的导师和我做的方向还是不太搭。</p>
+</li>
+<li>
+<p>浙大CS网安：21年学硕只有25个，其中13个本校生，个人感觉竞争<strong>不是一般的激烈</strong>。</p>
+</li>
+<li>
+<p>上交：预推免基本上是<strong>直博生</strong>以及<strong>面向本校</strong>的推免，外校硕士<strong>毫无机会</strong>。</p>
+<p>上交直博只要提前联系导师就好，超级好进。</p>
+</li>
+<li>
+<p>中科大：<s>网安貌似没有预推免了</s> 本来以为没开，结果还真再开一批。</p>
+</li>
+</ul>
+<p>清深（清华深圳研究院）和北深（北大信工）里面的老师，几乎全都是与大数据和人工智能相关，因此那边的老师对我的履历并不感兴趣（我做的东西和他们看中的完全不沾边），唯二和安全沾边的老师又上了研控网（懂得都懂）。在套不到导师的情况下，清深和北深在预推免基本上是没有机会的，因为大部分机会都在夏令营发放完了（我两个都没入营，笑），就算有鸽子也轮不到我候补。</p>
+<p>北大系统一次性可以同时填报多个院系，但是北大每个院的 offer 也几乎完全在夏令营阶段发完了。预推免狂套 pkucs 导师，冲北大计算机主要是看能不能收留心碎被鸽导师（笑），不过看上去貌似是一点效果也没有，想上北大的还是得<strong>极度重视</strong>夏令营阶段。</p>
+<p>那么这样以来，我预推免要冲的院系只剩下几个可选项了：</p>
+<ol>
+<li>浙江大学CS网络空间安全学院</li>
+<li>复旦大学计算机系</li>
+<li>北大软微 or CS</li>
+<li>清华大学网络科学与网络空间研究院，简称清华网研院。</li>
+</ol>
+<p>首先是浙大。浙大今年 bar 巨高，一片拒信。外校生入场的可能只有两位数，网安那边据我所了解只有大概 50 来号人入了（包括本校和外校）。我也被拒掉了，可能是因为背景一般般吧，因为我看到有一个同水平但是 title 比我好很多的同学入了。</p>
+<p>其次是复旦。复旦今年开的比较晚，大体上感觉预推免入的和夏令营入的还是同一批人，夏令营能进的预推免就能进，夏令营进不了的预推免还是进不了。我拿到了梦校的 offer 就把它鸽了，没再参与后面的面试流程。</p>
+<p>之后是北大。北大虽然软微和 CS 都开了预推免，但是实际上并不收人，老师们已经在夏令营中被瓜分的差不多了，预推免基本上就相当于在招 waiting list，没有导师接收的话等于没戏。</p>
+<p>最后是，<strong>清华网研院</strong>。</p>
+<p>清华网研院，是我花了最多心思的目标院校，同时那里也有着我最想跟着一起搞研究的牛导，这里是我的<strong>最终目标</strong>，前面的一切夏令营+预推免活动都是在<strong>找保底院校</strong>。我在去年12月份便联系了导师，之后从寒假开始下半个学期一直在远程实习，实习了有大半年之久。在实习期间，我写过代码、辅助撰写过论文、逆向驱动等等，做研究的生活还挺充实的；而且在实习的过程中也确实感觉到组内氛围相当不错，这也加大了我想进组研究的意愿。</p>
+<p>这里不得不提一句夏令营，夏令营招收 50 位学生，可能是材料和背景上的不足，竟然没有入营。后来了解到这个夏令营主要招直博生，直硕生招的少，这让我的心稍微宽慰了一点。</p>
+<p>预推免进复试的共 75 个学生，只比夏令营多了25个，其中一半本校一半外校。本校和本校竞争，外校和外校竞争，学院招生名额对半分。这次外校直博有12人，直硕生有25人。外校生硕士名额是10个，25 进 10 稍微还是有点压力。</p>
+<p>网研院的机考和计算机系、深研院是同一套的，这三个院系同一时间考同一套题，因此机考题不会太简单。这次预推免的题目不怎么偏向算法，以至于我苦练洛谷三个月最后愣是一点没用…不过自己还是考的比较差劲，只拿到了送的几个得分点。机考完后一直觉得自己考的巨差无比，尤其是今年机考成绩从 10% 变成了 20%，占比增大，机考的重要性翻倍。但是后来了解到机考成绩比我想象的要好，感觉又充满了希望。</p>
+<p>面试细节就不过多描述了，学院官网上公示了考核方式，分为综合面试 8 分钟和专业面试 12 分钟，感兴趣的可以去看看。需要注意的是，在投递 top2 时，各类文书（例如个人陈述、PPT 等）一定要精雕细磨，因为老师<strong>真的会翻来覆去的看你的文书材料</strong>…我在面试时看到底下一群老师在翻来翻去的看个人陈述，感到有一丝丝的害怕，深怕哪里翻车了…</p>
+<p>最后感谢各位一直在支持着我的老师同学以及学长学姐们：</p>
+<p><img src="/2022/11/baoyan-note/image-20220919134202687.png" alt="image-20220919134202687"></p>
+<h2 id="五、鸽子">五、鸽子</h2>
+<p>这里提几句鸽子情况。</p>
+<ol>
+<li>上交 ipads 实验室。在清华网研院出结果（<strong>9月19日</strong>）以后发了个邮件询问了一下自己的替补排名，从原先的<strong>替补第六</strong>上升到<strong>替补第二</strong>，在<strong>9月25日</strong>收到了教务秘书的专硕递补电话。感觉上交鸽子也是很多的（虽然我也要鸽了，笑）。今年上交软院也有企业联培计划，工程硕士也是一年校内两年企业培养。</li>
+<li>南大 928 直接鸽到候补 200 多（好像是），有志于南大的候补要求<strong>直接进行系统填报</strong>，在候补时<strong>优先候补这些填报系统的同学</strong>，而<strong>不是候补排名靠前但没填报系统的同学</strong>。在算上填报系统的候补同学后，如果招生名额还有空缺就会开始打电话。我候补80就在 928 那天被打了；室友貌似候补200名，928那天和南大招生办打了好几个电话，极限上岸（祝贺）。</li>
+</ol>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/11/baoyan-note/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2023/01/2022-summary/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            2022年年终总结
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/10/dirty-cred/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">浅析 Linux Dirty Cred 新型漏洞利用方式</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

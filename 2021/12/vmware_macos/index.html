@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="macOS 安装,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Win10 Vmware Workstation 16 安装 macOS 记录 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-vmware_macos"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Win10 Vmware Workstation 16 安装 macOS 记录
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/vmware_macos/" class="article-date">
+  <time datetime="2021-12-12T16:00:00.000Z" itemprop="datePublished">2021-12-13</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">6 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了我在 Win10 VMware workstation 上配置 macOS 虚拟机所踩过的坑点。</p>
+<a id="more"></a>
+<h2 id="二、MacOS-安装">二、MacOS 安装</h2>
+<ul>
+<li>
+<p>首先，下载 VMware 解锁 MacOS 选项的补丁。</p>
+<blockquote>
+<p>“解锁 MacOS” 的这个说法其实个人感觉不是特别直接。</p>
+<p>这个补丁的用途是<strong>让 VMware 额外支持 MacOS</strong>。</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git@github.com:BDisp/unlocker.git</span><br></pre></td></tr></table></figure>
+<p>之后，去任务管理器中，<strong>强制退出所有 VMware 开头的进程</strong>，防止补丁失败：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213105750235.png" alt="image-20211213105750235"></p>
+<p>之后<strong>管理员执行</strong> <code>win-install.cmd</code>。执行时脚本会去  vmware 官网上下载一些东西，时间取决于网络条件。</p>
+<p>执行完成后，<strong>重启电脑</strong>或手动去  <strong>服务</strong> 底下打开 <strong>VMware NAT Service</strong> 和 <strong>VMware VMnet DHCP service</strong> 服务，否则<strong>虚拟机将无法连接网络</strong>。</p>
+<blockquote>
+<p>坑点：之前忘记重启网络服务了…</p>
+</blockquote>
+</li>
+<li>
+<p>接着，去 Vmware 上新建虚拟机，并指定光盘映像文件为下载下来的 ISO/CDR 文件：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213111248818.png" alt="image-20211213111248818"></p>
+<p>然后选择 <code>Apple Mac OS X</code>，并一路 next 下去。磁盘大小建议 <strong>至少分配70GB</strong>。</p>
+<blockquote>
+<p>如果此时 VMware 里没有这个选项，则说明安装 VMware 补丁失败，需要重新安装最新版的补丁。</p>
+</blockquote>
+<p><img src="/2021/12/vmware_macos/image-20211213111314996.png" alt="image-20211213111314996"></p>
+</li>
+<li>
+<p>虚拟机建立好后，启动虚拟机。在<strong>磁盘工具</strong>处：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213112904276.png" alt="image-20211213112904276"></p>
+<p>将 Vmware 磁盘抹掉（格式化），不然安装 macOS 时将无法访问到 VMware 磁盘：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213113011006.png" alt="image-20211213113011006"></p>
+<p>抹掉时改个磁盘名称就可以，其他的都不用动：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213113058440.png" alt="image-20211213113058440"></p>
+<p>格式化磁盘后，在上方 <strong>实用工具-&gt;终端</strong>：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213113304952.png" alt="image-20211213113304952"></p>
+<p>键入 <code>csrutil disable</code> 禁用系统完整性保护：</p>
+<blockquote>
+<p>因为系统完整性保护会限制 root 权限的行为。</p>
+</blockquote>
+<p><img src="/2021/12/vmware_macos/image-20211213113443227.png" alt="image-20211213113443227"></p>
+<p>之后键入 <code>csrutil authenticated-root disable</code> 以关闭 Authenticated-root 保护。该保护会使得 MacOS 在引导期间，将一个被加密签名后的<strong>只读根文件系统快照挂载进根目录</strong>，因此我们需要禁用它以便于修改根路径或系统路径下的文件等。</p>
+<blockquote>
+<p>如果还是不行，则在 MacOS 安装完成后，执行 <code>sudo mount -uw /</code> 试试，注意该指令只在本次开机时有效，下次开机需要重新设置。</p>
+</blockquote>
+<p>接下来照常安装 MacOS 即可。</p>
+</li>
+<li>
+<p>MacOS 安装完成后。<strong>不要马上启动！不要马上启动！不要马上启动！</strong></p>
+<p>要先在该 MacOS 的 vmx 文件末尾追加 <code>smc.version = 0</code>，防止虚拟机出现错误。</p>
+<p>追加完成后再启动。</p>
+</li>
+<li>
+<p>启动新安装的 MacOS，之后一定要<strong>立即升级当前安装的 MacOS 系统</strong>（12GB左右）。因为 Apple 对远古版本的 MacOS 支持性非常低，就连安装软件都会有限制。</p>
+<p>一定要在完成 MacOS 系统升级后，再去装各类软件以及 IDE 等等。</p>
+<p>最好先安装当前远古版本 MacOS 系统的一些补丁，再去升级 MacOS 系统，不然可能有一定概率会升级失败。</p>
+<blockquote>
+<p>我这边更新到的版本是  <code>macOS Monterey 12.0.1</code>。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="三、安装各类软件">三、安装各类软件</h2>
+<ol>
+<li>
+<p>vmtools。右键虚拟机并点击 <strong>安装 Vmware Tools</strong>，然后根据步骤一步步来就好。</p>
+<p><img src="/2021/12/vmware_macos/image-20211213120226602.png" alt="image-20211213120226602"></p>
+</li>
+<li>
+<p>AppStore 上安装</p>
+<ol>
+<li>DevCleaner for xcode：释放 Xcode 缓存文件。</li>
+<li>xcode（12GB左右）。不用多说。</li>
+<li>超级右键。扩展一下自己的右键菜单，使得支持<strong>右键打开终端操作</strong>。</li>
+</ol>
+</li>
+<li>
+<p>下载 <a href="https://bjango.com/mac/istatmenus/" target="_blank" rel="noopener">iStat Menus6</a>。这是 MacOS 上的一个系统监测软件，需要付费，可用序列号如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">Email: 982092332@qq.com</span><br><span class="line">SN: GAWAE-FCWQ3-P8NYB-C7GF7-NEDRT-Q5DTB-MFZG6-6NEQC-CRMUD-8MZ2K-66SRB-SU8EW-EDLZ9-TGH3S-8SGA</span><br><span class="line"></span><br><span class="line">ref: http:&#x2F;&#x2F;www.pc6.com&#x2F;mac&#x2F;111587.html</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>安装homebrew 包管理器</p>
+<blockquote>
+<p>安装 homebrew 时需要<strong>多次输入密码</strong>，切记别走开。</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 安装 homebrew</span></span><br><span class="line">/bin/bash -c <span class="string">"<span class="variable">$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)</span>"</span></span><br><span class="line"><span class="comment"># 配置国内 brew 源</span></span><br><span class="line"><span class="built_in">cd</span> <span class="string">"<span class="variable">$(brew --repo)</span>"</span></span><br><span class="line">git remote <span class="built_in">set</span>-url origin https://mirrors.aliyun.com/homebrew/brew.git</span><br><span class="line">git remote get-url origin</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>如果发现 brew 安装有问题，无法搜索到任何软件包，则尝试运行 <code>brew doctor</code> 命令获取解决方案。</p>
+</blockquote>
+</li>
+<li>
+<p>设置双拼<strong>自然码</strong>方案。进入 <strong>设置-&gt;键盘-&gt;输入法</strong>，选择<strong>简体双拼</strong>，并在终端键入以下命令以启动<strong>自然码</strong>方案：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">defaults write com.apple.inputmethod.CoreChineseEngineFramework shuangpinLayout 5</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>安装 <a href="https://code.visualstudio.com/docs/?dv=osx" target="_blank" rel="noopener">VSCode for macOS</a>。下载后将其拖入<strong>应用程序文件夹</strong>下。</p>
+</li>
+<li>
+<p>安装 proxychain</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">brew install proxychains-ng</span><br><span class="line">nano /usr/<span class="built_in">local</span>/etc/proxychains.conf</span><br><span class="line">proxychains4 curl -v google.com</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>配置 git。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">ssh-keygen</span><br><span class="line">cat ~/.ssh/id_rsa.pub <span class="comment"># 获取公钥</span></span><br><span class="line"><span class="comment"># 将公钥上传至 github 上</span></span><br><span class="line">git config --global user.name Kiprey</span><br><span class="line">git config --global user.email Kiprey@qq.com</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>安装 ohmyzsh。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">brew install wget</span><br><span class="line">sh -c <span class="string">"<span class="variable">$(wget -O- https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)</span>"</span></span><br></pre></td></tr></table></figure>
+<p>之后安装常用插件</p>
+<ul>
+<li>
+<p>autojump</p>
+<p>执行以下命令下载：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git://github.com/joelthelion/autojump.git</span><br><span class="line"><span class="built_in">cd</span> autojump</span><br><span class="line">./install.py</span><br></pre></td></tr></table></figure>
+<p>之后 <code>nano ~/.zshrc</code>，将以下内容添加至文件末尾：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">[[ -s /Users/kiprey/.autojump/etc/profile.d/autojump.sh ]] &amp;&amp; <span class="built_in">source</span> /Users/kiprey/.autojump/etc/profile.d/autojump.sh</span><br><span class="line"><span class="built_in">autoload</span> -U compinit &amp;&amp; compinit -u</span><br></pre></td></tr></table></figure>
+<p>然后将 <code>autojump</code> 添加进 <code>.zshrc</code> 中的 plugin 字段中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Which plugins would you like to load?</span></span><br><span class="line"><span class="comment"># Standard plugins can be found in $ZSH/plugins/</span></span><br><span class="line"><span class="comment"># Custom plugins may be added to $ZSH_CUSTOM/plugins/</span></span><br><span class="line"><span class="comment"># Example format: plugins=(rails git textmate ruby lighthouse)</span></span><br><span class="line"><span class="comment"># Add wisely, as too many plugins slow down shell startup.</span></span><br><span class="line">plugins=(git autojump)</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>zsh-autosuggestions 与 zsh-syntax-highlighting</p>
+<p>下载：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git://github.com/zsh-users/zsh-autosuggestions <span class="variable">$ZSH_CUSTOM</span>/plugins/zsh-autosuggestions</span><br><span class="line">git <span class="built_in">clone</span> git://github.com/zsh-users/zsh-syntax-highlighting <span class="variable">$ZSH_CUSTOM</span>/plugins/zsh-syntax-highlighting</span><br></pre></td></tr></table></figure>
+<p>将 <code>zsh-autosuggestions</code> 和 <code>zsh-syntax-highlighting</code> 添加进 <code>.zshrc</code> 中的 plugin 字段中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">plugins=(git autojump zsh-autosuggestions zsh-syntax-highlighting)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>插件安装完成后，最后执行 <code>source ~/.zshrc</code> 重新载入新的 zsh 配置以启动插件。</p>
+</li>
+<li>
+<p>安装 ShadowSocksR。下载地址：<a href="https://github.com/qinyuhang/ShadowsocksX-NG-R/releases" target="_blank" rel="noopener">shadowsocksX-NG-R - github</a>，支持订阅地址。</p>
+</li>
+</ol>
+<h2 id="四、扩容分区">四、扩容分区</h2>
+<p>如果发现 MacOS 磁盘大小不够，需要扩容一下虚拟磁盘，则按照以下步骤进行：</p>
+<ol>
+<li>
+<p>先去 Vmware 那里扩容一下磁盘</p>
+</li>
+<li>
+<p>在 MacOS 中，执行 <code>diskutil list</code> 查看当前磁盘情况：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213105925673.png" alt="image-20211213105925673"></p>
+<p>其中，disk0 为整个磁盘，而 disk0s2 分区即 MacOS 此时使用的空间，因此我们需要扩容 disk0s2。</p>
+</li>
+<li>
+<p>尝试扩展磁盘。</p>
+<p>网络上都使用的是这个命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">diskutil resizeVolume disk0s2 50GB</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>其中 disk0s2 为待扩容磁盘，50GB 为目标扩容大小。</p>
+</blockquote>
+<p>但是由于本人的 disk0s2 为 <code>Apple_APFS</code> 类型，因此上述命令不可使用。</p>
+<p>需要使用以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">diskutil apfs resizeContainer disk0s2 70GB</span><br></pre></td></tr></table></figure>
+<p>之后就开始扩容：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213110427580.png" alt="image-20211213110427580"></p>
+</li>
+<li>
+<p>扩容成功</p>
+<p><img src="/2021/12/vmware_macos/image-20211213111727333.png" alt="image-20211213111727333"></p>
+</li>
+</ol>
+<h2 id="五、关闭系统完整性保护">五、关闭系统完整性保护</h2>
+<p>MacOS 中的系统完整性保护(<strong>SIP</strong>)，会限制住 root 用户的权限，因此需要将其关闭。</p>
+<blockquote>
+<p>见过用 root 权限 lldb attach 其他进程时，被拒绝的快乐嘛…</p>
+</blockquote>
+<p>最简单的关闭方式，莫过于上面在一开始安装时就将其关闭。</p>
+<p>但要是当时安装时忘记关闭，那么现在去关闭 SIP 就会稍微折腾一点…</p>
+<ol>
+<li>
+<p>设置虚拟机 CD/DVD 路径为原先的 MacOS 安装镜像：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213130817589.png" alt="image-20211213130817589"></p>
+</li>
+</ol>
+<p>之后，进入虚拟机 BIOS</p>
+<p><img src="/2021/12/vmware_macos/image-20211213131013230.png" alt="image-20211213131013230"></p>
+<p>选择以 CD 为启动盘：</p>
+<p><img src="/2021/12/vmware_macos/image-20211213131148295.png" alt="image-20211213131148295"></p>
+<p>之后在启动后的界面，进入 <strong>实用工具-&gt;终端</strong> 下，键入 <code>csrutil disable</code> 命令并重启虚拟机，即可关闭 SIP。</p>
+<p><img src="/2021/12/vmware_macos/image-20211213113443227.png" alt="image-20211213113443227"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/12/vmware_macos/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/vmware/" rel="tag">vmware</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/12/mach_ipc_intro/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            MacOSX Mach IPC 入门
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/12/reversing_kr-1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Reversing.kr 刷题笔记 - 1</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记, 计算机网络, CS144,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CS144计算机网络 Lab3 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cs144-lab3"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CS144计算机网络 Lab3
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/cs144-lab3/" class="article-date">
+  <time datetime="2021-11-07T16:00:00.000Z" itemprop="datePublished">2021-11-08</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">10 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了笔者学习 CS144 计算机网络 Lab3 的一些笔记 - TCP 发送方实现 TCPSender</p>
+<p>CS144 Lab3 实验指导书 - <a href="https://cs144.github.io/assignments/lab3.pdf" target="_blank" rel="noopener">Lab Checkpoint 3: the TCP sender</a></p>
+<p>个人 CS144 实验项目地址 - <a href="https://github.com/Kiprey/sponge" target="_blank" rel="noopener">github</a></p>
+<a id="more"></a>
+<h2 id="二、环境配置">二、环境配置</h2>
+<p>当前我们的实验代码位于 <code>master</code> 分支，而在完成 Lab 之前需要合并一些依赖代码，因此执行以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git merge origin/lab3-startercode</span><br></pre></td></tr></table></figure>
+<p>之后重新 make 编译即可。</p>
+<h2 id="三、TCPSender-简述">三、TCPSender 简述</h2>
+<h3 id="1-TCPSender-功能">1. TCPSender 功能</h3>
+<p>TCP Sender 负责将数据以 TCP 报文的形式发送，其需要完成的功能有:</p>
+<ul>
+<li>将 ByteStream 中的数据以 TCP 报文形式<strong>持续</strong>发送给接收者。</li>
+<li>处理 TCPReceiver 传入的 ackno 和 window size，以追踪接收者当前的接收状态，以及检测丢包情况。</li>
+<li>若<strong>经过一个超时时间后</strong>仍然<strong>没有接收到 TCPReceiver 发送的针对某个数据包的 ack 包</strong>，则重传对应的原始数据包。</li>
+</ul>
+<h3 id="2-如何检测丢包">2. 如何检测丢包</h3>
+<p>TCP 使用<strong>超时重传机制</strong>。TCPSender 除了将原始数据流分解成众多 TCP 报文并发送以外，它还会追踪每个<strong>已发送报文</strong>（已被发送但还未被接收）的发送时间。如果某些<strong>已发送报文</strong>太久没有被接收方确认（即接收方接收到对应的 ackno），则该数据包必须<strong>重传</strong>。</p>
+<p>需要注意的是，<strong>接收方返回的 ackno 并不一定对应着发送方返回的 seqno</strong>（也不和 seqno 有算数关系），这是因为发送的数据可能会因为内存问题，被接收方截断。</p>
+<p>接收方确认某个报文，指的是该报文的<strong>所有字节索引</strong>都已被确认。这意味着如果该报文只有<strong>部分被确认</strong>，则不能说明该报文已被完全确认。</p>
+<p>TCP 的超时机制比较麻烦，这是因为超时机制直接影响到应用程序从远程服务器上读取数据的响应时间，以及影响到网络拥堵的程度。以下是实现 TCPSender 时需要注意的一些点：</p>
+<ul>
+<li>
+<p>每隔几毫秒，TCPSender的 tick 函数将会被调用，其参数声明了过去的时间。这是 TCPSender 唯一能调用的超时时间相关函数。因为直接调用 clock 或者 time 将会导致测试套件不可用。</p>
+</li>
+<li>
+<p>TCPSender 在构造时会被给予一个<strong>重传超时时间 RTO</strong>的初始值。RTO 是在重新发送未完成 TCP 段之前需要等待的毫秒数。RTO值将会随着时间的流逝（或者更应该说是网络环境的变化）而变化，但<strong>初始的RTO</strong>将始终不变。</p>
+</li>
+<li>
+<p>在 TCPSender 中，我们需要实现一个<strong>重传计时器</strong>。该计时器将会在 RTO 结束时进行一些操作。</p>
+</li>
+<li>
+<p>当每次发送<strong>包含数据</strong>的数据包时，都需要启动重传计时器，并让它在 RTO 毫秒后超时。若所有<strong>发送中报文</strong>均被确认，则终止重传计时器。</p>
+</li>
+<li>
+<p>如果重传计时器超时，则需要进行以下几步（稍微有点麻烦）</p>
+<ul>
+<li>
+<p>重传尚未被 TCP 接收方完全确认的最早报文（即最低 ackno所对应的报文）。这一步需要我们将<strong>发送中的报文数据</strong>保存至一个新的数据结构中，这样才可以追踪正处于发送状态的数据。</p>
+</li>
+<li>
+<p>如果接收者的 window size 不为 0，即可以正常接收数据，则</p>
+<ul>
+<li>跟踪<strong>连续重传次数</strong>。过多的重传次数可能意味着网络的中断，需要立即停止重传。</li>
+<li>将RTO的值设置为先前的两倍，以降低较差网络环境的重传速度，以避免加深网络环境的拥堵。</li>
+<li>重置并重启重传计时器。</li>
+</ul>
+<blockquote>
+<p><strong>接收者 window size 为 0 的情况</strong>将在下面说明。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>当接收者给发送者一个确认成功接收新数据的 ack 包时（absolute ack seqno 比之前接收到的 ackno 更大）：</p>
+<ul>
+<li>将 RTO 设置回初始值</li>
+<li>如果发送方存在尚未完成的数据，则重新启动重传定时器</li>
+<li>将<strong>连续重传计数</strong>清零。</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-TCPSender-要求">3. TCPSender 要求</h3>
+<p>在该实验中，我们需要完成 TCPSender 的以下四个接口：</p>
+<ul>
+<li>
+<p><strong>fill_window</strong>：TCPSender 从 ByteStream 中读取数据，并以 TCPSegement 的形式发送，尽可能地填充接收者的<strong>窗口</strong>。但每个TCP段的大小不得超过 <code>TCPConfig::MAX PAYLOAD SIZE</code>。</p>
+<blockquote>
+<p>若接收方的 Windows size 为 0，则发送方将按照接收方 window size 为 1 的情况进行处理，持续发包。</p>
+<p>因为虽然此时发送方发送的数据包可能会被接收方拒绝，但接收方可以在反向发送 ack 包时，将自己最新的 window size 返回给发送者。否则若双方停止了通信，那么当接收方的 window size 变大后，发送方仍然无法得知接收方可接受的字节数量。</p>
+<p>若远程没有 ack 这个在 window size 为 0 的情况下发送的一字节数据包，那么发送者重传时<strong>不要将 RTO 乘2</strong>。这是因为将 RTO 双倍的目的是为了避免网络拥堵，但此时的数据包丢弃并不是因为网络拥堵的问题，而是远程放不下了。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>ack_received</strong>：对接收方返回的 ackno 和 window size 进行处理。丢弃那些<strong>已经完全确认但仍然处于追踪队列</strong>的数据包。同时如果 window size 仍然存在空闲，则继续发包。</p>
+</li>
+<li>
+<p><strong>tick</strong>：该函数将会被调用以指示经过的时间长度。发送方可能需要重新发送一些超时且没有被确认的数据包。</p>
+</li>
+<li>
+<p><strong>send_empty_segment</strong>：生成并发送一个<strong>在 seq 空间中长度为 0</strong> 并<strong>正确设置 seqno</strong> 的 TCPSegment，这可让用户发送一个空的 ACK 段。</p>
+</li>
+</ul>
+<h3 id="4-TCPSender-状态转换图">4. TCPSender 状态转换图</h3>
+<p>我们无需定义新的状态变量，只需合理利用好各个公共接口的状态，即可快速确认当前的状态。</p>
+<p><img src="/2021/11/cs144-lab3/image-20211109080457029.png" alt="image-20211109080457029"></p>
+<h2 id="四、TCPSender-实现">四、TCPSender 实现</h2>
+<p>实现起来有几个坑点：</p>
+<ul>
+<li>
+<p>当 SYN 设置后，payload 应该在尽可能装的基础之上，少装入 1byte，因为这个 byte 大小被 SYN 占用。</p>
+<p>而在 payload 尽可能装的基础上，若 FIN 装不下了，则必须在下一个包中装入 FIN 。</p>
+</li>
+<li>
+<p>FIN 包的发送必须满足三个条件：</p>
+<ul>
+<li><strong>从来没发送过 FIN</strong>。这是为了防止发送方在发送 FIN 包并接收到 FIN ack 包之后，循环用 FIN 包填充发送窗口的情况。</li>
+<li>输入字节流处于 EOF</li>
+<li>window 减去 payload 大小后，仍然可以存放下 FIN</li>
+</ul>
+</li>
+<li>
+<p>当循环填充发送窗口时，若发送窗口大小足够但本地没有数据包需要发送，则必须停止发送。</p>
+<p>若当前 Segment 是 FIN 包，则在发送完该包后，立即停止填充发送窗口。</p>
+</li>
+<li>
+<p>重传定时器追踪的是发送者<strong>距离上次接收到新 ack 包</strong>的时间，而不是每个处于发送中的包的超时时间。因此除 SYN 包以外（它会启动定时器），其他发包操作将不会重置 重传定时器，同时也无需为每个数据包配备一个定时器。</p>
+<p>同时，只有<strong>存在新数据包被接收方确认</strong>后，才会重置定时器。</p>
+<p>tick 函数也是类似，只有存在处于发送状态的数据包时，重传定时器才起作用。若重传定时器超时，则重传的是第一个 <strong>seqno 最小且尚未重传</strong>的数据包。</p>
+</li>
+<li>
+<p>当接收方的 window size 为 0 时，仍旧按照 window size 为 1 时去处理，发送一字节数据。但是，若远程没有发送 ack 包的时候，<strong>不要将 RTO 双倍</strong>，还是重置为之前的 RTO。</p>
+</li>
+</ul>
+<p>以下是我的实现：</p>
+<p>类声明：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">TCPSender</span> &#123;</span></span><br><span class="line">  <span class="keyword">private</span>:</span><br><span class="line">    <span class="keyword">int</span> _timeout&#123;<span class="number">-1</span>&#125;;</span><br><span class="line">    <span class="keyword">int</span> _timecount&#123;<span class="number">0</span>&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">map</span>&lt;<span class="keyword">size_t</span>, TCPSegment&gt; _outgoing_map&#123;&#125;;</span><br><span class="line">    <span class="keyword">size_t</span> _outgoing_bytes&#123;<span class="number">0</span>&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">size_t</span> _last_window_size&#123;<span class="number">1</span>&#125;;</span><br><span class="line">    <span class="keyword">bool</span> _set_syn_flag&#123;<span class="literal">false</span>&#125;;</span><br><span class="line">    <span class="keyword">bool</span> _set_fin_flag&#123;<span class="literal">false</span>&#125;;</span><br><span class="line">    <span class="keyword">size_t</span> _consecutive_retransmissions_count&#123;<span class="number">0</span>&#125;;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! our initial sequence number, the number for our SYN.</span></span><br><span class="line">    WrappingInt32 _isn;</span><br><span class="line"></span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>类方法实现：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">uint64_t</span> <span class="title">TCPSender::bytes_in_flight</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _outgoing_bytes; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">TCPSender::fill_window</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 如果远程窗口大小为 0, 则把其视为 1 进行操作</span></span><br><span class="line">    <span class="keyword">size_t</span> curr_window_size = _last_window_size ? _last_window_size : <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 循环填充窗口</span></span><br><span class="line">    <span class="keyword">while</span> (curr_window_size &gt; _outgoing_bytes) &#123;</span><br><span class="line">        <span class="comment">// 尝试构造单个数据包</span></span><br><span class="line">        <span class="comment">// 如果此时尚未发送 SYN 数据包，则立即发送</span></span><br><span class="line">        TCPSegment segment;</span><br><span class="line">        <span class="keyword">if</span> (!_set_syn_flag) &#123;</span><br><span class="line">            segment.header().syn = <span class="literal">true</span>;</span><br><span class="line">            _set_syn_flag = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 设置 seqno</span></span><br><span class="line">        segment.header().seqno = next_seqno();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 装入 payload.</span></span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">size_t</span> payload_size =</span><br><span class="line">            min(TCPConfig::MAX_PAYLOAD_SIZE, curr_window_size - _outgoing_bytes - segment.header().syn);</span><br><span class="line">        <span class="built_in">string</span> payload = _stream.read(payload_size);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/**</span></span><br><span class="line"><span class="comment">         * 读取好后，如果满足以下条件，则增加 FIN</span></span><br><span class="line"><span class="comment">         *  1. 从来没发送过 FIN</span></span><br><span class="line"><span class="comment">         *  2. 输入字节流处于 EOF</span></span><br><span class="line"><span class="comment">         *  3. window 减去 payload 大小后，仍然可以存放下 FIN</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (!_set_fin_flag &amp;&amp; _stream.eof() &amp;&amp; payload.size() + _outgoing_bytes &lt; curr_window_size)</span><br><span class="line">            _set_fin_flag = segment.header().fin = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">        segment.payload() = Buffer(move(payload));</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果没有任何数据，则停止数据包的发送</span></span><br><span class="line">        <span class="keyword">if</span> (segment.length_in_sequence_space() == <span class="number">0</span>)</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果没有正在等待的数据包，则重设更新时间</span></span><br><span class="line">        <span class="keyword">if</span> (_outgoing_map.empty()) &#123;</span><br><span class="line">            _timeout = _initial_retransmission_timeout;</span><br><span class="line">            _timecount = <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 发送</span></span><br><span class="line">        _segments_out.push(segment);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 追踪这些数据包</span></span><br><span class="line">        _outgoing_bytes += segment.length_in_sequence_space();</span><br><span class="line">        _outgoing_map.insert(make_pair(_next_seqno, segment));</span><br><span class="line">        <span class="comment">// 更新待发送 abs seqno</span></span><br><span class="line">        _next_seqno += segment.length_in_sequence_space();</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果设置了 fin，则直接退出填充 window 的操作</span></span><br><span class="line">        <span class="keyword">if</span> (segment.header().fin)</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//! \param ackno The remote receiver's ackno (acknowledgment number)</span></span><br><span class="line"><span class="comment">//! \param window_size The remote receiver's advertised window size</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">TCPSender::ack_received</span><span class="params">(<span class="keyword">const</span> WrappingInt32 ackno, <span class="keyword">const</span> <span class="keyword">uint16_t</span> window_size)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> abs_seqno = unwrap(ackno, _isn, _next_seqno);</span><br><span class="line">    <span class="comment">// 如果传入的 ack 是不可靠的，则直接丢弃</span></span><br><span class="line">    <span class="keyword">if</span> (abs_seqno &gt; _next_seqno)</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// 遍历数据结构，将已经接收到的数据包丢弃</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span> iter = _outgoing_map.begin(); iter != _outgoing_map.end();) &#123;</span><br><span class="line">        <span class="comment">// 如果一个发送的数据包已经被成功接收</span></span><br><span class="line">        <span class="keyword">const</span> TCPSegment &amp;seg = iter-&gt;second;</span><br><span class="line">        <span class="keyword">if</span> (iter-&gt;first + seg.length_in_sequence_space() &lt;= abs_seqno) &#123;</span><br><span class="line">            _outgoing_bytes -= seg.length_in_sequence_space();</span><br><span class="line">            iter = _outgoing_map.erase(iter);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 如果有新的数据包被成功接收，则清空超时时间</span></span><br><span class="line">            _timeout = _initial_retransmission_timeout;</span><br><span class="line">            _timecount = <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果当前遍历到的数据包还没被接收，则说明后面的数据包均未被接收，因此直接返回</span></span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    _consecutive_retransmissions_count = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 填充后面的数据</span></span><br><span class="line">    _last_window_size = window_size;</span><br><span class="line">    fill_window();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">TCPSender::tick</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> ms_since_last_tick)</span> </span>&#123;</span><br><span class="line">    _timecount += ms_since_last_tick;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">auto</span> iter = _outgoing_map.begin();</span><br><span class="line">    <span class="comment">// 如果存在发送中的数据包，并且定时器超时</span></span><br><span class="line">    <span class="keyword">if</span> (iter != _outgoing_map.end() &amp;&amp; _timecount &gt;= _timeout) &#123;</span><br><span class="line">        <span class="comment">// 如果窗口大小不为0还超时，则说明网络拥堵</span></span><br><span class="line">        <span class="keyword">if</span> (_last_window_size &gt; <span class="number">0</span>)</span><br><span class="line">            _timeout *= <span class="number">2</span>;</span><br><span class="line">        _timecount = <span class="number">0</span>;</span><br><span class="line">        _segments_out.push(iter-&gt;second);</span><br><span class="line">        <span class="comment">// 连续重传计时器增加</span></span><br><span class="line">        ++_consecutive_retransmissions_count;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">TCPSender::consecutive_retransmissions</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _consecutive_retransmissions_count; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">TCPSender::send_empty_segment</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    TCPSegment segment;</span><br><span class="line">    segment.header().seqno = next_seqno();</span><br><span class="line">    _segments_out.push(segment);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/cs144-lab3/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CS144/" rel="tag">CS144</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/cs144-lab4/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CS144计算机网络 Lab4
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/cs144-lab2/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CS144计算机网络 Lab2</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+     Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      
+<section class="cover">
+    
+  <div class="cover-frame">
+    <div class="bg-box">
+      <img src="/images/cover4.jpg" alt="image frame" />
+    </div>
+    <div class="cover-inner text-center text-white">
+      <h1><a href="/">Kiprey&#39;s Blog</a></h1>
+      <div id="subtitle-box">
+        
+        <span id="subtitle"></span>
+        
+      </div>
+      <div>
+        
+      </div>
+    </div>
+  </div>
+  <div class="cover-learn-more">
+    <a href="javascript:void(0)" class="anchor"><i class="ri-arrow-down-line"></i></a>
+  </div>
+</section>
+
+
+
+<script src="https://cdn.jsdelivr.net/npm/typed.js@2.0.11/lib/typed.min.js"></script>
+
+
+<!-- Subtitle -->
+
+  <script>
+    try {
+      var typed = new Typed("#subtitle", {
+        strings: ['半夏时光，半支离歌', '', ''],
+        startDelay: 1000,
+        typeSpeed: 200,
+        loop: true,
+        backSpeed: 100,
+        showCursor: true
+      });
+    } catch (err) {
+      console.log(err)
+    }
+  </script>
+  
+<div id="main">
+  <section class="outer">
+  
+  <ul class="ads">
+    
+        <li>
+            <a href="">
+                <img src="" width="0" alt="">
+            </a>
+        </li>
+    
+</ul>
+  
+  
+  
+
+<div class="notice" style="margin-top:50px">
+    <i class="ri-heart-fill"></i>
+    <div class="notice-content" id="broad"></div>
+</div>
+<script type="text/javascript">
+    fetch('https://v1.hitokoto.cn')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById("broad").innerHTML = data.hitokoto;
+        })
+        .catch(console.error)
+</script>
+
+<style>
+    .notice {
+        padding: 20px;
+        border: 1px dashed #e6e6e6;
+        color: #969696;
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        background: #fbfbfb50;
+        border-radius: 10px;
+    }
+
+    .notice i {
+        float: left;
+        color: #999;
+        font-size: 16px;
+        padding-right: 10px;
+        vertical-align: middle;
+        margin-top: -2px;
+    }
+
+    .notice-content {
+        display: initial;
+        vertical-align: middle;
+    }
+</style>
+  
+  <article class="articles">
+    
+    
+    
+    
+    <article
+  id="post-ubuntu_desktop_recover"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2022/01/ubuntu_desktop_recover/"
+    >Ubuntu 恢复图形界面记录</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/ubuntu_desktop_recover/" class="article-date">
+  <time datetime="2022-01-17T16:00:00.000Z" itemprop="datePublished">2022-01-18</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、背景">一、背景</h2>
+<p>给 npy 安装环境时，误删了她的 ubuntu python3，导致重启 ubuntu 后无法进入图形界面，花了两个小时的时间才解决。</p>
+<p>这里简单记录一下恢复图形界面的操作。</p> 
+      <a class="article-more-link" href="/2022/01/ubuntu_desktop_recover/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-35c3ctf_pillow"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2022/01/35c3ctf_pillow/"
+    >35c3ctf pillow Writeup</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/35c3ctf_pillow/" class="article-date">
+  <time datetime="2022-01-07T16:00:00.000Z" itemprop="datePublished">2022-01-08</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<ul>
+<li>
+<p><code>pillow</code>，是 35c3ctf 中的一道关于 macOS bootstrap Service 沙箱逃逸题目。本人将通过学习这一题来进一步了解Mac OSX XPC 和 Sandbox 机制。</p>
+</li>
+<li>
+<p>该题中包含了两个自定义 macOS 系统服务。要求攻击者劫持两个 XPC 服务之间的 IPC 连接，以达到沙箱逃逸的目的。</p>
+</li>
+<li>
+<p>题目链接 ： <a href="https://github.com/saelo/35c3ctf/tree/master/pillow" target="_blank" rel="noopener">pillow - 35c3ctf github</a></p>
+</li>
+</ul> 
+      <a class="article-more-link" href="/2022/01/35c3ctf_pillow/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ipc/" rel="tag">ipc</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mac/" rel="tag">mac</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mach/" rel="tag">mach</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/sandbox/" rel="tag">sandbox</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/xpc/" rel="tag">xpc</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-mach_xpc_intro"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2022/01/mach_xpc_intro/"
+    >MacOSX XPC 入门</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/mach_xpc_intro/" class="article-date">
+  <time datetime="2022-01-03T16:00:00.000Z" itemprop="datePublished">2022-01-04</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<ul>
+<li>
+<p>XPC 是一种 OS X <strong>进程间通信技术</strong>，通过<strong>权限分离</strong>机制来对<strong>应用沙箱机制</strong>做了一个补充。其中，<strong>权限分离</strong>是根据每个部分所需的系统资源访问<strong>将应用程序分成多个部分</strong>，每个部分可以<strong>使用提前声明的权限（沙箱）</strong>。这种单个组件称为<strong>XPC 服务</strong>。</p>
+<p>将应用程序分成多个部分，还可以提高程序的可靠性，防止程序的部分代码崩溃导致整个程序的退出。</p>
+</li>
+<li>
+<p>每个 XPC 服务都位于自己的沙箱，即 XPC 服务有<strong>自己的容器</strong>和<strong>一组权限</strong>。包含在应用程序中 XPC 服务只能由应用程序自己访问。当应用程序启动时，系统会自动将它找到的每个 XPC 服务注册到应用程序可见的命名空间中。之后应用程序便可以与 XPC 服务通信并执行请求。</p>
+</li>
+<li>
+<p>XPC 服务的特点：<strong>权限分离</strong> + <strong>错误隔离</strong></p>
+</li>
+<li>
+<p>XPC 服务有 launchd 所管理，当 XPC 服务被意外终止（或者崩溃）后，该服务将会被 launchd 重启。</p>
+</li>
+</ul> 
+      <a class="article-more-link" href="/2022/01/mach_xpc_intro/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ipc/" rel="tag">ipc</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mac/" rel="tag">mac</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/xpc/" rel="tag">xpc</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-mach_ipc_intro"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/12/mach_ipc_intro/"
+    >MacOSX Mach IPC 入门</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/mach_ipc_intro/" class="article-date">
+  <time datetime="2021-12-23T16:00:00.000Z" itemprop="datePublished">2021-12-24</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>Mach，是一个<strong>面向通信</strong>的操作系统<strong>微内核</strong>，其基本工作单位为 <code>task</code>（而不是 process）。Mach 内核提供了一种 IPC 机制，而 XNU 的大多数服务也建立在 Mach IPC 和 Mach Task 上。</p>
+<p>Mach 有多种抽象的基本概念，其中一部分分别是 <code>task</code>、<code>thread</code>、<code>port</code>、<code>message</code>、<code>memory object</code>。</p>
+<p>Mach 微内核作为 MacOS XNU 内核的组成部分，接管了相当重要的一部分功能。其中最著名的莫过于 Mach IPC 进程间通信机制。</p>
+<p>本人将在这里简单记录一下 Mach IPC 部分机理。</p>
+<blockquote>
+<p>需要注意的是，这是本人第一次接触 Mach IPC，因此其中可能会有一部分陈述或者说明存在问题，还请各位师傅不吝指出。</p>
+</blockquote> 
+      <a class="article-more-link" href="/2021/12/mach_ipc_intro/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ipc/" rel="tag">ipc</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mac/" rel="tag">mac</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mach/" rel="tag">mach</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-vmware_macos"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/12/vmware_macos/"
+    >Win10 Vmware Workstation 16 安装 macOS 记录</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/vmware_macos/" class="article-date">
+  <time datetime="2021-12-12T16:00:00.000Z" itemprop="datePublished">2021-12-13</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了我在 Win10 VMware workstation 上配置 macOS 虚拟机所踩过的坑点。</p> 
+      <a class="article-more-link" href="/2021/12/vmware_macos/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/vmware/" rel="tag">vmware</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-reversing_kr-1"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/12/reversing_kr-1/"
+    >Reversing.kr 刷题笔记 - 1</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/reversing_kr-1/" class="article-date">
+  <time datetime="2021-12-11T16:00:00.000Z" itemprop="datePublished">2021-12-12</time>
+</a>    
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="0-简介">0. 简介</h2>
+<p>这里将记录一些笔者学习 <a href="http://reversing.kr" target="_blank" rel="noopener">reversing.kr</a> 中的逆向题所留下的笔记。</p>
+<p>这篇笔记所记录的题目分值为 100-120。</p> 
+      <a class="article-more-link" href="/2021/12/reversing_kr-1/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/reverse/" rel="tag">reverse</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-coop"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/12/coop/"
+    >《Counterfeit Object-oriented Programming》 论文笔记</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/coop/" class="article-date">
+  <time datetime="2021-12-01T16:00:00.000Z" itemprop="datePublished">2021-12-02</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+   
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>现阶段，ROP (面向返回的编程技术) 已经成为了一种非常流行的利用手法，同时现在也存在各种方式来保护程序免受 ROP 工具，例如 shadow stack 技术。而这篇 2015 年的论文向我们展示了一种新的利用手法，称为<strong>面向伪对象编程（COOP）</strong>，即只通过程序中现有虚函数链以及 callsite 来进行恶意攻击。该攻击方式是<strong>图灵完备</strong>的，即可以执行任何操作，包括条件分支等。</p>
+<p>同时，COOP 技术也可以绕过那些 <strong>不精确考虑C++面向对象语义</strong> 的防御手段。它并不针对与某一类语言（例如 C++），因此自然无法防护 COOP 技术。</p>
+<p>该攻击手法基于 C++ 虚函数的一些特性：</p>
+<ul>
+<li>
+<p>C++ 编译器通过 <strong>vtable 虚函数表</strong>来实现对 <strong>vcall 虚函数</strong> 的访问</p>
+<blockquote>
+<p>其中 vtable 是指向类的所有可能继承继承的虚函数的指针数组。</p>
+<p>根据逆向结果来看， vtable 通常位于 .rodata 段上。</p>
+</blockquote>
+</li>
+<li>
+<p>对于包含虚函数的类来说，其对象内存开始处（即偏移量为0）包含一个指向 vtable 的指针。</p>
+</li>
+</ul> 
+      <a class="article-more-link" href="/2021/12/coop/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/virtual-call/" rel="tag">virtual call</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-collafl"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/11/collafl/"
+    >《CollAFL - Path Sensitive Fuzzing》论文笔记</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/collafl/" class="article-date">
+  <time datetime="2021-11-30T16:00:00.000Z" itemprop="datePublished">2021-12-01</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+   
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>现有 fuzz 大多以代码覆盖率为引导指标。以AFL为例，它使用<strong>映射至 hashmap 中的基于 edge 的覆盖率信息</strong>来引导测试。这种覆盖率信息不太准确，因为<strong>只统计至 edge 层面</strong>，同时还会<strong>产生覆盖 hash 冲突</strong>，丢失覆盖率信息，给模糊测试带来一些不良限制。</p>
+<p>这篇论文提出了一个新的方式，来达到以下三个目的：</p>
+<ul>
+<li>提供<strong>更准确的覆盖信息</strong></li>
+<li><strong>缓解</strong>路径冲突</li>
+<li>保持<strong>较低检测开销</strong></li>
+</ul>
+<p>同时，该论文还利用覆盖率信息，提出了<strong>三种新的模糊测试策略</strong>，加快了发现新路径和漏洞的速度。</p>
+<p>下图是一个完整 fuzz 的工作流程，其中黄色标注部分为论文所提出的<strong>重点思路</strong>：</p>
+<p><img src="/2021/11/collafl/image-20211201164140587.png" alt="image-20211201164140587"></p> 
+      <a class="article-more-link" href="/2021/11/collafl/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/AFL/" rel="tag">AFL</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-VScape_Assessing_and_Escaping_Virtual_Call_Protections"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/"
+    >《VScape - Assessing and Escaping Virtual Call Protections》 论文笔记</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/" class="article-date">
+  <time datetime="2021-11-29T16:00:00.000Z" itemprop="datePublished">2021-11-30</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+   
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这篇论文介绍了一种面向伪对象编程（COOP）的<strong>加强攻击手法</strong>，称为 <strong>COOPlus</strong>。对于那些不破坏 C++ ABI 的虚拟调用保护来说，有相当一部分的 虚拟调用保护手段易受 COOPlus 的攻击。</p>
+<p><strong>符合以下三个条件的虚拟函数调用容易受到 COOPlus 的攻击：</strong></p>
+<ul>
+<li><strong>不破坏虚函数调用的 ABI</strong></li>
+<li><strong>不保证 C++ 对象 vtable 指针的完整性（即可以被修改）</strong></li>
+<li><strong>允许在虚拟函数调用点上调用不同的函数</strong></li>
+</ul>
+<p>COOPlus 本质上是<strong>代码重用</strong>攻击，它在目标虚拟函数调用点上调用<strong>符合类型但不符合上下文</strong>的虚拟函数。该调用可通过 C++ 语义感知的 <strong>控制流完整性 CFI</strong> 检测，但由于调用上下文不同，因此可能会造成进一步的利用。</p>
+<p>除了 COOPlus 以外，该论文还提出了一种解决方案 <strong>VScape</strong>，用来评估针对虚拟调用攻击保护的有效性。</p>
+<p>论文 + 幻灯片 - <a href="https://www.usenix.org/conference/usenixsecurity21/presentation/chen-kaixiang" target="_blank" rel="noopener">USENIX security 21</a></p> 
+      <a class="article-more-link" href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/virtual-call/" rel="tag">virtual call</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+    <article
+  id="post-healer"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h2 itemprop="name">
+  <a class="article-title" href="/2021/11/healer/"
+    >《HEALER - Relation Learning Guided Kernel Fuzzing》 论文笔记</a> 
+</h2>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/healer/" class="article-date">
+  <time datetime="2021-11-28T16:00:00.000Z" itemprop="datePublished">2021-11-29</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+   
+    </div>
+      
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>Healer 是受 Syzkaller 启发的 kernel fuzz。</p>
+<p>与 Syzkaller 类似，Healer 使用 <a href="https://github.com/google/syzkaller/blob/master/docs/syscall_descriptions.md" target="_blank" rel="noopener">Syzlang</a> 描述所提供的 syscall 信息来生成确认参数结构约束和部分语义约束的系统调用序列，并通过不断执行生成的调用序列来发现内核错误，导致内核崩溃。</p>
+<p>与 Syzkaller 不同，Healer 不使用 choise table，而是通过动态移除<strong>最小化调用序列</strong>中的调用并观察覆盖范围变化来检测<strong>不同系统调用之间的内部关系</strong>，并利用内部关系来指导调用序列的生成和变异。此外，Healer 还使用了与 Syzkaller 不同的架构设计。</p>
+<p>论文地址：<a href="http://www.wingtecher.com/themes/WingTecherResearch/assets/papers/healer-sosp21.pdf" target="_blank" rel="noopener">HEALER: Relation Learning Guided Kernel Fuzzing</a></p>
+<p>项目地址：<a href="https://github.com/SunHao-0/healer" target="_blank" rel="noopener">github</a></p> 
+      <a class="article-more-link" href="/2021/11/healer/"
+        >阅读更多...</a
+      >
+       
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <footer class="article-footer">
+       
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/kernel/" rel="tag">kernel</a></li></ul>
+
+    </footer>
+  </div>
+
+    
+ 
+    
+</article>
+
+    
+  </article>
+  
+
+  
+  <nav class="page-nav">
+    
+    <a class="extend prev" rel="prev" href="/page/2/">上一页</a><a class="page-number" href="/">1</a><a class="page-number" href="/page/2/">2</a><span class="page-number current">3</span><a class="page-number" href="/page/4/">4</a><a class="page-number" href="/page/5/">5</a><span class="space">&hellip;</span><a class="page-number" href="/page/11/">11</a><a class="extend next" rel="next" href="/page/4/">下一页</a>
+  </nav>
+  
+</section>
+</div>
+
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

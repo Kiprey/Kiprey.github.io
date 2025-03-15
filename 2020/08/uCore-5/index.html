@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab5、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab5 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-5"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab5
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/08/uCore-5/" class="article-date">
+  <time datetime="2020-08-21T09:35:38.000Z" itemprop="datePublished">2020-08-21</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">24 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 5时写下的一些笔记</li>
+<li>内容涉及<code>fork/exec/wait/exit</code>机制的具体实现。<a id="more"></a>
+</li>
+</ul>
+<h2 id="练习解答">练习解答</h2>
+<h3 id="0-练习0">0) 练习0</h3>
+<p>除了将lab 1/2/3/4的代码填写至lab5以外，其他地方还有部分代码需要完善一下：</p>
+<ul>
+<li>
+<p>在<code>alloc_proc</code>函数中，添加对<code>proc_struct::wait_state</code>以及<code>proc_struct::cptr/optr/yptr</code>成员的初始化。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *</span></span><br><span class="line"><span class="class"><span class="title">alloc_proc</span>(<span class="title">void</span>) &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span> = <span class="title">kmalloc</span>(<span class="title">sizeof</span>(<span class="title">struct</span> <span class="title">proc_struct</span>));</span></span><br><span class="line">    <span class="keyword">if</span> (proc != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// .....</span></span><br><span class="line">        <span class="comment">// Lab5 code</span></span><br><span class="line">        proc-&gt;wait_state = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;cptr = proc-&gt;optr = proc-&gt;yptr = <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> proc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在<code>idt_init</code>函数中，设置中断<code>T_SYSCALL</code>的触发特权级为<code>DPL_USER</code></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">idt_init</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">     <span class="comment">// ......</span></span><br><span class="line">    <span class="comment">// Lab5 code</span></span><br><span class="line">    SETGATE(idt[T_SYSCALL], <span class="number">1</span>, GD_KTEXT, __vectors[T_SYSCALL], DPL_USER);</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在<code>trap_dispatch</code>中，设置每100次时间中断后，当前正在执行的进程准备被调度。同时，注释掉原来的&quot;100ticks&quot;输出</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">trap_dispatch(struct trapframe *tf) &#123;</span><br><span class="line">    <span class="keyword">char</span> c;</span><br><span class="line">    <span class="keyword">int</span> ret=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">switch</span> (tf-&gt;tf_trapno) &#123;</span><br><span class="line">    <span class="comment">// ......</span></span><br><span class="line">    <span class="keyword">case</span> IRQ_OFFSET + IRQ_TIMER:</span><br><span class="line">        ticks++;</span><br><span class="line">        <span class="keyword">if</span>(ticks % TICK_NUM == <span class="number">0</span>)&#123;</span><br><span class="line">            <span class="comment">// Lab5 Code</span></span><br><span class="line">            assert(current != <span class="literal">NULL</span>);</span><br><span class="line">            current-&gt;need_resched = <span class="number">1</span>;</span><br><span class="line">            <span class="comment">//print_ticks();</span></span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">   <span class="comment">// ......</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在<code>do_fork</code>函数中，添加对当前进程等待状态的检查，以及使用<code>set_links</code>函数来设置进程之间的关系。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">do_fork(<span class="keyword">uint32_t</span> clone_flags, <span class="keyword">uintptr_t</span> <span class="built_in">stack</span>, struct trapframe *tf) &#123;</span><br><span class="line">    <span class="comment">// ..........</span></span><br><span class="line">    <span class="keyword">if</span> ((proc = alloc_proc()) == <span class="literal">NULL</span>)</span><br><span class="line">        <span class="keyword">goto</span> fork_out;</span><br><span class="line">    proc-&gt;parent = current;</span><br><span class="line">    <span class="comment">// Lab5: 确保当前进程的wait状态为空</span></span><br><span class="line">    assert(current-&gt;wait_state == <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (setup_kstack(proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_proc;</span><br><span class="line">    <span class="keyword">if</span> (copy_mm(clone_flags, proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_kstack;</span><br><span class="line">    copy_thread(proc, <span class="built_in">stack</span>, tf);</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        proc-&gt;pid = get_pid();</span><br><span class="line">        hash_proc(proc);</span><br><span class="line">        <span class="comment">// Lab5: 设置进程间的关系</span></span><br><span class="line">        set_links(proc);</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    wakeup_proc(proc);</span><br><span class="line">    ret = proc-&gt;pid;</span><br><span class="line">    <span class="comment">// ..........</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="1-练习1">1) 练习1</h3>
+<blockquote>
+<p><strong>加载应用程序并执行</strong></p>
+<p><strong>do_execv</strong>函数调用load_icode（位于kern/process/proc.c中）来加载并解析一个处于内存中的ELF执行文件格式的应用程序，建立相应的用户内存空间来放置应用程序的代码段、数据段等，且要设置好proc_struct结构中的成员变量trapframe中的内容，确保在执行此进程后，能够从应用程序设定的起始执行地址开始执行。需设置正确的trapframe内容。</p>
+</blockquote>
+<ul>
+<li>
+<p>相关实现代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// codes in `load_icode` function</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//(6) setup trapframe for user environment</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">trapframe</span> *<span class="title">tf</span> = <span class="title">current</span>-&gt;<span class="title">tf</span>;</span></span><br><span class="line"><span class="built_in">memset</span>(tf, <span class="number">0</span>, <span class="keyword">sizeof</span>(struct trapframe));</span><br><span class="line"><span class="comment">/* LAB5:EXERCISE1 YOUR CODE</span></span><br><span class="line"><span class="comment"> * should set tf_cs,tf_ds,tf_es,tf_ss,tf_esp,tf_eip,tf_eflags</span></span><br><span class="line"><span class="comment"> * NOTICE: If we set trapframe correctly, then the user level process can return to USER MODE from kernel. So</span></span><br><span class="line"><span class="comment"> *          tf_cs should be USER_CS segment (see memlayout.h)</span></span><br><span class="line"><span class="comment"> *          tf_ds=tf_es=tf_ss should be USER_DS segment</span></span><br><span class="line"><span class="comment"> *          tf_esp should be the top addr of user stack (USTACKTOP)</span></span><br><span class="line"><span class="comment"> *          tf_eip should be the entry point of this binary program (elf-&gt;e_entry)</span></span><br><span class="line"><span class="comment"> *          tf_eflags should be set to enable computer to produce Interrupt</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">tf-&gt;tf_cs = USER_CS;</span><br><span class="line">tf-&gt;tf_ds = tf-&gt;tf_es = tf-&gt;tf_ss = USER_DS;</span><br><span class="line">tf-&gt;tf_esp = USTACKTOP;</span><br><span class="line">tf-&gt;tf_eip = elf-&gt;e_entry;</span><br><span class="line">tf-&gt;tf_eflags = FL_IF;</span><br><span class="line">ret = <span class="number">0</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>请描述当创建一个用户态进程并加载了应用程序后，CPU是如何让这个应用程序最终在用户态执行起来的。即这个用户态进程被ucore选择占用CPU执行（RUNNING态）到具体执行应用程序第一条指令的整个经过。</p>
+<blockquote>
+<p>为便于描述得当，笔者将介绍一个用户态程序从开始执行<code>sys_execve</code>到具体执行新加载应用程序的第一条指令这个过程。</p>
+</blockquote>
+<ul>
+<li>
+<p>当一个用户态程序执行<code>sys_execve</code>时，该程序将触发<code>0x80</code>中断，并进入中断处理例程。与Lab1类似，中断处理例程的入口代码会保存<code>trapframe</code>作为跳转回用户态的上下文环境。但与lab1代码所不同的是，lab5中的<code>trap</code>函数实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">trap</span><span class="params">(struct trapframe *tf)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// dispatch based on what type of trap occurred</span></span><br><span class="line">    <span class="comment">// used for previous projects</span></span><br><span class="line">    <span class="keyword">if</span> (current == <span class="literal">NULL</span>)</span><br><span class="line">        trap_dispatch(tf);</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 因为可能会发生嵌套中断的情况，所以保存上一次的trapframe</span></span><br><span class="line">        struct trapframe *otf = current-&gt;tf;</span><br><span class="line">        <span class="comment">// 注意这一步，设置当前process的栈帧为当前中断栈帧</span></span><br><span class="line">        current-&gt;tf = tf;</span><br><span class="line">        <span class="keyword">bool</span> in_kernel = trap_in_kernel(tf);</span><br><span class="line">        trap_dispatch(tf);</span><br><span class="line">        current-&gt;tf = otf;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!in_kernel) &#123;</span><br><span class="line">            <span class="keyword">if</span> (current-&gt;flags &amp; PF_EXITING)</span><br><span class="line">                do_exit(-E_KILLED);</span><br><span class="line">            <span class="keyword">if</span> (current-&gt;need_resched)</span><br><span class="line">                schedule();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>由于<code>trap</code>函数的设计，在<code>do_execve</code>中，此时的<code>current-&gt;tf</code>保存的就是用户态的上下文。</p>
+</li>
+<li>
+<p>因此在执行<code>load_icode</code>函数时，程序只会修改<code>current-&gt;trapframe</code>。因为当中断处理程序返回时，CPU所加载的上下文就是<code>current-&gt;trapframe</code>。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-练习2">2) 练习2</h3>
+<blockquote>
+<p><strong>父进程复制自己的内存空间给子进程</strong></p>
+<p>创建子进程的函数do_fork在执行中将拷贝当前进程（即父进程）的用户内存地址空间中的合法内容到新进程中（子进程），完成内存资源的复制。具体是通过copy_range函数实现的，请补充copy_range的实现，确保能够正确执行。。</p>
+</blockquote>
+<p>实现代码如下，详细信息以注释的形式写到代码中：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* copy_range - copy content of memory (start, end) of one process A to another process B</span></span><br><span class="line"><span class="comment"> * @to:    the addr of process B's Page Directory</span></span><br><span class="line"><span class="comment"> * @from:  the addr of process A's Page Directory</span></span><br><span class="line"><span class="comment"> * @share: flags to indicate to dup OR share. We just use dup method, so it didn't be used.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * CALL GRAPH: copy_mm--&gt;dup_mmap--&gt;copy_range</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">int</span></span><br><span class="line">copy_range(<span class="keyword">pde_t</span> *to, <span class="keyword">pde_t</span> *from, <span class="keyword">uintptr_t</span> start, <span class="keyword">uintptr_t</span> end, <span class="keyword">bool</span> share) &#123;</span><br><span class="line">    assert(start % PGSIZE == <span class="number">0</span> &amp;&amp; end % PGSIZE == <span class="number">0</span>);</span><br><span class="line">    assert(USER_ACCESS(start, end));</span><br><span class="line">    <span class="comment">// copy content by page unit.</span></span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">//call get_pte to find process A's pte according to the addr start</span></span><br><span class="line">        <span class="keyword">pte_t</span> *ptep = get_pte(from, start, <span class="number">0</span>), *nptep;</span><br><span class="line">        <span class="keyword">if</span> (ptep == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            start = ROUNDDOWN(start + PTSIZE, PTSIZE);</span><br><span class="line">            <span class="keyword">continue</span> ;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//call get_pte to find process B's pte according to the addr start. If pte is NULL, just alloc a PT</span></span><br><span class="line">        <span class="keyword">if</span> (*ptep &amp; PTE_P) &#123;</span><br><span class="line">            <span class="keyword">if</span> ((nptep = get_pte(to, start, <span class="number">1</span>)) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">                <span class="keyword">return</span> -E_NO_MEM;</span><br><span class="line">            &#125;</span><br><span class="line">        <span class="keyword">uint32_t</span> perm = (*ptep &amp; PTE_USER);</span><br><span class="line">        <span class="comment">//get page from ptep</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">page</span> = <span class="title">pte2page</span>(*<span class="title">ptep</span>);</span></span><br><span class="line">        <span class="comment">// alloc a page for process B</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">npage</span>=<span class="title">alloc_page</span>();</span></span><br><span class="line">        assert(page!=<span class="literal">NULL</span>);</span><br><span class="line">        assert(npage!=<span class="literal">NULL</span>);</span><br><span class="line">        <span class="keyword">int</span> ret=<span class="number">0</span>;</span><br><span class="line">        <span class="comment">/* LAB5:EXERCISE2 YOUR CODE</span></span><br><span class="line"><span class="comment">         * replicate content of page to npage, build the map of phy addr of nage with the linear addr start</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="comment">// 获取源页面所在的虚拟地址（注意，此时的PDT是内核状态下的页目录表）</span></span><br><span class="line">        <span class="keyword">void</span> * kva_src = page2kva(page);</span><br><span class="line">        <span class="comment">// 获取目标页面所在的虚拟地址</span></span><br><span class="line">        <span class="keyword">void</span> * kva_dst = page2kva(npage);</span><br><span class="line">        <span class="comment">// 页面数据复制</span></span><br><span class="line">        <span class="built_in">memcpy</span>(kva_dst, kva_src, PGSIZE);</span><br><span class="line">        <span class="comment">// 将该页面设置至对应的PTE中</span></span><br><span class="line">        ret = page_insert(to, npage, start, perm);</span><br><span class="line"></span><br><span class="line">        assert(ret == <span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        start += PGSIZE;</span><br><span class="line">    &#125; <span class="keyword">while</span> (start != <span class="number">0</span> &amp;&amp; start &lt; end);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>简要说明如何设计实现”Copy on Write 机制“，给出概要设计，鼓励给出详细设计。</p>
+<blockquote>
+<p>请移步<strong>扩展练习</strong> 。</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="3-练习3">3) 练习3</h3>
+<blockquote>
+<p><strong>阅读分析源代码，理解进程执行 fork/exec/wait/exit 的实现，以及系统调用的实现</strong></p>
+</blockquote>
+<h4 id="1-do-fork">1. do_fork</h4>
+<ul>
+<li>
+<p>lab5中的<code>do_fork</code>函数与lab4中的实现类似，所不同的是lab5中使用<code>set_links(proc)</code>函数来设置进程间的关系，而不是简单的<code>list_add</code>与<code>nr_process++</code>。</p>
+</li>
+<li>
+<p><code>set_links</code>函数会为当前进程间设置合适的关系，其实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*************************************************************</span></span><br><span class="line"><span class="comment">process relations</span></span><br><span class="line"><span class="comment">parent:           proc-&gt;parent  (proc is children)</span></span><br><span class="line"><span class="comment">children:         proc-&gt;cptr    (proc is parent)</span></span><br><span class="line"><span class="comment">older sibling:    proc-&gt;optr    (proc is younger sibling)</span></span><br><span class="line"><span class="comment">younger sibling:  proc-&gt;yptr    (proc is older sibling)</span></span><br><span class="line"><span class="comment">*************************************************************/</span></span><br><span class="line"><span class="comment">// set_links - set the relation links of process</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">set_links</span><span class="params">(struct proc_struct *proc)</span> </span>&#123;</span><br><span class="line">    list_add(&amp;proc_list, &amp;(proc-&gt;list_link));</span><br><span class="line">    proc-&gt;yptr = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">if</span> ((proc-&gt;optr = proc-&gt;parent-&gt;cptr) != <span class="literal">NULL</span>)</span><br><span class="line">        proc-&gt;optr-&gt;yptr = proc;</span><br><span class="line">    proc-&gt;parent-&gt;cptr = proc;</span><br><span class="line">    nr_process ++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>除了lab4熟知的<code>list_add</code>与<code>nr_process++</code>，该函数还设置了<code>proc_struct</code>中的<code>optr、yptr</code>以及<code>cptr</code>成员。</p>
+</li>
+<li>
+<p>其中，<code>cptr</code>指针指向当前进程的子进程中，<strong>最晚创建</strong>的那个子进程，即<code>children</code>；<code>yptr</code>指向<strong>与当前进程共享同一个父进程，但比当前进程的创建时间更晚的进程</strong>，即<code>younger sibling</code>。而<code>optr</code>指针的功能则与<code>yptr</code>相反，指向<code>older sibling</code>。</p>
+</li>
+<li>
+<p>进程间关系如下图所示</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">                     +----------------+</span><br><span class="line">                     | parent process |</span><br><span class="line">                     +----------------+</span><br><span class="line">              parent ^         \       ^  parent</span><br><span class="line">                    &#x2F;           \       \</span><br><span class="line">                   &#x2F;             \ cptr  \</span><br><span class="line">                  &#x2F;         yptr  V       \      yptr</span><br><span class="line">           +-------------+  --&gt;  +-------------+  --&gt;  NULL</span><br><span class="line">           | old process |       | New Process |</span><br><span class="line">NULL  &lt;--  +-------------+  &lt;--  +-------------+</span><br><span class="line">      optr                  optr</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="2-do-execve">2. do_execve</h4>
+<ul>
+<li>
+<p><code>do_execve</code>函数做的事请比较简单</p>
+<ul>
+<li>检查当前进程所分配的内存区域是否存在异常。</li>
+<li>回收当前进程的所有资源，包括已分配的内存空间/页目录表等等。</li>
+<li>读取可执行文件，并根据<code>ELFheader</code>分配特定位置的虚拟内存，并加载代码与数据至特定的内存地址，最后分配堆栈并设置<code>trapframe</code>属性。</li>
+<li>设置新进程名称。</li>
+</ul>
+</li>
+<li>
+<p>该函数<strong>几乎释放原进程所有的资源，除了PCB</strong>。也就是说，<code>do_execve</code>保留了原进程的PID、原进程的属性、原进程与其他进程之间的关系等等。</p>
+</li>
+<li>
+<p>该函数的具体实现如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">do_execve(<span class="keyword">const</span> <span class="keyword">char</span> *name, <span class="keyword">size_t</span> len, <span class="keyword">unsigned</span> <span class="keyword">char</span> *binary, <span class="keyword">size_t</span> size) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span> = <span class="title">current</span>-&gt;<span class="title">mm</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (!user_mem_check(mm, (<span class="keyword">uintptr_t</span>)name, len, <span class="number">0</span>))</span><br><span class="line">        <span class="keyword">return</span> -E_INVAL;</span><br><span class="line">    <span class="keyword">if</span> (len &gt; PROC_NAME_LEN)</span><br><span class="line">        len = PROC_NAME_LEN;</span><br><span class="line">    <span class="keyword">char</span> local_name[PROC_NAME_LEN + <span class="number">1</span>];</span><br><span class="line">    <span class="built_in">memset</span>(local_name, <span class="number">0</span>, <span class="keyword">sizeof</span>(local_name));</span><br><span class="line">    <span class="built_in">memcpy</span>(local_name, name, len);</span><br><span class="line">    <span class="comment">// 释放内存</span></span><br><span class="line">    <span class="keyword">if</span> (mm != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        lcr3(boot_cr3);</span><br><span class="line">        <span class="keyword">if</span> (mm_count_dec(mm) == <span class="number">0</span>) &#123;</span><br><span class="line">            exit_mmap(mm);</span><br><span class="line">            <span class="comment">// 删除该内存管理所对应的PDT</span></span><br><span class="line">            put_pgdir(mm);</span><br><span class="line">            mm_destroy(mm);</span><br><span class="line">        &#125;</span><br><span class="line">        current-&gt;mm = <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 加载可执行文件代码，重设mm_struct，以及重置trapframe</span></span><br><span class="line">    <span class="keyword">int</span> ret;</span><br><span class="line">    <span class="keyword">if</span> ((ret = load_icode(binary, size)) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> execve_exit;</span><br><span class="line">    <span class="comment">// 设置进程名称</span></span><br><span class="line">    set_proc_name(current, local_name);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">execve_exit:</span><br><span class="line">    do_exit(ret);</span><br><span class="line">    panic(<span class="string">"already exit: %e.\n"</span>, ret);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="3-do-wait">3. do_wait</h4>
+<ul>
+<li>
+<p><code>do_wait</code>程序会使某个进程一直等待，直到（特定）子进程退出后，该进程才会回收该子进程的资源并函数返回。该函数的具体操作如下：</p>
+<ul>
+<li>检查当前进程所分配的内存区域是否存在异常。</li>
+<li>查找特定/所有子进程中是否存在某个等待父进程回收的子进程（<code>PROC_ZOMBIE</code>）。
+<ul>
+<li>如果有，则回收该进程并函数返回。</li>
+<li>如果没有，则设置当前进程状态为<code>PROC_SLEEPING</code>并执行<code>schedule</code>调度其他进程运行。当该进程的某个子进程结束运行后，当前进程会被唤醒，并在<code>do_wait</code>函数中回收子进程的<strong>PCB内存</strong>资源。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>该函数的具体实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">do_wait(<span class="keyword">int</span> pid, <span class="keyword">int</span> *code_store) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span> = <span class="title">current</span>-&gt;<span class="title">mm</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (code_store != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!user_mem_check(mm, (<span class="keyword">uintptr_t</span>)code_store, <span class="keyword">sizeof</span>(<span class="keyword">int</span>), <span class="number">1</span>)) &#123;</span><br><span class="line">            <span class="keyword">return</span> -E_INVAL;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span></span><br><span class="line">    <span class="keyword">bool</span> intr_flag, haskid;</span><br><span class="line">repeat:</span><br><span class="line">    haskid = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (pid != <span class="number">0</span>) &#123;</span><br><span class="line">        proc = find_proc(pid);</span><br><span class="line">        <span class="keyword">if</span> (proc != <span class="literal">NULL</span> &amp;&amp; proc-&gt;parent == current) &#123;</span><br><span class="line">            haskid = <span class="number">1</span>;</span><br><span class="line">            <span class="keyword">if</span> (proc-&gt;state == PROC_ZOMBIE)</span><br><span class="line">                <span class="keyword">goto</span> found;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        proc = current-&gt;cptr;</span><br><span class="line">        <span class="keyword">for</span> (; proc != <span class="literal">NULL</span>; proc = proc-&gt;optr) &#123;</span><br><span class="line">            haskid = <span class="number">1</span>;</span><br><span class="line">            <span class="keyword">if</span> (proc-&gt;state == PROC_ZOMBIE)</span><br><span class="line">                <span class="keyword">goto</span> found;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (haskid) &#123;</span><br><span class="line">        current-&gt;state = PROC_SLEEPING;</span><br><span class="line">        current-&gt;wait_state = WT_CHILD;</span><br><span class="line">        schedule();</span><br><span class="line">        <span class="keyword">if</span> (current-&gt;flags &amp; PF_EXITING)</span><br><span class="line">            do_exit(-E_KILLED);</span><br><span class="line">        <span class="keyword">goto</span> repeat;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> -E_BAD_PROC;</span><br><span class="line"></span><br><span class="line">found:</span><br><span class="line">    <span class="keyword">if</span> (proc == idleproc || proc == initproc)</span><br><span class="line">        panic(<span class="string">"wait idleproc or initproc.\n"</span>);</span><br><span class="line">    <span class="keyword">if</span> (code_store != <span class="literal">NULL</span>)</span><br><span class="line">        *code_store = proc-&gt;exit_code;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        unhash_proc(proc);</span><br><span class="line">        remove_links(proc);</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    put_kstack(proc);</span><br><span class="line">    kfree(proc);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="4-do-exit">4. do_exit</h4>
+<ul>
+<li>
+<p>该函数与<code>do_execve/do_wait</code>函数中的进程回收代码类似，但又有所不同。其具体操作如下：</p>
+<ul>
+<li>
+<p>·回收所有内存（除了PCB，该结构只能由父进程回收）</p>
+</li>
+<li>
+<p>设置当前的进程状态为<code>PROC_ZOMBIE</code></p>
+</li>
+<li>
+<p>设置当前进程的退出值<code>current-&gt;exit_code</code>。</p>
+</li>
+<li>
+<p>如果有父进程，则唤醒父进程，使其准备回收该进程的PCB。</p>
+<blockquote>
+<p>正常情况下，除了<code>initproc</code>和<code>idleproc</code>以外，其他进程一定存在父进程。</p>
+</blockquote>
+</li>
+<li>
+<p>如果当前进程存在子进程，则设置所有子进程的父进程为<code>initproc</code>。这样倘若这些子进程进入结束状态，则<code>initproc</code>可以代为回收资源。</p>
+</li>
+<li>
+<p>执行进程调度。一旦调度到当前进程的父进程，则可以马上回收该终止进程的<code>PCB</code>。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>该函数的具体实现如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">do_exit</span><span class="params">(<span class="keyword">int</span> error_code)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (current == idleproc)</span><br><span class="line">        panic(<span class="string">"idleproc exit.\n"</span>);</span><br><span class="line">    <span class="keyword">if</span> (current == initproc)</span><br><span class="line">        panic(<span class="string">"initproc exit.\n"</span>);</span><br><span class="line">    <span class="comment">// 释放所有内存空间</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span> = <span class="title">current</span>-&gt;<span class="title">mm</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (mm != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        lcr3(boot_cr3);</span><br><span class="line">        <span class="keyword">if</span> (mm_count_dec(mm) == <span class="number">0</span>) &#123;</span><br><span class="line">            exit_mmap(mm);</span><br><span class="line">            put_pgdir(mm);</span><br><span class="line">            mm_destroy(mm);</span><br><span class="line">        &#125;</span><br><span class="line">        current-&gt;mm = <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 设置当前进程状态</span></span><br><span class="line">    current-&gt;state = PROC_ZOMBIE;</span><br><span class="line">    current-&gt;exit_code = error_code;</span><br><span class="line">    <span class="comment">// 请求父进程回收剩余资源</span></span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span></span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        proc = current-&gt;parent;</span><br><span class="line">        <span class="comment">// 唤醒父进程。父进程准备回收该进程的PCB资源。</span></span><br><span class="line">        <span class="keyword">if</span> (proc-&gt;wait_state == WT_CHILD)</span><br><span class="line">            wakeup_proc(proc);</span><br><span class="line">        <span class="comment">// 如果当前进程存在子进程，则设置所有子进程的父进程为init。</span></span><br><span class="line">        <span class="keyword">while</span> (current-&gt;cptr != <span class="literal">NULL</span>) &#123;</span><br><span class="line">            proc = current-&gt;cptr;</span><br><span class="line">            current-&gt;cptr = proc-&gt;optr;</span><br><span class="line"></span><br><span class="line">            proc-&gt;yptr = <span class="literal">NULL</span>;</span><br><span class="line">            <span class="keyword">if</span> ((proc-&gt;optr = initproc-&gt;cptr) != <span class="literal">NULL</span>)</span><br><span class="line">                initproc-&gt;cptr-&gt;yptr = proc;</span><br><span class="line">            proc-&gt;parent = initproc;</span><br><span class="line">            initproc-&gt;cptr = proc;</span><br><span class="line">            <span class="keyword">if</span> (proc-&gt;state == PROC_ZOMBIE) &#123;</span><br><span class="line">                <span class="keyword">if</span> (initproc-&gt;wait_state == WT_CHILD)</span><br><span class="line">                    wakeup_proc(initproc);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    <span class="comment">// 该进程的生命周期即将结束，调度其他进程执行。</span></span><br><span class="line">    schedule();</span><br><span class="line">    panic(<span class="string">"do_exit will not return!! %d.\n"</span>, current-&gt;pid);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="5-syscall系统调用">5. syscall系统调用</h4>
+<ul>
+<li>
+<p><code>syscall</code>是内核程序为用户程序提供内核服务的一种方式。</p>
+</li>
+<li>
+<p>在用户程序中，若需用到内核服务，则需要执行<code>sys_xxxx</code>函数，例如<code>sys_kill</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sys_kill</span><span class="params">(<span class="keyword">int</span> pid)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> syscall(SYS_kill, pid);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>实际上，<code>sys_xxxx</code>函数全都是用户态<code>syscall</code>函数的wrapper。那些函数会设置参数并执行<code>syscall</code>函数，而该函数的实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">int</span> <span class="title">syscall</span><span class="params">(<span class="keyword">int</span> num, ...)</span> </span>&#123;</span><br><span class="line">    va_list ap;</span><br><span class="line">    va_start(ap, num);</span><br><span class="line">    <span class="keyword">uint32_t</span> a[MAX_ARGS];</span><br><span class="line">    <span class="keyword">int</span> i, ret;</span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; MAX_ARGS; i ++)</span><br><span class="line">        a[i] = va_arg(ap, <span class="keyword">uint32_t</span>);</span><br><span class="line">    va_end(ap);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">asm</span> <span class="title">volatile</span> <span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="string">"int %1;"</span></span></span></span><br><span class="line"><span class="function"><span class="params">        : <span class="string">"=a"</span> (ret)</span></span></span><br><span class="line"><span class="function"><span class="params">        : <span class="string">"i"</span> (T_SYSCALL),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"a"</span> (num),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"d"</span> (a[<span class="number">0</span>]),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"c"</span> (a[<span class="number">1</span>]),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"b"</span> (a[<span class="number">2</span>]),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"D"</span> (a[<span class="number">3</span>]),</span></span></span><br><span class="line"><span class="function"><span class="params">          <span class="string">"S"</span> (a[<span class="number">4</span>])</span></span></span><br><span class="line"><span class="function"><span class="params">        : <span class="string">"cc"</span>, <span class="string">"memory"</span>)</span></span>;</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>该函数会设置<code>%eax, %edx, %ecx, %ebx, %edi, %esi</code>五个寄存器的值分别为<strong>syscall调用号、参数1、参数2、参数3、参数4、参数5</strong>，然后执行int中断进入中断处理例程。</p>
+</li>
+<li>
+<p>在中断处理例程中，程序会根据中断号，执行<code>syscall</code>函数（注意该syscall函数为内核代码，非用户库中的syscall函数）。内核syscall函数会一一取出六个寄存器的值，并根据系统调用号来执行不同的系统调用。而那些系统调用的实质就是其他内核函数的wrapper。以下为<code>syscall</code>函数实现的代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span></span><br><span class="line">syscall(<span class="keyword">void</span>) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">trapframe</span> *<span class="title">tf</span> = <span class="title">current</span>-&gt;<span class="title">tf</span>;</span></span><br><span class="line">    <span class="keyword">uint32_t</span> arg[<span class="number">5</span>];</span><br><span class="line">    <span class="keyword">int</span> num = tf-&gt;tf_regs.reg_eax;</span><br><span class="line">    <span class="keyword">if</span> (num &gt;= <span class="number">0</span> &amp;&amp; num &lt; NUM_SYSCALLS) &#123;</span><br><span class="line">        <span class="keyword">if</span> (syscalls[num] != <span class="literal">NULL</span>) &#123;</span><br><span class="line">            arg[<span class="number">0</span>] = tf-&gt;tf_regs.reg_edx;</span><br><span class="line">            arg[<span class="number">1</span>] = tf-&gt;tf_regs.reg_ecx;</span><br><span class="line">            arg[<span class="number">2</span>] = tf-&gt;tf_regs.reg_ebx;</span><br><span class="line">            arg[<span class="number">3</span>] = tf-&gt;tf_regs.reg_edi;</span><br><span class="line">            arg[<span class="number">4</span>] = tf-&gt;tf_regs.reg_esi;</span><br><span class="line">            tf-&gt;tf_regs.reg_eax = syscalls[num](arg);</span><br><span class="line">            <span class="keyword">return</span> ;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    print_trapframe(tf);</span><br><span class="line">    panic(<span class="string">"undefined syscall %d, pid = %d, name = %s.\n"</span>,</span><br><span class="line">            num, current-&gt;pid, current-&gt;name);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>等相应的内核函数结束后，程序通过之前保留的<code>trapframe</code>返回用户态。一次系统调用结束。</p>
+</li>
+</ul>
+<h4 id="Questions">*. Questions</h4>
+<p>简要说明你对 fork/exec/wait/exit函数的分析。并回答如下问题：</p>
+<ul>
+<li>
+<p>请分析fork/exec/wait/exit在实现中是如何影响进程的执行状态的？</p>
+<ul>
+<li>fork会修改其子进程的状态为<code>PROC_RUNNABLE</code>，而当前进程状态不变。</li>
+<li>exec不修改当前进程的状态，但会替换内存空间里所有的数据与代码。</li>
+<li>wait会先检测是否存在子进程。如果存在进入<code>PROC_ZONBIE</code>的子进程，则回收该进程并函数返回。但若存在尚处于<code>PROC_RUNNABLE</code>的子进程，则当前进程会进入<code>PROC_SLEEPING</code>状态，并等待子进程唤醒。</li>
+<li>exit会将当前进程状态设置为<code>PROC_ZONBIE</code>，并唤醒父进程，使其处于<code>PROC_RUNNABLE</code>的状态，之后主动让出CPU。</li>
+</ul>
+</li>
+<li>
+<p>请给出ucore中一个用户态进程的执行状态生命周期图（包括执行状态，执行状态之间的变换关系，以及产生变换的事件或函数调用）。</p>
+  <pre class="mermaid">    stateDiagram-v2
+  [*]-->UNINIT : alloc_proc
+  UNINIT-->RUNNABLE : proc_init/wakeup_proc
+  RUNNING-->SLEEPING : try_free_pages/do_wait/do_sleep
+  RUNNING-->ZONBIE : do_exit
+  RUNNABLE-->RUNNING : 调度器调度
+  RUNNING-->RUNNABLE : 时间片耗尽
+  SLEEPING-->RUNNABLE : wakeup_proc
+  ZONBIE-->[*] : 资源回收</pre>
+</li>
+</ul>
+<h3 id="4-扩展练习">4) 扩展练习</h3>
+<blockquote>
+<p><strong>实现 Copy on Write （COW）机制</strong></p>
+<p>同时，由于COW实现比较复杂，容易引入bug，请参考 <a href="https://dirtycow.ninja/" target="_blank" rel="noopener">Dirty COW (CVE-2016-5195)</a> 看看能否在ucore的COW实现中模拟这个错误和解决方案。需要有解释。</p>
+<p>这是一个big challenge.</p>
+</blockquote>
+<h4 id="1-思路">1. 思路</h4>
+<p>当一个用户父进程创建自己的子进程时，父进程会把其申请的用户空间设置为只读，子进程可共享父进程占用的用户内存空间中的页面（这就是一个共享的资源）。当其中任何一个进程修改此用户内存空间中的某页面时，ucore会通过page fault异常获知该操作，并完成拷贝内存页面，使得两个进程都有各自的内存页面。这样一个进程所做的修改不会被另外一个进程可见了。（uCore实验手册原句）</p>
+<h4 id="2-具体实现">2. 具体实现</h4>
+<ul>
+<li>
+<p>当进行内存访问时，CPU会根据PTE上的读写位<code>PTE_P</code>、<code>PTE_W</code>来确定当前内存操作是否允许，如果不允许，则缺页中断。我们可以在<code>copy_range</code>函数中，将父进程中所有PTE中的<code>PTE_W</code>置为0，这样便可以将父进程中所有空间都设置为只读。然后使子进程的PTE全部指向父进程中PTE存放的物理地址，这样便可以达到内存共享的目的。</p>
+<blockquote>
+<p>为什么要设置父进程所有空间为只读呢，因为在之后的内存操作中，如果对这些空间进行写操作的话，程序就会触发缺页中断，那么CPU就可以在缺页中断程序中复制该内存，也就是写时复制。</p>
+</blockquote>
+<blockquote>
+<p>为什么在copy_range函数中实现内存共享呢？因为我们可以在该函数中对其传入的<code>share</code>参数进行处理。</p>
+</blockquote>
+<p>最终实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">copy_range(<span class="keyword">pde_t</span> *to, <span class="keyword">pde_t</span> *from, <span class="keyword">uintptr_t</span> start, <span class="keyword">uintptr_t</span> end, <span class="keyword">bool</span> share) &#123;</span><br><span class="line">    assert(start % PGSIZE == <span class="number">0</span> &amp;&amp; end % PGSIZE == <span class="number">0</span>);</span><br><span class="line">    assert(USER_ACCESS(start, end));</span><br><span class="line">    <span class="comment">// copy content by page unit.</span></span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">//call get_pte to find process A's pte according to the addr start</span></span><br><span class="line">        <span class="keyword">pte_t</span> *ptep = get_pte(from, start, <span class="number">0</span>), *nptep;</span><br><span class="line">        <span class="keyword">if</span> (ptep == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            start = ROUNDDOWN(start + PTSIZE, PTSIZE);</span><br><span class="line">            <span class="keyword">continue</span> ;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">//call get_pte to find process B's pte according to the addr start. If pte is NULL, just alloc a PT</span></span><br><span class="line">        <span class="keyword">if</span> (*ptep &amp; PTE_P) &#123;</span><br><span class="line">            <span class="keyword">if</span> ((nptep = get_pte(to, start, <span class="number">1</span>)) == <span class="literal">NULL</span>)</span><br><span class="line">                <span class="keyword">return</span> -E_NO_MEM;</span><br><span class="line">            <span class="keyword">uint32_t</span> perm = (*ptep &amp; PTE_USER);</span><br><span class="line">            <span class="comment">//get page from ptep</span></span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">page</span> = <span class="title">pte2page</span>(*<span class="title">ptep</span>);</span></span><br><span class="line">            <span class="keyword">int</span> ret = <span class="number">0</span>;</span><br><span class="line">            <span class="comment">// 如果启用写时复制</span></span><br><span class="line">            <span class="keyword">if</span>(share)</span><br><span class="line">            &#123;</span><br><span class="line">                cprintf(<span class="string">"Sharing the page 0x%x\n"</span>, page2kva(page));</span><br><span class="line">                <span class="comment">// 物理页面共享，并设置两个PTE上的标志位为只读</span></span><br><span class="line">                page_insert(from, page, start, perm &amp; ~PTE_W);</span><br><span class="line">                ret = page_insert(to, page, start, perm &amp; ~PTE_W);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 完整拷贝内存</span></span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// alloc a page for process B</span></span><br><span class="line">                <span class="comment">// 目标页面地址</span></span><br><span class="line">                struct Page *npage = alloc_page();</span><br><span class="line">                assert(page!=<span class="literal">NULL</span>);</span><br><span class="line">                assert(npage!=<span class="literal">NULL</span>);</span><br><span class="line">                cprintf(<span class="string">"alloc a new page 0x%x\n"</span>, page2kva(npage));</span><br><span class="line">                <span class="keyword">void</span> * kva_src = page2kva(page);</span><br><span class="line">                <span class="keyword">void</span> * kva_dst = page2kva(npage);</span><br><span class="line">                <span class="built_in">memcpy</span>(kva_dst, kva_src, PGSIZE);</span><br><span class="line">                <span class="comment">// 将目标页面地址设置到PTE中</span></span><br><span class="line">                ret = page_insert(to, npage, start, perm);</span><br><span class="line">            &#125;</span><br><span class="line">            assert(ret == <span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        start += PGSIZE;</span><br><span class="line">    &#125; <span class="keyword">while</span> (start != <span class="number">0</span> &amp;&amp; start &lt; end);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当某个进程想写入一个共享内存时，由于PTE上的<code>PTE_W</code>为0，所以会触发缺页中断处理程序。此时进程需要在缺页中断处理程序中复制该页内存，并设置该页内存所对应的<code>PTE_W</code>为1。</p>
+<blockquote>
+<p>需要注意的是，在执行缺页中断处理程序中的内存复制操作前，需要先检查该物理页的引用次数。如果该引用次数已经为1了，则表明此时的物理页只有当前进程所使用，故可以直接设置该页内存所对应的<code>PTE_W</code>为1即可，不需要进行内存复制。</p>
+</blockquote>
+<p>最终实现如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">do_pgfault(struct mm_struct *mm, <span class="keyword">uint32_t</span> error_code, <span class="keyword">uintptr_t</span> addr) &#123;</span><br><span class="line">    <span class="comment">// ........</span></span><br><span class="line">   <span class="comment">// 查找当前虚拟地址所对应的页表项</span></span><br><span class="line">    <span class="keyword">if</span> ((ptep = get_pte(mm-&gt;pgdir, addr, <span class="number">1</span>)) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">        cprintf(<span class="string">"get_pte in do_pgfault failed\n"</span>);</span><br><span class="line">        <span class="keyword">goto</span> failed;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果这个页表项所对应的物理页不存在，则</span></span><br><span class="line">    <span class="keyword">if</span> (*ptep == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 分配一块物理页，并设置页表项</span></span><br><span class="line">        <span class="keyword">if</span> (pgdir_alloc_page(mm-&gt;pgdir, addr, perm) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            cprintf(<span class="string">"pgdir_alloc_page in do_pgfault failed\n"</span>);</span><br><span class="line">            <span class="keyword">goto</span> failed;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        struct Page *page=<span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">// 如果当前页错误的原因是写入了只读页面</span></span><br><span class="line">        <span class="keyword">if</span> (*ptep &amp; PTE_P) &#123;</span><br><span class="line">            <span class="comment">// 写时复制：复制一块内存给当前进程</span></span><br><span class="line">            cprintf(<span class="string">"\n\nCOW: ptep 0x%x, pte 0x%x\n"</span>,ptep, *ptep);</span><br><span class="line">            <span class="comment">// 原先所使用的只读物理页</span></span><br><span class="line">            page = pte2page(*ptep);</span><br><span class="line">            <span class="comment">// 如果该物理页面被多个进程引用</span></span><br><span class="line">            <span class="keyword">if</span>(page_ref(page) &gt; <span class="number">1</span>)</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// 释放当前PTE的引用并分配一个新物理页</span></span><br><span class="line">                <span class="class"><span class="keyword">struct</span> <span class="title">Page</span>* <span class="title">newPage</span> = <span class="title">pgdir_alloc_page</span>(<span class="title">mm</span>-&gt;<span class="title">pgdir</span>, <span class="title">addr</span>, <span class="title">perm</span>);</span></span><br><span class="line">                <span class="keyword">void</span> * kva_src = page2kva(page);</span><br><span class="line">                <span class="keyword">void</span> * kva_dst = page2kva(newPage);</span><br><span class="line">                <span class="comment">// 拷贝数据</span></span><br><span class="line">                <span class="built_in">memcpy</span>(kva_dst, kva_src, PGSIZE);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 如果该物理页面只被当前进程所引用,即page_ref等1</span></span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">                <span class="comment">// 则可以直接执行page_insert，保留当前物理页并重设其PTE权限。</span></span><br><span class="line">                page_insert(mm-&gt;pgdir, page, addr, perm);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 如果swap已经初始化完成</span></span><br><span class="line">            <span class="keyword">if</span>(swap_init_ok) &#123;</span><br><span class="line">                <span class="comment">// 将目标数据加载到某块新的物理页中。</span></span><br><span class="line">                <span class="comment">// 该物理页可能是尚未分配的物理页，也可能是从别的已分配物理页中取的</span></span><br><span class="line">                <span class="keyword">if</span> ((ret = swap_in(mm, addr, &amp;page)) != <span class="number">0</span>) &#123;</span><br><span class="line">                    cprintf(<span class="string">"swap_in in do_pgfault failed\n"</span>);</span><br><span class="line">                    <span class="keyword">goto</span> failed;</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="comment">// 将该物理页与对应的虚拟地址关联，同时设置页表。</span></span><br><span class="line">                page_insert(mm-&gt;pgdir, page, addr, perm);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span> &#123;</span><br><span class="line">                cprintf(<span class="string">"no swap_init_ok but ptep is %x, failed\n"</span>,*ptep);</span><br><span class="line">                <span class="keyword">goto</span> failed;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 当前缺失的页已经加载回内存中，所以设置当前页为可swap。</span></span><br><span class="line">        swap_map_swappable(mm, addr, page, <span class="number">1</span>);</span><br><span class="line">        page-&gt;pra_vaddr = addr;</span><br><span class="line">   &#125;</span><br><span class="line">   ret = <span class="number">0</span>;</span><br><span class="line">failed:</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这个COW的实现效果相当不错，很好的通过了<code>make grade</code>测试。</p>
+</li>
+</ul>
+<h4 id="3-脏牛本地提权漏洞分析">3. 脏牛本地提权漏洞分析</h4>
+<blockquote>
+<p>该漏洞笔者只会简单概括一下，会忽略大部分细节。更多细节请移步<a href="https://github.com/qy7tt/blog/blob/master/20161124-%E8%A7%A3%E8%AF%BBCVE-2016-5195-Dirty-COW-Linux%E6%9C%AC%E5%9C%B0%E6%8F%90%E6%9D%83%E6%BC%8F%E6%B4%9E.md" target="_blank" rel="noopener">解读CVE-2016-5195(Dirty COW)Linux本地提权漏洞</a></p>
+</blockquote>
+<ul>
+<li>
+<p>先给出漏洞函数的代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">long</span> __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> start, <span class="keyword">unsigned</span> <span class="keyword">long</span> nr_pages,</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> gup_flags, struct page **pages,</span><br><span class="line">        struct vm_area_struct **vmas, <span class="keyword">int</span> *nonblocking)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// ....</span></span><br><span class="line">  <span class="keyword">do</span> &#123;</span><br><span class="line">retry:</span><br><span class="line">        <span class="comment">// 注意这里的进程调度</span></span><br><span class="line">        cond_resched();</span><br><span class="line">        <span class="comment">// ......</span></span><br><span class="line">        <span class="comment">/* 查找虚拟地址的page */</span></span><br><span class="line">        page = follow_page_mask(vma, start, foll_flags, &amp;page_mask);</span><br><span class="line">        <span class="keyword">if</span> (!page) &#123;</span><br><span class="line">            <span class="comment">/* 如果page找不到，则进行处理 */</span></span><br><span class="line">            ret = faultin_page(tsk, vma, start, &amp;foll_flags, nonblocking);</span><br><span class="line">            <span class="keyword">switch</span> (ret) &#123;</span><br><span class="line">            <span class="keyword">case</span> <span class="number">0</span>:</span><br><span class="line">                <span class="keyword">goto</span> retry;</span><br><span class="line">            <span class="comment">// ......</span></span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (page)</span><br><span class="line">          <span class="comment">// 加入page数组</span></span><br><span class="line">    &#125; <span class="keyword">while</span> (nr_pages);</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>执行<code>__get_user_pages</code>函数时，函数参数会携带一个<code>FOLL_WRITE</code>标记，用以指明当前操作是写入某个物理页。</p>
+</li>
+<li>
+<p>在<code>follow_page_mask</code>中，程序会找出特定的物理页。但大部分情况下第一次执行该函数时无法真正将该物理页的地址返回，因为可能存在缺页或者权限不够的情况（例如写入了一个只读页）。</p>
+</li>
+<li>
+<p>此时，变量<code>page</code>的值为<code>NULL</code>，之后会执行<code>faultin_page</code>函数对<code>follow_page_mask</code>的失败进行处理。包括但不限于分配新的页、修改页权限、页数据复制等等情况（上述说明的三种情况不一定会同时发生）。然后跳转至<code>retry</code>重新执行<code>follow_page_mask</code>。</p>
+</li>
+<li>
+<p>经过几轮的循环后，当<code>faultin_page</code>函数再一次执行时，该函数会执行内存复制操作，以完成写时复制操作。同时  <strong><code>FOLL_WRITE</code>标记将会被抹去</strong>  ，之后<strong>跳转回<code>retry</code></strong>。</p>
+<blockquote>
+<p>因为COW已经执行完成，对于新的物理页无论是读还是写都没有问题，所以在下一次执行<code>follow_page_mask</code>函数时一定会返回该物理页，所以该标记已经失去了作用，可以被抹去。</p>
+</blockquote>
+</li>
+<li>
+<p>但此时需要注意的是，<code>retry</code>下的第一条语句是<code>cond_resched</code>函数，它将会执行<strong>线程调度</strong>，执行其他线程。但倘若<strong>调度到的线程将之前新创建的物理页删除</strong>，则一旦重新调度回当前线程后，执行<code>follow_page_mask</code>返回的是<strong>之前的只读页</strong>。</p>
+<blockquote>
+<p>为什么第一次执行<code>follow_page_mask</code>时返回NULL，而这一次执行返回的是只读页呢？</p>
+<p>因为第一次执行时有<code>FOLL_WRITE</code>标记，权限不够，所以会返回NULL。而这次的执行由于不存在<code>FOLL_WRITE</code>标记，所以该操作会被认定为读取而不是写入，因此直接返回之前的<strong>只读物理页</strong>的地址。</p>
+</blockquote>
+</li>
+<li>
+<p>之后该<strong>只读</strong>页被添加到page数组，并在接下来的操作中被<strong>成功修改</strong>。这就是脏牛漏洞的大致原理。</p>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/08/uCore-5/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/09/uCore-6/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab6
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/08/uCore-4/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab4</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

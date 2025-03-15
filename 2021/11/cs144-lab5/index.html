@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记, 计算机网络, CS144,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CS144计算机网络 Lab5 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cs144-lab5"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CS144计算机网络 Lab5
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/cs144-lab5/" class="article-date">
+  <time datetime="2021-11-15T16:00:00.000Z" itemprop="datePublished">2021-11-16</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">7 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了笔者学习 CS144 计算机网络 Lab5 的一些笔记 - <strong>网络接口 network interface（也被称为适配器）</strong> 的实现</p>
+<p>CS144 Lab5 实验指导书 - <a href="https://cs144.github.io/assignments/lab5.pdf" target="_blank" rel="noopener">Lab Checkpoint 5: down the stack (the network interface)</a></p>
+<p>个人 CS144 实验项目地址 - <a href="https://github.com/Kiprey/sponge" target="_blank" rel="noopener">github</a></p>
+<a id="more"></a>
+<h2 id="二、环境配置">二、环境配置</h2>
+<p>当前我们的实验代码位于 <code>master</code> 分支，而在完成 Lab 之前需要合并一些依赖代码，因此执行以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git merge origin/lab5-startercode</span><br></pre></td></tr></table></figure>
+<p>之后重新 make 编译即可。</p>
+<h2 id="三、TCP报文的数据传输方式">三、TCP报文的数据传输方式</h2>
+<p>TCP报文有三种方式可被传送至远程服务器，分别是：</p>
+<ul>
+<li>
+<p><strong>TCP</strong>-in-UDP-in-IP：用户提供 TCP 包，之后可以使用 Linux 提供的接口，让内核来负责构造 UDP 报头、IP报头以及以太网报头，并将构造出的数据包发送至下一个层。因为这一切都是内核完成的任务，因此内核可以确保每个套接字都具有<strong>本地地址与端口，以及远程地址与端口的唯一组合</strong>，同时能保证不同进程之前的隔离。</p>
+</li>
+<li>
+<p><strong>TCP-in-IP</strong>：通常，TCP数据包是直接放进 IP 包作为其 payload，这也因此被称为 TCP/IP。但用户层如果想直接操作构造 IP 报文的话，需要使用到 <strong>Linux 提供的 TUN 虚拟网络设备</strong>来作为中转。当用户将 IP 报文发送给 TUN 设备后，剩余的以太网报头构造、发送以太网帧等等的操作均会由内核自动进行，无需用户干预。</p>
+<blockquote>
+<p>这一个正是之前 Lab4 中 CS144 所使用的机制，感兴趣可以仔细读读代码。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>TCP-in-IP-in-Ethernet</strong>：上面两种方式仍然依赖Linux内核来实现的协议栈操作。每次用户向TUN设备写入IP数据报时，Linux 内核都必须构造一个适当的链路层(以太网)帧，并将IP数据报作为其 payload。因此 Linux 必须找出下一跳的以太网目的地址，给出下一跳的IP地址。如果 Linux 无法得知该映射关系，则将会发出广播探测请求以查找到下一跳的地址等信息。而这种功能是由<strong>网络接口 network interface</strong> （也被称为<strong>适配器</strong>，两者等价）所实现，它将会把<strong>待出口的 IP 报文</strong>转换成链路层（以太网）帧等等，之后将链路层帧发送给 <strong>TAP 虚拟网络设备</strong>，剩下的发送操作将会由它来代为完成。</p>
+<blockquote>
+<p>比较熟悉的网络接口分别是 eth0, eth1, whan0 等等。</p>
+</blockquote>
+<p>网络接口的大部分工作是：<strong>为每个下一跳IP地址查找(和缓存)以太网地址</strong>。而这种协议被称为<strong>地址解析协议ARP</strong>。</p>
+<p>在本实验中，我们将会完成一个这样的网络接口实现（有点小期待）。</p>
+</li>
+</ul>
+<h2 id="四、地址解析协议-ARP">四、地址解析协议 ARP</h2>
+<p>在编写代码前，我们需要简单的了解一下 ARP 协议。</p>
+<p>主机或路由器不具有链路层地址，而是它们的适配器（即网络接口）具有链路层地址。链路层地址通常称为 <strong>MAC 地址</strong>。当某个适配器要向某些目的适配器发送一个帧时，发送适配器将目的适配器的 MAC 地址插入至该帧中，并将该帧发送到局域网上。一块适配器可能因为广播操作，接收到了一个并非向它寻址的帧，因此当适配器接收到一个帧时，将检查并丢弃<strong>帧的目的MAC地址不与自己MAC地址匹配</strong>的以太网帧。</p>
+<p>为什么适配器除了有**网络层地址（IP地址）<strong>以外，还会有</strong>链路层地址（MAC地址）**呢？有两个原因：</p>
+<ul>
+<li>局域网是为了<strong>任意</strong>网络层协议而设计，并非只用于 IP 和因特网。</li>
+<li>如果适配器使用 IP地址而不使用 MAC 地址，那么每次适配器移动或重启时，<strong>均需重新配置地址</strong>。</li>
+</ul>
+<p>由于适配器同时拥有网络层和链路层地址，因此需要相互转化。而这种转换的任务就由 <strong>地址解析协议</strong> 来完成。ARP 类似于 DNS 服务，但不同的是，DNS 为<strong>任何地方的主机</strong>来解析主机名，但 ARP 只能为<strong>在同一个子网上的主机和路由器接口</strong>解析 IP 地址。</p>
+<p>每台主机或路由器在其内存中保存了一张 ARP 表，该表包含了 IP 地址到 MAC 地址的映射关系，同时还包含了一个寿命值（TTL），用以表示从表中删除每个映射的时间，例如：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">IP 地址</th>
+<th style="text-align:center">MAC 地址</th>
+<th style="text-align:center">TTL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">222.222.222.221</td>
+<td style="text-align:center">aa-bb-cc-dd-ee-ff</td>
+<td style="text-align:center">13:45:00</td>
+</tr>
+<tr>
+<td style="text-align:center">222.222.222.223</td>
+<td style="text-align:center">11-22-33-44-55-66</td>
+<td style="text-align:center">4:34:12</td>
+</tr>
+<tr>
+<td style="text-align:center">…</td>
+<td style="text-align:center">…</td>
+<td style="text-align:center">…</td>
+</tr>
+</tbody>
+</table>
+<p>若 ARP 表中已经存放了目标 IP 地址的 MAC 地址映射，那么适配器将会很容易的找出目标 MAC 地址并构造一个以太网帧。但如果找不到，那么发送方将会构造一个 <strong>ARP 分组</strong>的特殊分组。</p>
+<p>ARP 分组中的字段包括<strong>发送和接收 IP 地址以及 MAC 地址</strong>，同时 ARP 查询分组和<strong>响应分组</strong>都具有相同的格式。ARP 查询分组的目的是询问子网上所有其他主机和路由器，以确定对应于要解析的 IP 地址的那个 MAC 地址。</p>
+<p>当发送适配器需要查询目的适配器的 MAC 地址时，发送适配器会设置分组的目的地址为 <strong>MAC 广播地址（FF-FF-FF-FF-FF-FF）</strong>，这样做的目的是为了让<strong>所有</strong>子网上的其他适配器都接收到。当其他适配器接收到了该 ARP 查询分组后，<strong>只有 IP 匹配的适配器</strong>才会返回一个 ARP 响应分组，之后发送适配器便可更新自己的 ARP 表，并开始发送 IP 报文。</p>
+<p>查询ARP报文是在<strong>广播帧</strong>中发送，而响应ARP报文只在一个<strong>标准帧</strong>中发送。同时 ARP 表是自动建立的，无需人为设置。若主机与子网断开连接，那么该节点留在其他节点的 ARP 表中对应的条目也会被自动删除。</p>
+<p>与之相对的，<strong>ARP欺骗攻击</strong>可以利用 <strong>ARP 协议不提供对网络上的 ARP 回复进行身份验证</strong> 这样的一个缺陷，来轻易执行中间人攻击或者 DOS 攻击。</p>
+<blockquote>
+<p>其他详细信息可以看看 <a href="https://datatracker.ietf.org/doc/html/rfc826" target="_blank" rel="noopener">RFC826</a> 规范。</p>
+</blockquote>
+<h2 id="五、Network-Interface-具体实现">五、Network Interface 具体实现</h2>
+<p>首先， 我们需要额外设置三个数据结构，分别是：</p>
+<ul>
+<li>
+<p><code>_arp_table</code>：ARP 表，用以查询 IP至MAC地址的映射，同时还保存当前 ARP 条目的 TTL。</p>
+<blockquote>
+<p>ARP条目 TTL 为 30s。</p>
+</blockquote>
+</li>
+<li>
+<p><code>_waiting_arp_response_ip_addr</code>：已经发送了的 ARP 报文。必须确保每个 ARP 报文在<strong>5秒</strong>内不重复发送。</p>
+</li>
+<li>
+<p><code>_waiting_arp_internet_datagrams</code>：这里存放着<strong>等待ARP返回报文</strong>的 IP 报文。只有对应 ARP 返回报文到来，更新了 ARP 表后，网络接口才会知道这些 IP 报文要发送至哪个 MAC 地址。</p>
+</li>
+</ul>
+<p>在实现整个网络接口时，必须确保几点</p>
+<ul>
+<li><strong>ARP条目 TTL 为30s</strong>，时间到期后需要将其从 ARP Table 中删除。</li>
+<li>若发送 IP 报文时，发现 ARP Table 中无目标 MAC 地址，则立即发送 ARP 请求报文，同时将当前 IP 报文暂时缓存，直至获取到目标 MAC 地址后再重新发送。</li>
+<li><strong>不同目标 IP 的 ARP 请求报文</strong>之间的发送间隔，<strong>不能超过 5s</strong>。</li>
+<li>如果 ARP 请求报文在 5 秒内仍然无响应，则<strong>重新发送</strong>。</li>
+<li>当网络接口接收到一个以太网帧时，
+<ul>
+<li>必须丢弃目的 MAC 地址不为当前网络接口 MAC 地址</li>
+<li>除了 ARP 协议需要比较自己的 IP 地址以外，<strong>不要在其他任何地方进行 IP 比较</strong>，因为网络接口位于链路层。</li>
+<li>如果是发给自己的 ARP 请求，那么要忽略掉发送来的 <strong>ARPMessage::target_ethernet_address</strong>，因为发送者自己也不知道这个要填写什么，该字段无意义。</li>
+<li>无论接收到的是 <strong>ARP 请求包或者 ARP 响应包</strong>，只要是<strong>明确发给自己</strong>的，那么这里面的 src_ip_addr 和 src_eth_addr 都可用于更新当前的 ARP 表。</li>
+</ul>
+</li>
+</ul>
+<p>具体代码可以看这里：</p>
+<ul>
+<li><a href="https://github.com/kiprey/sponge/blob/master/libsponge/network_interface.cc" target="_blank" rel="noopener">network_interface.cc</a></li>
+<li><a href="https://github.com/kiprey/sponge/blob/master/libsponge/network_interface.hh" target="_blank" rel="noopener">network_interface.hh</a></li>
+</ul>
+<p>测试结果：</p>
+<p><img src="/2021/11/cs144-lab5/image-20211118164207822.png" alt="image-20211118164207822"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/cs144-lab5/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CS144/" rel="tag">CS144</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/cs144-lab7/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CS144计算机网络 Lab7
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/cs144-lab4/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CS144计算机网络 Lab4</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

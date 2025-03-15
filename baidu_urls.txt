@@ -1,0 +1,3 @@
+https://kiprey.github.io/2023/11/tailscale-derp/
+https://kiprey.github.io/2023/08/curve_finance_vuln/
+https://kiprey.github.io/2023/05/zerotier_moon_frpc/

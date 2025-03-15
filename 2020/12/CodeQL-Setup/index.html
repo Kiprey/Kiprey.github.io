@@ -1,0 +1,1105 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CodeQL,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CodeQL初入 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-CodeQL-Setup"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CodeQL初入
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/12/CodeQL-Setup/" class="article-date">
+  <time datetime="2020-12-06T07:24:31.000Z" itemprop="datePublished">2020-12-06</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">24 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>CodeQL 是一个语义代码分析引擎，它可以扫描发现代码库中的漏洞。使用 CodeQL，可以像对待数据一样查询代码。编写查询条件以查找漏洞的所有变体并处理，同时可以分享个人查询条件。</p>
+<a id="more"></a>
+<p>编写该文章时，主要参考了官方文档 - <a href="https://help.semmle.com/QL/ql-handbook/index.html#" target="_blank" rel="noopener">QL language reference</a></p>
+<h2 id="二、环境搭建">二、环境搭建</h2>
+<blockquote>
+<p>环境搭建整体参考 <a href="https://paper.seebug.org/1078/" target="_blank" rel="noopener">代码分析引擎 CodeQL 初体验</a></p>
+</blockquote>
+<ul>
+<li>
+<p>首先，下载一下<code>CodeQL CLI</code>二进制文件并安装</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 下载codeql.zip</span></span><br><span class="line">wget https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql.zip</span><br><span class="line"><span class="comment"># 解压</span></span><br><span class="line">unzip codeql.zip</span><br><span class="line"><span class="comment"># 将codeql添加至path中</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">"export PATH=\$PATH:/usr/class/codeql"</span> &gt;&gt; ~/.zshrc</span><br><span class="line"><span class="built_in">source</span> ~/.zshrc</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>由于是入门，我们只需要使用初始工作区（starter workspace）就好，因此执行以下命令</p>
+<blockquote>
+<p>工作区配置参考——<a href="https://help.semmle.com/codeql/codeql-for-vscode/procedures/setting-up.html#using-the-starter-workspace" target="_blank" rel="noopener">Using the starter workspace</a></p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> --recursive git@github.com:github/vscode-codeql-starter.git</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注意：该工作区内含了QL库，因此一定要使用递归方式来下拉工作区代码。</p>
+<p>递归方式下拉该仓库后，我们不需要再下拉<code>https://github.com/Semmle/ql</code>这个库了。</p>
+</blockquote>
+<p>如果觉得下拉很慢，可以挂个代理</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 设置代理</span></span><br><span class="line">git config --global http.proxy &lt;Protocol&gt;://&lt;IP&gt;:&lt;PORT&gt;</span><br><span class="line"><span class="comment"># 取消代理</span></span><br><span class="line">git config --global --<span class="built_in">unset</span> http.proxy</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>最后，我们还需要在VScode中下载CodeQL的插件——<a href="https://marketplace.visualstudio.com/items?itemName=GitHub.vscode-codeql" target="_blank" rel="noopener">Visual Studio Code Marketplace</a>。</p>
+<p>插件下载完成后，还需要在vscode中设置一下<code>Code QL -- Cli: Executable Path</code>为刚刚下载下来的<code>codeql</code>二进制文件执行路径。</p>
+</li>
+<li>
+<p>上述操作完成后，我们需要先建立一个AST数据库，后续的查询操作等都是在该数据库中完成。</p>
+<p>以C++代码为例，我们可以使用如下命令来建立一个数据库</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">codeql database create &lt;database-folder&gt; --language=cpp --<span class="built_in">command</span>=&lt;prefix <span class="built_in">command</span>&gt;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>如果省略<code>--command</code>参数，则codeQL会自动检测并使用自己的工具来构建。</p>
+<p>但还是强烈推荐使用自己自定义的参数，尤其是大项目时。</p>
+</blockquote>
+<p>以构建chrome为例，由于chrome项目过于庞大，因此我们只能针对某个模块来进行分析。</p>
+<p>于是我们可以进行如下操作</p>
+<ul>
+<li>
+<p>先完整编译一个chromium，release不带符号即可。</p>
+</li>
+<li>
+<p>进入obj目录，将目标模块的obj删除。</p>
+</li>
+<li>
+<p>执行以下命令，重新编译该模块并构建数据库即可。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gn gen out/ql &amp;&amp; codeql database create &lt;targetFolder&gt; --language=cpp --Command=<span class="string">' ninja -C out/ql chrome'</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>建立好的数据库，其目录结构为</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">- log\                # 输出的日志信息</span><br><span class="line">- db-cpp\             # 编译的数据库</span><br><span class="line">- src.zip             # 编译所对应的目标源码</span><br><span class="line">- codeql-database.yml # 数据库相关配置</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后在VSCode中，</p>
+<ul>
+<li>点击“打开工作区”来打开刚刚下拉的<code>vscode-codeql-starter</code>工作区</li>
+<li>在CodeQL插件里，打开刚刚生成的database</li>
+<li>之后编写自己的CodeQL脚本，并将脚本保存至<code>vscode-codeql-starter\codeql-custom-queries-cpp</code>处，这样import模块时就可以正常引用。</li>
+<li>将编写的ql脚本在VSCode中打开，之后点击CodeQL插件中的<code>Run on queue</code>，即可开始查询。</li>
+</ul>
+</li>
+<li>
+<p>如果想查看某个文件的AST，直接对目标源码，点击右键—<code>CodeQL: View AST</code>即可。第一次执行时会比较慢，稍微等待十分钟左右即可。</p>
+</li>
+</ul>
+<blockquote>
+<p>CodeQL使用操作参考 - <a href="https://help.semmle.com/codeql/codeql-for-vscode/procedures/using-extension.html" target="_blank" rel="noopener">CodeQL分析项目</a></p>
+</blockquote>
+<h2 id="三、基本语法">三、基本语法</h2>
+<blockquote>
+<p>基础语法将结合ql代码来讲解。</p>
+</blockquote>
+<ul>
+<li>
+<p>该QL将输出所有基础块中的空基础块。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 首先是引入QL库中的一个包</span></span><br><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="comment">// 限定范围在所有的BlockStmt，即所有的基础块</span></span><br><span class="line">from BlockStmt b</span><br><span class="line"><span class="comment">// 获取在当前基础块中，语句个数为0的基础块（即空基础块）</span></span><br><span class="line">where b.getNumStmt() = <span class="number">0</span></span><br><span class="line"><span class="comment">// 输出搜索到的空基础块，与其后面的字符串</span></span><br><span class="line">select b, <span class="string">"This is an empty block."</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下是获取某个宏定义位置的ql代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from Macro m</span><br><span class="line">where m.getName() = <span class="string">"_LIBCPP_NO_CFI"</span></span><br><span class="line">  <span class="keyword">or</span> m.getName() = <span class="string">"_GLIBC_LIKELY"</span></span><br><span class="line">select m,<span class="string">"macro"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>该代码获取调用特定函数的代码位置</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from Function f</span><br><span class="line">where f.getName() = <span class="string">"memcpy"</span></span><br><span class="line">select f, <span class="string">"a function named memcpy"</span></span><br></pre></td></tr></table></figure>
+<p>这并不稀奇，但关键是下一个ql代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from FunctionCall call, Function func</span><br><span class="line">where</span><br><span class="line">    call.getTarget() = func <span class="keyword">and</span></span><br><span class="line">    func.getName() = <span class="string">"memcpy"</span></span><br><span class="line">select call,<span class="string">"func named memcpy and called"</span></span><br></pre></td></tr></table></figure>
+<p><code>FunctionCall</code>将会涵盖所有的函数调用，因此我们可以通过该对象来获取特定函数被调用的位置。</p>
+</li>
+</ul>
+<blockquote>
+<p>对于所有的类和函数，都可以通过ctrl+右键的形式来查看其源码来了解更多信息。</p>
+</blockquote>
+<h2 id="四、高级语法">四、高级语法</h2>
+<h3 id="1-谓词">1. 谓词</h3>
+<h4 id="a-概述">a. 概述</h4>
+<ul>
+<li>
+<p>在CodeQL中，函数并不叫“函数”，叫做<code>Predicates</code>（谓词）。为了便于说明，下文中笔者可能会混用<strong>函数</strong>这个词语，即下文中的 <strong>“函数”</strong> 与 <strong>“谓语”</strong> 都是指代同一个内容。</p>
+</li>
+<li>
+<p>在使用谓词前，我们需要定义一个谓词。谓词的格式如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">predicate <span class="title">name</span><span class="params">(type arg)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  statements</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>定义谓词有三个步骤</p>
+<ul>
+<li>关键词predicate（如果没有返回值），或者结果的类型（如果当前谓词内存在返回值）</li>
+<li>谓词的名称</li>
+<li>谓词的参数列表</li>
+<li>谓词主体</li>
+</ul>
+</li>
+</ul>
+<h4 id="b-无返回值的谓词">b. 无返回值的谓词</h4>
+<ul>
+<li>
+<p>无返回值的谓词以<code>predicate</code>关键词开头。若传入的值满足谓词主体中的逻辑，则该谓词将保留该值。</p>
+</li>
+<li>
+<p>无返回值谓词的使用范围较小，但仍然在某些情况下扮演了很重要的一个角色，具体功能将在下文中逐渐讲解。</p>
+</li>
+<li>
+<p>需要注意的是，参数<code>i</code>是一个<strong>数据集合</strong></p>
+</li>
+<li>
+<p>举一个简单的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">predicate <span class="title">isSmall</span><span class="params">(<span class="keyword">int</span> i)</span> </span>&#123;</span><br><span class="line">  i in [<span class="number">1</span> .. <span class="number">9</span>]</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from <span class="keyword">int</span> i </span><br><span class="line"><span class="function">where <span class="title">isSmall</span><span class="params">(i)</span> <span class="comment">// 将整数集合i从正无穷大的数据集含，限制至1-9</span></span></span><br><span class="line"><span class="function">select i</span></span><br><span class="line"><span class="function"><span class="comment">// 输出 1-9的数字</span></span></span><br></pre></td></tr></table></figure>
+<p>若传入的<code>i</code>是小于10的正整数，则<code>isSmall(i)</code>将会使得传入的集合<code>i</code>只保留符合条件的值，其他值将会被舍弃。</p>
+</li>
+</ul>
+<h4 id="c-带返回值的谓词">c. 带返回值的谓词</h4>
+<ul>
+<li>
+<p>当我们需要将某些结果从谓词中返回时，与C/C++的return语句不同的是，谓词使用的是一个特殊变量<code>result</code>。</p>
+</li>
+<li>
+<p>举个简单例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">getSuccessor</span><span class="params">(<span class="keyword">int</span> i)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// 若传入的i位于1-9内，则返回i+1</span></span><br><span class="line">  <span class="comment">// 注意这个语法不能用C++语法来理解</span></span><br><span class="line">  result = i + <span class="number">1</span> <span class="keyword">and</span> i in [<span class="number">1</span> .. <span class="number">9</span>]</span><br><span class="line">&#125;</span><br><span class="line">  </span><br><span class="line">select getSuccessor(<span class="number">3</span>)  <span class="comment">// 输出4</span></span><br><span class="line">select getSuccessor(<span class="number">33</span>) <span class="comment">// 不输出任何信息</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>谓词主体的语法只是为了表述逻辑之间的关系，因此务必不要用一般编程语言的语法来理解。</p>
+</blockquote>
+</li>
+<li>
+<p>在谓词主体中，<code>result</code>变量可以像一般变量一样正常使用，唯一不同的是这个变量内的数据将会被返回。</p>
+<p>同时，<strong>谓词可能返回多个结果，或者根本不返回任何结果</strong>。以下是一个简单的例子。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="built_in">string</span> <span class="title">getANeighbor</span><span class="params">(<span class="built_in">string</span> country)</span> </span>&#123;</span><br><span class="line">    country = <span class="string">"France"</span> <span class="keyword">and</span> result = <span class="string">"Belgium"</span></span><br><span class="line">    <span class="keyword">or</span></span><br><span class="line">    country = <span class="string">"France"</span> <span class="keyword">and</span> result = <span class="string">"Germany"</span></span><br><span class="line">    <span class="keyword">or</span></span><br><span class="line">    country = <span class="string">"Germany"</span> <span class="keyword">and</span> result = <span class="string">"Austria"</span></span><br><span class="line">    <span class="keyword">or</span></span><br><span class="line">    country = <span class="string">"Germany"</span> <span class="keyword">and</span> result = <span class="string">"Belgium"</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">select getANeighbor(<span class="string">"France"</span>)</span><br><span class="line"><span class="comment">// 返回两个条目，"Belgium"与"Germany"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>谓词不允许描述的数据集合个数<strong>不限于有限数量大小</strong>的。举个例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 该谓词将使得编译报错</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">multiplyBy4</span><span class="params">(<span class="keyword">int</span> i)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// i是一个数据集合，此时该集合可能是**无限大小**</span></span><br><span class="line">  <span class="comment">// result集合被设置为i*4，意味着result集合的大小有可能也是**无限大小**</span></span><br><span class="line">  result = i * <span class="number">4</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但如果我们仍然需要定义这类函数，则必须<strong>限制集合数据大小</strong>，同时添加一个<code>bindingset</code>标注。该标注将会声明谓词<code>plusOne</code>所包含的数据集合是有限的，前提是<code>i</code>绑定到有限数量的数据集合。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">bindingset[x] bindingset[y]</span><br><span class="line"><span class="function">predicate <span class="title">plusOne</span><span class="params">(<span class="keyword">int</span> x, <span class="keyword">int</span> y)</span> </span>&#123;</span><br><span class="line">  x + <span class="number">1</span> = y</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from <span class="keyword">int</span> x, <span class="keyword">int</span> y</span><br><span class="line">where y = <span class="number">42</span> <span class="keyword">and</span> plusOne(x, y)</span><br><span class="line">select x, y</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="d-递归">d. 递归</h4>
+<ul>
+<li>
+<p>谓词类似于函数，可以<strong>递归调用</strong>。</p>
+<p>同时<code>result</code>变量可以按照任何方式来表达与其他变量之间的关系，因此<code>result</code>变量的赋值不局限于使用<code>=</code>符号。</p>
+<p>以下是一个简单例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="built_in">string</span> <span class="title">getANeighbor</span><span class="params">(<span class="built_in">string</span> country)</span> </span>&#123;</span><br><span class="line">  country = <span class="string">"France"</span> <span class="keyword">and</span> result = <span class="string">"Belgium"</span></span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  country = <span class="string">"France"</span> <span class="keyword">and</span> result = <span class="string">"Germany"</span></span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  country = <span class="string">"Germany"</span> <span class="keyword">and</span> result = <span class="string">"Austria"</span></span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  country = <span class="string">"Germany"</span> <span class="keyword">and</span> result = <span class="string">"Belgium"</span></span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  country = getANeighbor(result)</span><br><span class="line">&#125;</span><br><span class="line">select getANeighbor(<span class="string">"Austria"</span>)</span><br><span class="line"><span class="comment">// 输出Germany</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>传递闭包</p>
+<blockquote>
+<p>谓词的传递闭包是递归谓词，它的结果是通过重复应用原始的谓词来获得的。</p>
+<p>特别要注意的是，原始谓词必须有两个参数(可能包括this或result值)，并且这些参数必须具有兼容的类型。</p>
+<p>由于传递闭包是递归的一种常见形式，因此QL有两个有用的缩写，分别是<code>+</code>和<code>*</code></p>
+</blockquote>
+<ul>
+<li>
+<p><strong>传递闭包(+)</strong></p>
+<p>如果要一次或多次的应用特定谓词，请在谓词后添加一个<code>+</code>符号。</p>
+<p>举个例子，假设定义了一个带有成员谓词<code>getAParent()</code>的<code>Person</code>类，其中<code>p.getAParent()</code>会返回p的所有父母。而<code>p.getAParent+()</code>将会返回p的父母、p的父母的父母、等等等等。</p>
+<p>使用<code>+</code>来表示通常会比显式定义递归谓词更简单，<code>p.getAParent+()</code>等价于以下递归谓词：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">Person <span class="title">getAnAncestor</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  result = <span class="keyword">this</span>.getAParent()</span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  result = <span class="keyword">this</span>.getAParent().getAnAncestor()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><strong>自反传递闭包(*)</strong></p>
+<p>这个类似于上面的传递闭包。与之前所不同的是，使用<code>*</code>可以让谓词调用自己一次至多次。</p>
+<p>例如：<code>p.getAParent*()</code>将会输出p的祖先，或者p。该谓词调用等价于以下谓词:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">Person <span class="title">getAnAncestor2</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  result = <span class="keyword">this</span></span><br><span class="line">  <span class="keyword">or</span></span><br><span class="line">  result = <span class="keyword">this</span>.getAParent().getAnAncestor2()</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>参考：<a href="https://help.semmle.com/QL/ql-handbook/predicates.html" target="_blank" rel="noopener">Predicates - QL language reference</a></p>
+</blockquote>
+<h3 id="2-类">2. 类</h3>
+<ul>
+<li>
+<p>以上面ql中的各种类为例（例如Function类），这些类的设计将特定一类的代码归结为一处，以便于后续查询的使用。而如果我们需要自定义特定的类，那该怎么做呢？</p>
+<blockquote>
+<p>CodeQL中的类，<strong>并不意味着建立一个新的对象</strong>，而只是表示特定一类的数据集合，请注意区分。</p>
+</blockquote>
+</li>
+<li>
+<p>定义一个类，需要三个步骤</p>
+<ul>
+<li>
+<p>使用关键字<code>class</code></p>
+</li>
+<li>
+<p>起一个类名，其中类名必须是首字母大写的。</p>
+</li>
+<li>
+<p>确定是从哪个类中派生出来的</p>
+<blockquote>
+<p>使用的基类，除了cpp包中定义的各种类以外，还包括基本类型，即<code>boolean</code>、<code>float</code>、<code>int</code>、<code>string</code>以及<code>date</code>。</p>
+</blockquote>
+</li>
+<li>
+<p>类的主体</p>
+</li>
+</ul>
+</li>
+<li>
+<p>以下是一个简单的例子，这个例子是官方的一个样例。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">OneTwoThree</span> <span class="title">extends</span> <span class="title">int</span> &#123;</span></span><br><span class="line">  OneTwoThree() &#123; <span class="comment">// characteristic predicate</span></span><br><span class="line">    <span class="keyword">this</span> = <span class="number">1</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">2</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">3</span></span><br><span class="line">  &#125;</span><br><span class="line"> </span><br><span class="line">  <span class="built_in">string</span> getAString() &#123; <span class="comment">// member predicate</span></span><br><span class="line">    result = <span class="string">"One, two or three: "</span> + <span class="keyword">this</span>.toString()</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  predicate isEven() &#123; <span class="comment">// member predicate</span></span><br><span class="line">    <span class="keyword">this</span> in [<span class="number">1</span> .. <span class="number">2</span>] <span class="comment">// </span></span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from OneTwoThree i </span><br><span class="line">where i = <span class="number">1</span> <span class="keyword">or</span> i.getAString() = <span class="string">"One, two or three: 2"</span></span><br><span class="line">select i</span><br><span class="line"><span class="comment">// 输出1和2</span></span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p><strong>特征谓词</strong>类似于C++中的类构造函数，它将会进一步限制当前类所表示数据的集合。例如上面的特征谓词</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">OneTwoThree() &#123; <span class="comment">// characteristic predicate</span></span><br><span class="line">  <span class="keyword">this</span> = <span class="number">1</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">2</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">3</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>它将数据集合从原先的<code>Int</code>集，进一步限制至1-3这个范围。</p>
+<p><code>this</code>变量表示的是当前类中所包含的数据集合。与<code>result</code>变量类似，<code>this</code>同样是用于表示数据集合直接的关系。</p>
+</li>
+<li>
+<p>在特征谓词中，比较常用的一个关键字是<a href="https://help.semmle.com/QL/ql-handbook/formulas.html#exists" target="_blank" rel="noopener">exists</a>。该关键字的语法如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">exists(&lt;variable declarations&gt; | &lt;formula&gt;)</span><br><span class="line"><span class="comment">// 以下两个exists所表达的意思等价。</span></span><br><span class="line">exists(&lt;variable declarations&gt; | &lt;formula <span class="number">1</span>&gt; | &lt;formula <span class="number">2</span>&gt;</span><br><span class="line">exists(&lt;variable declarations&gt; | &lt;formula <span class="number">1</span>&gt; <span class="keyword">and</span> &lt;formula <span class="number">2</span>&gt;</span><br></pre></td></tr></table></figure>
+<p>这个关键字的使用引入了一些新的变量。如果变量中至少有一组值可以使formula成立，那么该值将被保留。</p>
+<p>一个简单的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">NetworkByteSwap</span> <span class="title">extends</span> <span class="title">Expr</span>&#123;</span></span><br><span class="line">    NetworkByteSwap()</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="comment">// 对于MacroInvocation这个大类的数据集合来说，</span></span><br><span class="line">        exists(MacroInvocation mi |</span><br><span class="line">            <span class="comment">// 如果存在宏调用，其宏名称满足特定正则表达式</span></span><br><span class="line">            mi.getMacroName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>) <span class="keyword">and</span></span><br><span class="line">            <span class="comment">// 将这类数据保存至当前类中</span></span><br><span class="line">            <span class="keyword">this</span> = mi.getExpr()</span><br><span class="line">          )</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from NetworkByteSwap n</span><br><span class="line">select n, <span class="string">"Network byte swap"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>与之对应的还有成员谓词，如下例所示</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">OneTwoThree</span> <span class="title">extends</span> <span class="title">int</span> &#123;</span></span><br><span class="line">  OneTwoThree() &#123; <span class="comment">// characteristic predicate</span></span><br><span class="line">    <span class="keyword">this</span> = <span class="number">1</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">2</span> <span class="keyword">or</span> <span class="keyword">this</span> = <span class="number">3</span></span><br><span class="line">  &#125;</span><br><span class="line"> </span><br><span class="line">  <span class="built_in">string</span> getAString() &#123; <span class="comment">// member predicate</span></span><br><span class="line">    result = <span class="string">"One, two or three: "</span> + <span class="keyword">this</span>.toString()</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  predicate isEven() &#123; <span class="comment">// member predicate</span></span><br><span class="line">    <span class="keyword">this</span> in [<span class="number">1</span> .. <span class="number">2</span>]</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">select <span class="number">1.</span>(OneTwoThree).getAString() <span class="comment">// 输出"One, two or three: 1"</span></span><br><span class="line"><span class="comment">//select 4.(OneTwoThree).getAString() // 无输出</span></span><br></pre></td></tr></table></figure>
+<p>其中，<code>1.(OneTwoThree).getAString()</code>会将<code>int</code>类型的1转换为<code>OneTwoThree</code>类型。<strong>在转换的过程中会丢弃不满足<code>OneTwoThree</code>类中限定条件的数据</strong>。因此<code>4.(OneTwoThree).getAString()</code>将不会输出任何信息，因为整数4在转换的过程中被丢弃了。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>与C++类似，CodeQL中类里可以声明一个类字段，如下例所示</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">SmallInt</span> <span class="title">extends</span> <span class="title">int</span> &#123;</span></span><br><span class="line">  SmallInt() &#123; <span class="keyword">this</span> = [<span class="number">1</span> .. <span class="number">10</span>] &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">class DivisibleInt extends SmallInt &#123;</span><br><span class="line">  SmallInt divisor;   <span class="comment">// declaration of the field `divisor`</span></span><br><span class="line">  DivisibleInt() &#123; <span class="keyword">this</span> % divisor = <span class="number">0</span> &#125;</span><br><span class="line"></span><br><span class="line">  SmallInt getADivisor() &#123; result = divisor &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from DivisibleInt i</span><br><span class="line">select i, i.getADivisor()</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>需要注意的是，</p>
+<ul>
+<li>
+<p>每个类都不能继承自己</p>
+</li>
+<li>
+<p>不能继承final类</p>
+</li>
+<li>
+<p>不能继承不相容的类</p>
+<blockquote>
+<p>这一点需要额外说明一下，从某个基类派生出的类，将拥有基类的所有数据集合范围。如果某个类继承了多个基类，那么<strong>该类内含的数据集合，将是两个基类数据集合的交集</strong>。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>参考：<a href="https://help.semmle.com/QL/ql-handbook/types.html#classes" target="_blank" rel="noopener">class - QL language reference</a></p>
+</blockquote>
+<h2 id="六、数据流分析与污点追踪">六、数据流分析与污点追踪</h2>
+<blockquote>
+<p>该部分内容主要 <s>参考</s> 翻译自：<a href="https://codeql.github.com/docs/codeql-language-guides/analyzing-data-flow-in-cpp/" target="_blank" rel="noopener">Analyzing data flow in C and C++ - CodeQL documentation</a></p>
+<p>参考了<a href="https://codeql.github.com/docs/writing-codeql-queries/about-data-flow-analysis/#about-data-flow-analysis" target="_blank" rel="noopener">About data flow analysis</a>的部分内容</p>
+</blockquote>
+<ul>
+<li>我们可以在CodeQL中，使用数据流分析来跟踪可能导致漏洞的潜在恶意数据流。</li>
+<li>数据流分析可以分析出变量在程序中各节点上可能的值，并确定这些值如何在程序中传输以及使用方式。</li>
+<li><strong>数据流</strong>分为两个部分：<strong>局部数据流</strong>以及<strong>全局数据流</strong></li>
+</ul>
+<h3 id="1-局部数据流">1. 局部数据流</h3>
+<p><strong>局部数据流</strong>指的是在一个单独函数内的数据流。局部数据流比全局数据流分析的更加简单、迅速，同时也更加精确。</p>
+<h4 id="a-使用局部数据流">a. 使用局部数据流</h4>
+<ul>
+<li>
+<p>局部数据流的库函数主要位于<code>DataFlow</code>模块中。该模块定义了一个类<code>Class</code>，这个类用于表示数据可以流经的任何元素。</p>
+</li>
+<li>
+<p>而<code>Node</code>类分为两种，分别是表达式节点<code>ExprNode</code>与参数节点<code>ParameterNode</code>。我们可以使用谓词<code>asExpr</code>与<code>asParameter</code>，将数据流结点与表达式节点/参数结点之间进行映射。</p>
+<blockquote>
+<p>注意：参数结点<code>ParameterNode</code>指的是<strong>当前函数参数</strong>的数据流结点。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Node</span> &#123;</span></span><br><span class="line">  <span class="comment">/** Gets the expression corresponding to this node, if any. */</span></span><br><span class="line">  <span class="function">Expr <span class="title">asExpr</span><span class="params">()</span> </span>&#123; ... &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/** Gets the parameter corresponding to this node, if any. */</span></span><br><span class="line">  <span class="function">Parameter <span class="title">asParameter</span><span class="params">()</span> </span>&#123; ... &#125;</span><br><span class="line"></span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>或者使用谓词<code>exprNode</code>以及<code>parameterNode</code></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Gets the node corresponding to expression `e`.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function">ExprNode <span class="title">exprNode</span><span class="params">(Expr e)</span> </span>&#123; ... &#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Gets the node corresponding to the value of parameter `p` at function entry.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function">ParameterNode <span class="title">parameterNode</span><span class="params">(Parameter p)</span> </span>&#123; ... &#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>谓词<code>localFlowStep(Node nodeFrom, Node nodeTo)</code>可以分析出从<code>nodeFrom</code>到<code>nodeTo</code>中的元素之间数据流动的方式。该谓词可以通过使用符号<code>+</code>和<code>*</code>来进行递归调用，或者使用预定义好的递归谓词<code>localFlow</code>。</p>
+<p>以下是一个用于查找从参数<code>source</code>到表达式<code>sink</code>的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">DataFlow::localFlow(DataFlow::parameterNode(source), DataFlow::exprNode(sink))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="b-使用局部污点追踪">b. 使用局部污点追踪</h4>
+<ul>
+<li>
+<p>局部污点追踪通过包括非保留值的流程步骤来扩展了局部数据流，例如以下C++代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> i = tainted_user_input();</span><br><span class="line">some_big_struct *<span class="built_in">array</span> = <span class="built_in">malloc</span>(i * <span class="keyword">sizeof</span>(some_big_struct));</span><br></pre></td></tr></table></figure>
+<p>由于输出的变量<code>i</code>被污染，因此使用变量<code>i</code>的<code>malloc</code>函数参数也被污染。</p>
+</li>
+<li>
+<p>局部污点追踪的库函数主要位于<code>TaintTracking</code>模块中。与局部数据流分析类似，污点追踪同样有谓词<code>localTaintStep(DataFlow::Node nodeFrom, DataFlow::Node nodeTo)</code>用于污点分析，同样有递归版本的<code>localTaint</code>谓词。</p>
+<p>一个简单的例子，查找从参数<code>source</code>到表达式<code>sink</code>的污点传播。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">TaintTracking::localTaint(DataFlow::parameterNode(source), DataFlow::exprNode(sink))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="c-例子">c. 例子</h4>
+<ul>
+<li>
+<p>这个例子是用于查找传入<code>fopen</code>函数的文件名称</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from Function fopen, FunctionCall fc</span><br><span class="line">where fopen.hasQualifiedName(<span class="string">"fopen"</span>)</span><br><span class="line">  <span class="keyword">and</span> fc.getTarget() = fopen</span><br><span class="line">select fc.getArgument(<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+<p>但上面的ql代码只会将<strong>文件名参数</strong>的表达式输出，而这并不是可能传递给它的值。因此我们需要使用局部数据流分析来找到所有可流入该参数的表达式。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.DataFlow</span><br><span class="line"></span><br><span class="line">from Function fopen, FunctionCall fc, Expr src</span><br><span class="line">where fopen.hasQualifiedName(<span class="string">"fopen"</span>)</span><br><span class="line">  <span class="keyword">and</span> fc.getTarget() = fopen</span><br><span class="line">  <span class="keyword">and</span> DataFlow::localFlow(DataFlow::exprNode(src), DataFlow::exprNode(fc.getArgument(<span class="number">0</span>)))</span><br><span class="line">select src</span><br></pre></td></tr></table></figure>
+<p>这样它将会输出可能流入<code>fopen</code>文件名参数的<strong>所有变量的表达式</strong>。</p>
+<p>现在我们可以稍微将<code>source</code>改一下，将<code>exprNode</code>改成<code>parameterNode</code>，这样就可以查询出<strong>既是当前函数的参数，又可以作为<code>fopen</code>的文件名参数</strong>的表达式。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.DataFlow</span><br><span class="line"></span><br><span class="line">from Function fopen, FunctionCall fc, Parameter p</span><br><span class="line">where fopen.hasQualifiedName(<span class="string">"fopen"</span>)</span><br><span class="line">  <span class="keyword">and</span> fc.getTarget() = fopen</span><br><span class="line">  <span class="keyword">and</span> DataFlow::localFlow(DataFlow::parameterNode(p), DataFlow::exprNode(fc.getArgument(<span class="number">0</span>)))</span><br><span class="line">select p</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下这个例子将会查找<strong>格式字符串中没有被硬编码</strong>的格式化函数的调用。</p>
+<blockquote>
+<p>格式化函数包括但不限于各种<code>printf</code>函数。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.DataFlow</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.commons.Printf</span><br><span class="line"></span><br><span class="line">from FormattingFunction format, FunctionCall call, Expr formatString</span><br><span class="line">where call.getTarget() = format</span><br><span class="line">  <span class="keyword">and</span> call.getArgument(format.getFormatParameterIndex()) = formatString</span><br><span class="line">  <span class="keyword">and</span> <span class="keyword">not</span> exists(DataFlow::Node source, DataFlow::Node sink |</span><br><span class="line">    DataFlow::localFlow(source, sink) <span class="keyword">and</span></span><br><span class="line">    source.asExpr() instanceof StringLiteral <span class="keyword">and</span></span><br><span class="line">    sink.asExpr() = formatString</span><br><span class="line">  )</span><br><span class="line">select call, <span class="string">"Argument to "</span> + format.getQualifiedName() + <span class="string">" isn't hard-coded."</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="2-全局数据流">2. 全局数据流</h3>
+<p>全局数据流跟踪整个程序的数据流，因此比局部数据流更强大。但全局数据流的准确性不如本地数据流，并且通常需要更多的时间和内存来执行分析。</p>
+<h4 id="a-使用全局数据流">a. 使用全局数据流</h4>
+<p>通过继承<code>DataFlow::Configuration</code>类来使用全局数据流库。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MyDataFlowConfiguration</span> <span class="title">extends</span> <span class="title">DataFlow</span>:</span>:Configuration &#123;</span><br><span class="line">  MyDataFlowConfiguration() &#123; <span class="keyword">this</span> = <span class="string">"MyDataFlowConfiguration"</span> &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSource(DataFlow::Node source) &#123;</span><br><span class="line">    ...</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSink(DataFlow::Node sink) &#123;</span><br><span class="line">    ...</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在<code>DataFlow::Configuration</code>类中定义了如下几个谓词：</p>
+<ul>
+<li><code>isSource</code>： <strong>定义数据可能从何处流出</strong></li>
+<li><code>isSink</code>： <strong>定义数据可能流向的位置</strong></li>
+<li><code>isBarrier</code>： 可选，限制数据流</li>
+<li><code>isBarrierGuard</code>： 可选，限制数据流</li>
+<li><code>isAdditionalFlowStep</code>： 可选，添加其他流程步骤</li>
+</ul>
+<p>在特征谓词<code>MyDataFlowConfiguration()</code>中定义了当前<code>Configuration</code>的名称，因此内部的<code>&quot;MyDataFlowConfiguration&quot;</code>需要替换成自己的名称。</p>
+<p>使用谓词<code>hasFlow(DataFlow::Node source, DataFlow::Node sink)</code>来执行全局数据流分析</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">from MyDataFlowConfiguration dataflow, DataFlow::Node source, DataFlow::Node sink</span><br><span class="line">where dataflow.hasFlow(source, sink)</span><br><span class="line">select source, <span class="string">"Data flow to $@."</span>, sink, sink.toString()</span><br></pre></td></tr></table></figure>
+<h4 id="b-使用全局污点追踪">b. 使用全局污点追踪</h4>
+<p>与局部污点追踪类似，全局污点追踪针对的是全局数据流。全局污点追踪通过其他不保留值的步骤来扩展了全局数据流。</p>
+<p>通过继承<code>TaintTracking::Configuration</code>类以使用全局污点追踪的库函数。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.TaintTracking</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">MyTaintTrackingConfiguration</span> <span class="title">extends</span> <span class="title">TaintTracking</span>:</span>:Configuration &#123;</span><br><span class="line">  MyTaintTrackingConfiguration() &#123; <span class="keyword">this</span> = <span class="string">"MyTaintTrackingConfiguration"</span> &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSource(DataFlow::Node source) &#123;</span><br><span class="line">    ...</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSink(DataFlow::Node sink) &#123;</span><br><span class="line">    ...</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在配置中定义了以下谓词：</p>
+<ul>
+<li><code>isSource</code>：定义污点可能从何处流出</li>
+<li><code>isSink</code>：定义污点可能流入的地方</li>
+<li><code>isSanitizer</code>：可选，限制污点流</li>
+<li><code>isSanitizerGuard</code>：可选，限制污点流</li>
+<li><code>isAdditionalTaintStep</code>：可选，添加其他污染步骤</li>
+</ul>
+<p>使用谓词<code>hasFlow(DataFlow::Node source, DataFlow::Node sink)</code>以执行污点追踪分析。</p>
+<h4 id="c-例子-2">c. 例子</h4>
+<ul>
+<li>
+<p>以下数据流分析用于追踪<strong>从环境变量到打开文件</strong>的数据流</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.DataFlow</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">EnvironmentToFileConfiguration</span> <span class="title">extends</span> <span class="title">DataFlow</span>:</span>:Configuration &#123;</span><br><span class="line">  EnvironmentToFileConfiguration() &#123; <span class="keyword">this</span> = <span class="string">"EnvironmentToFileConfiguration"</span> &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSource(DataFlow::Node source) &#123;</span><br><span class="line">    exists (Function getenv |</span><br><span class="line">      source.asExpr().(FunctionCall).getTarget() = getenv <span class="keyword">and</span></span><br><span class="line">      getenv.hasQualifiedName(<span class="string">"getenv"</span>)</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSink(DataFlow::Node sink) &#123;</span><br><span class="line">    exists (FunctionCall fc |</span><br><span class="line">      sink.asExpr() = fc.getArgument(<span class="number">0</span>) <span class="keyword">and</span></span><br><span class="line">      fc.getTarget().hasQualifiedName(<span class="string">"fopen"</span>)</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from Expr getenv, Expr fopen, EnvironmentToFileConfiguration config</span><br><span class="line">where config.hasFlow(DataFlow::exprNode(getenv), DataFlow::exprNode(fopen))</span><br><span class="line">select fopen, <span class="string">"This 'fopen' uses data from $@."</span>,</span><br><span class="line">  getenv, <span class="string">"call to 'getenv'"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下污点追踪代码用于追踪从调用<code>ntohl</code>到操作数组索引的数据流。该代码使用<code>Guards</code>库以识别经过边界检查的表达式，同时还定义了谓词<code>isSanitizer</code>以避免污点分析经过特定数据，最后定义了<code>isAdditionalTaintStep</code>用于将流从边界循环添加至循环索引。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.controlflow.Guards</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.TaintTracking</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">NetworkToBufferSizeConfiguration</span> <span class="title">extends</span> <span class="title">TaintTracking</span>:</span>:Configuration &#123;</span><br><span class="line">  NetworkToBufferSizeConfiguration() &#123; <span class="keyword">this</span> = <span class="string">"NetworkToBufferSizeConfiguration"</span> &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSource(DataFlow::Node node) &#123;</span><br><span class="line">    node.asExpr().(FunctionCall).getTarget().hasGlobalName(<span class="string">"ntohl"</span>)</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSink(DataFlow::Node node) &#123;</span><br><span class="line">    exists(ArrayExpr ae | node.asExpr() = ae.getArrayOffset())</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isAdditionalTaintStep(DataFlow::Node pred, DataFlow::Node succ) &#123;</span><br><span class="line">    exists(Loop loop, LoopCounter lc |</span><br><span class="line">      loop = lc.getALoop() <span class="keyword">and</span></span><br><span class="line">      loop.getControllingExpr().(RelationalOperation).getGreaterOperand() = pred.asExpr() |</span><br><span class="line">      succ.asExpr() = lc.getVariableAccessInLoop(loop)</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">override</span> predicate isSanitizer(DataFlow::Node node) &#123;</span><br><span class="line">    exists(GuardCondition gc, Variable v |</span><br><span class="line">      gc.getAChild*() = v.getAnAccess() <span class="keyword">and</span></span><br><span class="line">      node.asExpr() = v.getAnAccess() <span class="keyword">and</span></span><br><span class="line">      gc.controls(node.asExpr().getBasicBlock(), _)</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from DataFlow::Node ntohl, DataFlow::Node offset, NetworkToBufferSizeConfiguration conf</span><br><span class="line">where conf.hasFlow(ntohl, offset)</span><br><span class="line">select offset, <span class="string">"This array offset may be influenced by $@."</span>, ntohl,</span><br><span class="line">  <span class="string">"converted data from the network"</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="七、CodeQL-U-Boot-Challenge">七、CodeQL U-Boot Challenge</h2>
+<ul>
+<li>
+<p>纸上得来终觉浅，绝知此事要躬行。简单翻阅QL文档是学不到什么的，我们需要自己动手实践一下。</p>
+<p>下面笔者将讲述github learning lab中，用于学习CodeQL的一个入门课程 - <a href="https://lab.github.com/GitHubtraining/codeql-u-boot-challenge-(cc++)" target="_blank" rel="noopener">CodeQL U-Boot Challenge (C/C++)</a></p>
+</li>
+<li>
+<p>Step1: 了解从何处获取帮助</p>
+<ul>
+<li><a href="https://lgtm.com/help/lgtm/console/ql-cpp-basic-example" target="_blank" rel="noopener">Writing a basic C++ Code QL query</a></li>
+<li><a href="https://help.semmle.com/QL/learn-ql/introduction-to-ql.html" target="_blank" rel="noopener">Introduction to CodeQL</a></li>
+<li><a href="https://help.semmle.com/QL/learn-ql/" target="_blank" rel="noopener">Learning CodeQL</a></li>
+</ul>
+</li>
+<li>
+<p>Step2: 设置IDE</p>
+<ul>
+<li>下载VSCode以及CodeQL插件，还有CodeQL CLI文件。</li>
+<li>下载<a href="https://github.com/github/vscode-codeql-starter/" target="_blank" rel="noopener">CodeQL starter</a>工作区</li>
+<li>下载<a href="https://downloads.lgtm.com/snapshots/cpp/uboot/u-boot_u-boot_cpp-srcVersion_d0d07ba86afc8074d79e436b1ba4478fa0f0c1b5-dist_odasa-2019-07-25-linux64.zip" target="_blank" rel="noopener">U-Boot CodeQL database</a>并解压</li>
+<li>克隆<a href="https://github.com/Kiprey/codeql-uboot" target="_blank" rel="noopener">当前github课程仓库</a></li>
+<li>将当前课程仓库的文件夹添加至之前下载的VScode starter工作区，同时将之前下载的U-Boot数据库导入至VScode</li>
+<li>一切就绪!</li>
+</ul>
+</li>
+<li>
+<p>Step3: 编写一个简单的查询。在这里我们用于查询<code>strlen</code>函数的定义位置。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from Function f</span><br><span class="line">where f.getName() = <span class="string">"strlen"</span></span><br><span class="line">select f, <span class="string">"a function named strlen"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step4: 分析这个简单的查询，之后查询一下<code>memcpy</code>函数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from Function f</span><br><span class="line">where f.getName() = <span class="string">"memcpy"</span></span><br><span class="line">select f, <span class="string">"a function named memcpy"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step5: 使用不同的类以及不同的谓语。这里我们编写QL查找名为<code>ntohs</code>、<code>ntohl</code>以及<code>ntohll</code>的宏定义。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp </span><br><span class="line"></span><br><span class="line">from Macro macro</span><br><span class="line"><span class="comment">//where macro.getName() = "ntohs" or macro.getName() = "ntohl" or macro.getName() = "ntohll"</span></span><br><span class="line">where macro.getName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>)</span><br><span class="line">select macro</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step6: 使用双变量。通过使用多个变量来描述复杂的代码关系，查询特定函数的调用位置。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from FunctionCall c, Function f</span><br><span class="line">where c.getTarget() = f <span class="keyword">and</span> f.getName() == <span class="string">"memcpy"</span></span><br><span class="line">select c</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step7:  使用Step6的技巧，查询宏定义的调用位置。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from MacroInvocation invoc</span><br><span class="line">where invoc.getMacroName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>)</span><br><span class="line">select invoc</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step8: 改变select的输出。查找这些宏调用所扩展到的顶级表达式。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from MacroInvocation mi</span><br><span class="line">where mi.getMacro().getName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>)</span><br><span class="line">select mi.getExpr() <span class="comment">// 注意这里的.getExpr()</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step9：编写一个类。用<code>exists</code>关键字来引入一个临时变量，以设置当前类的数据集合；特征谓词在声明时会被调用以确定当前类的范围，类似于C++构造函数。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">NetworkByteSwap</span> <span class="title">extends</span> <span class="title">Expr</span>&#123;</span></span><br><span class="line">    NetworkByteSwap()</span><br><span class="line">    &#123;</span><br><span class="line">        exists(MacroInvocation mi |</span><br><span class="line">            mi.getMacroName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>) <span class="keyword">and</span></span><br><span class="line">            <span class="keyword">this</span> = mi.getExpr()</span><br><span class="line">          )</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from NetworkByteSwap n</span><br><span class="line">select n, <span class="string">"Network byte swap"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Step10：数据流分析。若<code>memcpy</code>中<code>length</code>直接来自于远程，而不加以验证，那么这将会产生OOB漏洞。以下编写的CodeQL查询针对的就是这类情况，它将使用全局数据流分析技术，查出真正的CVE漏洞。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.TaintTracking</span><br><span class="line"><span class="keyword">import</span> DataFlow::PathGraph</span><br><span class="line"></span><br><span class="line"><span class="comment">// 设置用于交换网络数据的类</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">NetworkByteSwap</span> <span class="title">extends</span> <span class="title">Expr</span>&#123;</span></span><br><span class="line">    NetworkByteSwap()    &#123;</span><br><span class="line">        exists(MacroInvocation mi |</span><br><span class="line">            mi.getMacroName().regexpMatch(<span class="string">"ntoh(s|l|ll)"</span>) <span class="keyword">and</span></span><br><span class="line">            <span class="keyword">this</span> = mi.getExpr()</span><br><span class="line">          )</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 设置污点跟踪的分析信息</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Config</span> <span class="title">extends</span> <span class="title">TaintTracking</span>:</span>:Configuration&#123;</span><br><span class="line">    Config() &#123; <span class="keyword">this</span> = <span class="string">"NetworkToMemFuncLength"</span>&#125;</span><br><span class="line">    <span class="comment">// 覆盖原先的isSource. 该谓语用于表示满足控制流源头的表达式.</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSource(DataFlow::Node source)&#123;</span><br><span class="line">        source.asExpr() instanceof NetworkByteSwap</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 覆盖原先的isSink, 该谓语用于表示满足控制流尽头的表达式.</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSink(DataFlow::Node sink)&#123;</span><br><span class="line">        exists(FunctionCall c | c.getTarget().getName() = <span class="string">"memcpy"</span> <span class="keyword">and</span> sink.asExpr() = c.getArgument(<span class="number">2</span>))</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 查询</span></span><br><span class="line">from Config cfg, DataFlow::PathNode source, DataFlow::PathNode sink</span><br><span class="line">where cfg.hasFlowPath(source, sink)</span><br><span class="line">select sink, source, sink, <span class="string">"Network byte swap flows to mmcpy"</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="八、结语">八、结语</h2>
+<ul>
+<li>当我们深入学习Codeql之后，我们就可以使用CodeQL挖掘特定漏洞模式的漏洞。</li>
+<li>CodeQL入门大致如上所示，更深层次的使用需要翻阅各种QL API来结合使用，<a href="https://help.semmle.com/QL/learn-ql/cpp/introduce-libraries-cpp.html" target="_blank" rel="noopener">CodeQL library for C and C++</a> 由此进。</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/12/CodeQL-Setup/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CodeQL/" rel="tag">CodeQL</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/12/secLab-CodeQL-learning/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            深入学习CodeQL by security_lab
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/12/CodeQL-setup/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CodeQL初入</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

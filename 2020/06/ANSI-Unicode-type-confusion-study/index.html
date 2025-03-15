@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="字符串漏洞, 类型混淆,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    字符串类型混淆漏洞的研究 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-ANSI-Unicode-type-confusion-study"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  字符串类型混淆漏洞的研究
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/06/ANSI-Unicode-type-confusion-study/" class="article-date">
+  <time datetime="2020-06-22T08:20:55.000Z" itemprop="datePublished">2020-06-22</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">13 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="1-简介">1. 简介</h2>
+<ul>
+<li>现在几乎已经很少会看到关于恶意字符串所造成的漏洞了，更不用说那些可利用的字符串了</li>
+<li>这并不奇怪，因为SDL(安全开发生命周期)已经禁止了所有不安全的函数</li>
+<li>但是，如果开发人员错误地使用了增强的安全功能，仍然可能造成严重的安全漏洞。</li>
+<li>在adobe acrobat Reader DC中，开发人员已经实现了一些增强的安全字符串处理函数。但开发人员有可能会错误使用这些函数。</li>
+<li>在一般情况下，这不是什么大问题。然而，在这个特定的软件中处理字符串时，类型混淆的情况也很容易被触发。</li>
+<li>在某些场景中，可以利用这两个条件来实现代码执行。</li>
+</ul>
+<a id="more"></a>
+<h2 id="2-基本概念">2. 基本概念</h2>
+<blockquote>
+<p>Adobe Acrobat Reader DC使用SpiderMonkey(可能是24.2.0版本)作为其JavaScript引擎。</p>
+</blockquote>
+<h3 id="a-字符串类型">a. 字符串类型</h3>
+<ul>
+<li>字符串在Windows上可以分为两类: <code>ANSI</code>字符串和<code>Unicode</code>字符串</li>
+<li><code>ANSI</code>字符串由一系列<code>ANSI</code>字符组成，其中每个字符编码为8位值；<br>
+<code>Unicode</code>字符串由一系列<code>Unicode</code>字符组成。</li>
+<li>Windows主要使用<code>UTF-16</code>编码的<code>Unicode</code>字符，其中每个字符编码为16位值。</li>
+<li><code>ANSI</code>字符串的结束符是<code>\x00</code>, <code>Unicode</code>字符串的结束符是<code>\x00\x00</code></li>
+</ul>
+<h3 id="b-Byte-Order-Mark-BOM">b. Byte Order Mark (BOM)</h3>
+<ul>
+<li>如果一个字符有多个字节的数据，那么它可以用两种形式表示: <strong>大端序</strong>（little-endian）和 <strong>小端序</strong> （big-endian）</li>
+<li><strong>大端序</strong> 将最重要字节放在前面，最不重要字节放在最后，而 <strong>小端序</strong> 顺序则相反</li>
+<li>例子
+<table>
+<thead>
+<tr>
+<th style="text-align:center">character</th>
+<th style="text-align:center">UTF-16 Encoding</th>
+<th style="text-align:center">Little-Endian</th>
+<th style="text-align:center">Big-Endian</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">中</td>
+<td style="text-align:center">U + 4E2D</td>
+<td style="text-align:center">2D 4E</td>
+<td style="text-align:center">4E 2D</td>
+</tr>
+<tr>
+<td style="text-align:center">文</td>
+<td style="text-align:center">U + 6587</td>
+<td style="text-align:center">87 65</td>
+<td style="text-align:center">65 87</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>对于<code>UTF-16</code>字符串，可以在字符集名称中指定字节顺序。例如，UTF16<code>LE</code>表示字节顺序是little-endian，而UTF-16<code>BE</code>表示字节顺序是big-endian</li>
+<li>我们还可以使用字节顺序标记(byte order mark, BOM)字符<code>U+FEFF</code>来指定字符串的字节顺序</li>
+<li>BOM字符本身的字节顺序表示整个字符串的字节顺序。如果没有显式地指定，字符串的字节顺序可以是特定于平台的</li>
+<li>例子
+<table>
+<thead>
+<tr>
+<th style="text-align:center">UTF-16 String</th>
+<th style="text-align:center">Little-Endian</th>
+<th style="text-align:center">Big-Endian</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">中文</td>
+<td style="text-align:center"><code>FF FE</code> 2D 4E 87 65</td>
+<td style="text-align:center"><code>FE FF</code> 4E 2D 65 87</td>
+</tr>
+</tbody>
+</table>
+</li>
+</ul>
+<blockquote>
+<p>注意：<code>BOM</code>字符将始终位于字符串的开头。把它放在别的地方是没有意义的。</p>
+</blockquote>
+<ul>
+<li>这张图片简单的概括了上面内容。注意：<code>BOM</code>字符不唯一。<code>FE FF</code>是<code>BOM</code>字符，而图中的<code>EF BB BF</code> 也是<code>BOM</code>字符<br>
+<img src="/2020/06/ANSI-Unicode-type-confusion-study/1.png" alt="img"></li>
+</ul>
+<h3 id="c-一些字符串的处理函数">c. 一些字符串的处理函数</h3>
+<ul>
+<li>
+<p>这里只列举其中的一个函数：<code>strncpy</code></p>
+</li>
+<li>
+<p>大部分认为<code>strncpy</code>会比<code>strcpy</code>更安全，原因是<code>strcpy</code>中的第三个参数指定了处理数据的大小</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">char</span> *<span class="title">strncpy</span><span class="params">(<span class="keyword">char</span> *destination, <span class="keyword">const</span> <span class="keyword">char</span> *source, <span class="keyword">size_t</span> num)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在大多数情况下，这看上去是正确的。但在处理一些特殊的情况时，它仍然很不安全。<br>
+如果源字符串的长度等于或大于第三个参数num的值，则不会将在目标字符串的末尾添加NULL字符。<br>
+而在处理没有终止符的字符串时，它将导致越界访问。以下是<code>strncpy</code>的源代码（来自glibc-2.23）:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">char</span> *</span><br><span class="line">STRNCPY (<span class="keyword">char</span> *s1, <span class="keyword">const</span> <span class="keyword">char</span> *s2, <span class="keyword">size_t</span> n)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">size_t</span> size = __strnlen (s2, n);</span><br><span class="line">  <span class="keyword">if</span> (size != n)</span><br><span class="line">    <span class="built_in">memset</span> (s1 + size, <span class="string">'\0'</span>, n - size);</span><br><span class="line">  <span class="keyword">return</span> <span class="built_in">memcpy</span> (s1, s2, size);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这是为什么呢？原因是<code>strncpy</code>在设计时本来就不是<code>strcpy</code>的安全版本。</p>
+</li>
+<li>
+<p><code>strncpy_s</code>是微软实现的一个安全增强版本。在将内容复制到目标缓冲区时，这些函数总是确保可以追加终止<code>null</code>字符。否则，操作失败，将调用无效的参数处理程序。</p>
+</li>
+<li>
+<p>如果错误地使用了字符串处理函数的安全增强版本，则不能保证它们是安全的。例如，如果开发人员将错误的值作为目标缓冲区的大小，即使是函数<code>strcpy_s</code>也可能导致缓冲区溢出。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">char</span> src[<span class="number">32</span>] = &#123; <span class="string">"0123456789abcdef"</span> &#125;;</span><br><span class="line"><span class="keyword">char</span> dst[<span class="number">10</span>] = &#123; <span class="number">0</span> &#125;;</span><br><span class="line">strcpy_s(dst, <span class="number">0x7FFF</span> <span class="comment">/*dst_size*/</span>, src);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="3-漏洞学习">3. 漏洞学习</h2>
+<h3 id="前置说明">* 前置说明</h3>
+<ul>
+<li>
+<p>adobe acrobat reader DC实现了一些增强的安全字符串处理功能，例如以下部分函数：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Generic API</th>
+<th style="text-align:center">ANSI Version</th>
+<th style="text-align:center">Unicode Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">strnlen_safe</td>
+<td style="text-align:center">ASstrnlen_safe</td>
+<td style="text-align:center">miUCSStrlen_safe</td>
+</tr>
+<tr>
+<td style="text-align:center">strncpy_safe</td>
+<td style="text-align:center">ASstrncpy_safe</td>
+<td style="text-align:center">miUCSStrncpy_safe</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>在处理字符串时，通用api将检查字符串的类型并将请求重定向到相应的函数。下面的代码展示了函数strnlen_safe是如何工作的：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">strnlen_safe</span><span class="params">(<span class="keyword">char</span> *str, <span class="keyword">unsigned</span> <span class="keyword">int</span> max_bytes, <span class="keyword">void</span> *error_handler)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> result;</span><br><span class="line">    <span class="keyword">if</span> (str &amp;&amp; str[<span class="number">0</span>] == <span class="number">0xFE</span> &amp;&amp; str[<span class="number">1</span>] == <span class="number">0xFF</span>)</span><br><span class="line">        result = miUCSStrlen_safe(str, max_bytes, error_handler);</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        result = ASstrnlen_safe(str, max_bytes, error_handler);</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在当前情况下，函数根据字符串的前两个字节检查字符串的类型。如果第一个字节是0xFE，第二个字节是0xFF，则该字符串将被识别为Unicode字符串，否则将被识别为ANSI字符串。而实际上，<code>FE FF</code>是 <strong>BOM的大端序标记字符</strong></p>
+</li>
+<li>
+<p>触发漏洞需要满足以下两个条件：</p>
+<ul>
+<li>
+<p>检查字符串的类型时可能会引发类型混淆。如果前两个字节是FE FF, ANSI字符串可以被识别为Unicode字符串。这可能导致越界访问，因为在ANSI字符串中找不到Unicode null终止符。例如以下表格：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">char</th>
+<th style="text-align:center">.</th>
+<th style="text-align:center">.</th>
+<th style="text-align:center">F</th>
+<th style="text-align:center">a</th>
+<th style="text-align:center">k</th>
+<th style="text-align:center">e</th>
+<th style="text-align:center"></th>
+<th style="text-align:center">U</th>
+<th style="text-align:center">n</th>
+<th style="text-align:center">i</th>
+<th style="text-align:center">c</th>
+<th style="text-align:center">o</th>
+<th style="text-align:center">d</th>
+<th style="text-align:center">e</th>
+<th style="text-align:center">.</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">HEX</td>
+<td style="text-align:center">FE</td>
+<td style="text-align:center">FF</td>
+<td style="text-align:center">46</td>
+<td style="text-align:center">61</td>
+<td style="text-align:center">6B</td>
+<td style="text-align:center">65</td>
+<td style="text-align:center">20</td>
+<td style="text-align:center">55</td>
+<td style="text-align:center">6E</td>
+<td style="text-align:center">69</td>
+<td style="text-align:center">63</td>
+<td style="text-align:center">6F</td>
+<td style="text-align:center">64</td>
+<td style="text-align:center">65</td>
+<td style="text-align:center">00</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>开发人员不正确地使用了通用api。在大多数情况下，目标缓冲区的大小将设置为0x7FFFFFFF。如之前所述的那样，这可能会导致安全问题</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">strnlen_safe(a2,  <span class="number">0x7FFFFFFF</span>, <span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="a-CVE-2019-7032">a. CVE-2019-7032</h3>
+<h4 id="1-简介-2">1) 简介</h4>
+<ul>
+<li>CVE-2019-7032是一个越界读取漏洞，可以利用该漏洞实现绕过ASLR的信息公开。</li>
+<li>该漏洞在天府杯中，结合<code>UAF</code>漏洞可以进行代码执行。</li>
+</ul>
+<blockquote>
+<p>注：<code>CVE-2020-3804</code>与该<code>CVE</code>漏洞原理与漏洞补丁等等大致相同，本文中将不再赘述。</p>
+</blockquote>
+<h4 id="2-具体细节">2) 具体细节</h4>
+<ul>
+<li>
+<p>此漏洞会被以下JS代码所触发</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Tested on Adobe Acrobat Reader DC 2019.010.20069</span></span><br><span class="line"><span class="keyword">var</span> f = <span class="keyword">this</span>.addField(<span class="string">'f1'</span>, <span class="string">'text'</span>, <span class="number">0</span>, [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>]);</span><br><span class="line">f.userName = <span class="string">'\xFE\xFF'</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当<code>ANSI</code>字符串被作为<code>Unicode</code>处理时，越界读取将会被触发，原因是处理函数无法找到<code>Unicode</code>字符串的终结符<code>\x00\x00</code><br>
+以下为<code>miUCSStrlen_safe</code>函数源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">miUCSStrlen_safe</span><span class="params">(<span class="keyword">wchar_t</span> *src, <span class="keyword">unsigned</span> <span class="keyword">int</span> max_bytes,</span></span></span><br><span class="line"><span class="function"><span class="params">                            <span class="keyword">void</span> *error_handler)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> result;</span><br><span class="line">  <span class="keyword">wchar_t</span> *str = src;</span><br><span class="line">  <span class="keyword">if</span> ( src ) &#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> bytes = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> ( max_bytes ) &#123;</span><br><span class="line">      <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="keyword">char</span> ch = *(<span class="keyword">char</span> *)str;</span><br><span class="line">        ++str;</span><br><span class="line">        <span class="keyword">if</span> ( !ch &amp;&amp; !*((<span class="keyword">char</span> *)str - <span class="number">1</span>) ) <span class="keyword">break</span>; <span class="comment">// check Unicode terminator</span></span><br><span class="line">        bytes += <span class="number">2</span>;</span><br><span class="line">    &#125; <span class="keyword">while</span> ( bytes &lt; max_bytes );</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> ( bytes == max_bytes ) &#123;</span><br><span class="line">      <span class="keyword">void</span> *handler = hb_set_invert;</span><br><span class="line">      <span class="keyword">if</span> ( error_handler ) handler = error_handler;</span><br><span class="line">      handler(<span class="string">L"String greater than maxSize"</span>, <span class="string">L"miUCSStrlen_safe"</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">      result = max_bytes;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      result = bytes;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="keyword">void</span> *handler = hb_set_invert;</span><br><span class="line">      <span class="keyword">if</span> ( error_handler ) handler = error_handler;</span><br><span class="line">      handler(<span class="string">L"Bad parameter"</span>, <span class="string">L"miUCSStrlen_safe"</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">      result = <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>该漏洞是在为字段对象分配用户名属性时触发的。关键的部分是原始字符串将被复制到新创建的堆缓冲区中，该缓冲区将与属性相关联。<br>
+这意味着我们可以通过JavaScript代码读取泄漏的信息。下面的代码显示了简化的漏洞模型。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src &lt;- field.userName &lt;- "\xFE\xFF....."</span></span><br><span class="line"><span class="comment">// len &lt;- number of bytes</span></span><br><span class="line"><span class="keyword">size_t</span> len = strnlen_safe(src, <span class="number">0x7FFFFFFF</span>, <span class="number">0</span>);  <span class="comment">// Out-Of-Bounds Read</span></span><br><span class="line"><span class="keyword">char</span>* dst = <span class="built_in">calloc</span>(<span class="number">1</span>, aligned_size(len + <span class="number">4</span>));</span><br><span class="line"><span class="built_in">memcpy</span>(dst, src, len);                          <span class="comment">// Information Disclosure</span></span><br><span class="line">dst[len] = dst[len + <span class="number">1</span>] = <span class="string">'\0'</span>;</span><br><span class="line"><span class="comment">// field.userName &lt;- dst</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="3-漏洞修补分析">3) 漏洞修补分析</h4>
+<ul>
+<li>该漏洞已在adobe acrobat reader DC 2019.010.20091中修复。</li>
+<li>通过放置额外3个<code>NULL</code>字节（实际上4个）至堆缓冲区的末端。</li>
+<li>即便<code>ANSI</code>字符串是由函数<code>miUCSStrlen_safe</code>处理的，它也会正常工作，因为<code>Unicode-NULL</code>终止符总是可以被找到。</li>
+</ul>
+<h3 id="b-CVE-2019-8199">b. CVE-2019-8199</h3>
+<h4 id="1-简介-3">1) 简介</h4>
+<ul>
+<li>CVE-2019-8199是一个越界读写漏洞，可以利用它来实现代码执行。</li>
+</ul>
+<h4 id="2-具体细节-2">2) 具体细节</h4>
+<ul>
+<li>
+<p>此漏洞会被以下JS代码触发</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Tested on Adobe Acrobat Reader DC 2019.010.20099</span></span><br><span class="line">Collab.unregisterReview(<span class="string">'\xFE\xFF'</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>与上面的CVE相同，之所以可以触发越界读写，是因为处理<code>ANSI</code>字符串时无法找到<code>Unicode</code>终止符。<br>
+以下是<code>miUCSStrcpy_safe</code>源代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">signed</span> <span class="keyword">int</span> <span class="title">miUCSStrcpy_safe</span><span class="params">(<span class="keyword">wchar_t</span> *dst, <span class="keyword">unsigned</span> <span class="keyword">int</span> max_bytes,</span></span></span><br><span class="line"><span class="function"><span class="params">                          <span class="keyword">wchar_t</span> *src, <span class="keyword">void</span> *error_handler)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">wchar_t</span> *ptr = dst;</span><br><span class="line">  <span class="keyword">if</span> ( dst ) &#123;</span><br><span class="line">    <span class="keyword">if</span> ( src ) &#123;</span><br><span class="line">      <span class="keyword">if</span> ( max_bytes &gt; <span class="number">1</span> ) &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> max_len = max_bytes &gt;&gt; <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">do</span> &#123;</span><br><span class="line">          <span class="keyword">wchar_t</span> e = *(<span class="keyword">wchar_t</span> *)((<span class="keyword">char</span> *)ptr + (<span class="keyword">char</span> *)src - (<span class="keyword">char</span> *)dst);</span><br><span class="line">          *ptr = e;</span><br><span class="line">          ++ptr;</span><br><span class="line">          <span class="keyword">if</span> ( !e ) <span class="keyword">break</span>;          <span class="comment">// check Unicode terminator</span></span><br><span class="line">          --max_len;</span><br><span class="line">        &#125; <span class="keyword">while</span> ( max_len );</span><br><span class="line">        <span class="keyword">if</span> ( !max_len ) &#123;</span><br><span class="line">          *(ptr - <span class="number">1</span>) = <span class="number">0</span>;</span><br><span class="line">          <span class="keyword">void</span> *handler = Handler;</span><br><span class="line">          <span class="keyword">if</span> ( error_handler ) handler = error_handler;</span><br><span class="line">          handler(<span class="string">L"Destination too small"</span>, <span class="string">L"miUCSStrcpy_safe"</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> ( max_bytes &gt; <span class="number">1</span> ) &#123;</span><br><span class="line">        *dst = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">void</span> *handler = Handler;</span><br><span class="line">  <span class="keyword">if</span> ( error_handler ) handler = error_handler;</span><br><span class="line">  handler(<span class="string">L"Bad parameter"</span>, <span class="string">L"miUCSStrcpy_safe"</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>该漏洞在调用<code>Collab.unregisterReview</code>函数时被触发。关键的部分是原始字符串将被复制到新创建的堆缓冲区中，该缓冲区的大小是通过调用<code>ASstrnlen_safe</code>计算的。但是复制请求是由函数<code>strcpy_safe</code>处理的。下面的代码显示了简化的漏洞模型</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src &lt;- arg of unregisterReview / unregisterApproval</span></span><br><span class="line"><span class="comment">// src = "\xFE\xFF......"</span></span><br><span class="line"><span class="keyword">size_t</span> len = ASstrnlen_safe(src, <span class="number">0x7FFFFFFF</span>, <span class="number">0</span>);    <span class="comment">// ANSI Function</span></span><br><span class="line"><span class="keyword">char</span>* dst = (<span class="keyword">char</span> *)<span class="built_in">malloc</span>(len + <span class="number">1</span>);</span><br><span class="line">strcpy_safe(dst, <span class="number">0x7FFFFFFF</span>, src, <span class="number">0</span>);   <span class="comment">// Generic API -&gt; Unicode Function</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>所以，我们需要通过控制内存的布局来利用这个漏洞，以达到任意地址读写的目的</p>
+<blockquote>
+<p><code>ArrayBuffer</code>对象在任意读写时起到了很大的作用。<br>
+当该对象中的成员<code>byteLength</code> &gt; <code>0x68</code>时，该对象的后备存储将从系统堆中分配。<br>
+堆内存分配时，所分配的缓冲区会比之前大<code>0x10</code>。这部分<code>0x10</code>大小的内存用于存储<code>ObjectElements</code>中的变量。</p>
+</blockquote>
+<ul>
+<li>
+<p>新建大量的字符串和<code>ArrayBuffer</code>对象来占据内存。在这里我们创建了五个对象作为一个单元。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐</span><br><span class="line">│ ArrayBuffer │    String   │ ArrayBuffer │ ArrayBuffer │ ArrayBuffer │</span><br><span class="line">└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将第一个和第三个内存区域释放，以创建大量的内存空洞</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐</span><br><span class="line">│    Hole     │    String   │    Hole     │ ArrayBuffer │ ArrayBuffer │</span><br><span class="line">└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>使原始字符串的堆缓冲区分配到其中一个单元的第一个内存空洞，目标堆缓冲区分配到其中一个单元的第二个内存空洞。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">┌─────────────┬─────────────┬─────────────┬─────────────┬─────────────┐</span><br><span class="line">│     Src     │    String   │     Dst     │ ArrayBuffer │ ArrayBuffer │</span><br><span class="line">└─────────────┴─────────────┴─────────────┴─────────────┴─────────────┘</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>通过<code>strcpy_safe</code>函数漏洞的越界拷贝，覆盖第四个<code>ArrayBuffer</code>的成员<code>byteLength</code>为<code>0xFFFF</code>。<br>
+其中，String的内容(每个单元中的第二个对象)将用于覆盖<code>byteLength</code>。<br>
+之后通过该单元中的第四个对象（被覆盖<code>byteLength</code>后的<code>ArrayBuffer</code>），修改单元中的第五个对象（也就是图中的最后一个<code>ArrayBuffer</code>）的<code>byteLength</code>为<code>0xFFFFFFFF</code>，以取得全局读写权限。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">                     (2)byteLength to 0xFFFF             (4)Global Access</span><br><span class="line">               ┌───&gt;───&gt;───&gt;───&gt;───&gt;───&gt;───┐            &lt;──────┬──────&gt;</span><br><span class="line">┌─────────────┬┼────────────┬─────────────┬┼────────────┬──────┼──────┐</span><br><span class="line">│     Src     │   String    │     Dst     │ ArrayBuffer │ ArrayBuffer │</span><br><span class="line">└──────┼──────┴─────────────┴┼────────────┴┼────────────┴┼────────────┘</span><br><span class="line">       └──&gt;───&gt;───&gt;───&gt;────&gt;─┘             └──&gt;───&gt;───&gt;──┘</span><br><span class="line">          (1)strcpy_safe           (3)byteLength to 0xFFFFFFFF</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>一旦获得了全局读写权限，我们就可以向后搜索来计算<code>ArrayBuffer</code>对象的后备存储缓冲区的基址，从而获得任意地址读写权限。</p>
+</li>
+<li>
+<p>一旦获得了任意读写权限后，就很容易实现代码执行。之后要做的就是下面这些操作，本文中不再赘述。</p>
+<ul>
+<li>EIP劫持</li>
+<li>ASLR绕过</li>
+<li>DEB绕过</li>
+<li>CFG绕过</li>
+</ul>
+</li>
+</ul>
+<h4 id="3-漏洞修补分析-2">3) 漏洞修补分析</h4>
+<ul>
+<li>
+<p>该漏洞已在adobe acrobat reader DC 2019.012.20034 版本中被修复。</p>
+</li>
+<li>
+<p>在堆缓冲区的末尾增加了两个额外的<code>NULL</code>字节(总共3个)。</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> *__cdecl <span class="title">sub_2383F4F8</span><span class="params">(<span class="keyword">int</span> a1, <span class="keyword">int</span> a2)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// --------------------------- cut ---------------------------</span></span><br><span class="line">  <span class="keyword">if</span> ( <span class="built_in">string</span> ) &#123;</span><br><span class="line">    length = ASstrnlen_safe(<span class="built_in">string</span>, <span class="number">0x7FFFFFFF</span>u, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> ( length &lt; <span class="number">0xFFFFFFFC</span> ) &#123;</span><br><span class="line">      buffer = <span class="built_in">calloc</span>(<span class="number">1</span>, length + <span class="number">3</span>);   <span class="comment">// put 3 '\x00' at the end</span></span><br><span class="line">      <span class="built_in">memcpy</span>(buffer, <span class="built_in">string</span>, length);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// --------------------------- cut ---------------------------</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这个补丁只能阻止漏洞被利用。POC仍然可能造成进程崩溃，因为如果目标堆缓冲区不够大，那么就无法存储<code>Unicode</code>字符串结束符。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// src &lt;- arg of unregisterReview / unregisterApproval</span></span><br><span class="line"><span class="comment">// src = "\xFE\xFF......"</span></span><br><span class="line"><span class="keyword">size_t</span> len = ASstrnlen_safe(src, <span class="number">0x7FFFFFFF</span>, <span class="number">0</span>);    <span class="comment">// ANSI Function</span></span><br><span class="line"><span class="keyword">char</span>* dst = (<span class="keyword">char</span> *)<span class="built_in">malloc</span>(len + <span class="number">1</span>);    <span class="comment">// only sufficient for ANSI string</span></span><br><span class="line">strcpy_safe(dst, <span class="number">0x7FFFFFFF</span>, src, <span class="number">0</span>);   <span class="comment">// Generic API -&gt; Unicode Function</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>该漏洞最终在adobe acrobat reader DC 2019.021.20047版本中得到修复。通过为目标堆缓冲区分配2个额外字节来存储<code>Unicode</code>字符串终止符，解决了这个问题。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> *__cdecl <span class="title">sub_2212A50B</span><span class="params">(<span class="keyword">char</span> *src)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// --------------------------- cut ---------------------------</span></span><br><span class="line">  <span class="keyword">signed</span> <span class="keyword">int</span> bytes = strnlen_safe(src, <span class="number">0x7FFFFFFF</span>, <span class="number">0</span>);</span><br><span class="line">  <span class="keyword">void</span> *dst = <span class="built_in">malloc</span>(bytes + <span class="number">2</span>);</span><br><span class="line">  <span class="built_in">memset</span>(dst, <span class="number">0</span>, bytes + <span class="number">2</span>);</span><br><span class="line">  strcpy_safe_wrapper(dst, src);</span><br><span class="line">  <span class="comment">// --------------------------- cut ---------------------------</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">int</span> __cdecl <span class="title">strcpy_safe_wrapper</span><span class="params">(<span class="keyword">int</span> dst, <span class="keyword">int</span> src)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> strcpy_safe(dst, <span class="number">0x7FFFFFFF</span>, src, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<blockquote>
+<p>白皮书后剩余的<code>CVE-2020-3805</code>由于原理与上述两个漏洞大致相同，故不再赘述。</p>
+</blockquote>
+<h2 id="4-总结">4. 总结</h2>
+<ul>
+<li>在这篇针对adobe acrobat Reader DC的漏洞分析中，大部分漏洞都是因为字符串类型混淆，导致<code>ANSI</code>字符串被 <strong>本用于处理<code>Unicode</code>字符串的函数</strong> 错误操作，其中以<code>strnlen_safe</code>为代表。</li>
+<li>在此类型漏洞中，因为在<code>ANSI</code>字符串中找不到<code>Unicode</code>字符串终结符，所以会造成越界 <strong>读/写</strong>，形成了一种漏洞模型，产生了4个<code>CVE</code>。</li>
+<li>漏洞修补的方式也大同小异：在缓冲区末尾追加2个及以上的<code>NULL</code>字符，防止越界。</li>
+</ul>
+<blockquote>
+<p>学习所使用的 <a href="/2020/06/ANSI-Unicode-type-confusion-study/pwning_adobe_reader_multiple_times_with_malformed_strings_whitepaper.pdf" title="白皮书">白皮书</a> 与 <a href="/2020/06/ANSI-Unicode-type-confusion-study/pwning_adobe_reader_multiple_times_with_malformed_strings_slides.pdf" title="PPT">PPT</a> 如有需要请自取。议题的连接请点击<a href="https://conference.hitb.org/hitbsecconf2020ams/sessions/pwning-adobe-reader-multiple-times-with-malformed-strings/" target="_blank" rel="noopener">这里</a></p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/06/ANSI-Unicode-type-confusion-study/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/malformed-strings/" rel="tag">malformed strings</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/06/compiler-learning/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            编译原理
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/06/actf2020/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">ACTF五校联赛</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

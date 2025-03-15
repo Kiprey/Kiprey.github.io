@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, heap, 堆漏洞,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    heap - 3 - bins分类 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-heap-3-bins"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  heap - 3 - bins分类
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/04/heap-3-bins/" class="article-date">
+  <time datetime="2020-04-02T16:00:00.000Z" itemprop="datePublished">2020-04-03</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">9 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>存放free chunks的链表 ——— bins !</p>
+<h2 id="1-bin链的介绍">1. bin链的介绍</h2>
+<ul>
+<li>bin链是由<code>struct chunk</code>组成的链表</li>
+<li>不同的chunk根据不同的特点将它们区分开，为了便于分开管理，glibc引入了bin链这个概念</li>
+<li>bin链上的chunk都是free chunk</li>
+<li>bin链都是由当前线程的arena管理的</li>
+</ul>
+<h2 id="2-bin链的分类">2. bin链的分类</h2>
+<ol>
+<li>Fast bin</li>
+<li>Small bin</li>
+<li>Unsorted bin</li>
+<li>Large bin</li>
+</ol>
+<a id="more"></a>
+<ul>
+<li>
+<p>关系如下</p>
+<pre class="mermaid">  graph TB
+total[Total Bins] --> fast[Fast bins]
+total --> bins[Bins]
+bins --> small[Small bins]
+bins --> unsorted[Unsorted bins]
+bins --> large[Large bins]</pre>
+</li>
+</ul>
+<h2 id="3-bin链的存储">3. bin链的存储</h2>
+<ul>
+<li>
+<p>bin链存储在arena里，详细代码如下</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">malloc_state</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line"><span class="comment">/* Other members ... */</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Fastbins */</span></span><br><span class="line">mfastbinptr fastbinsY[NFASTBINS];</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Normal bins packed as described above */</span></span><br><span class="line">mchunkptr bins[NBINS * <span class="number">2</span> - <span class="number">2</span>];</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Other members ... */</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>fast bin存储于arena.fastbinY数组中</p>
+</li>
+<li>
+<p>small bin、 unsorted bin以及large bin都存储于arena的bins数组中</p>
+</li>
+</ul>
+<h2 id="4-Fast-bin">4. Fast bin</h2>
+<h3 id="介绍">介绍</h3>
+<ul>
+<li>
+<p>glibc的介绍</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">Fastbins</span><br><span class="line"></span><br><span class="line">An array of lists holding recently freed small chunks.  Fastbins</span><br><span class="line">are not doubly linked.  It is faster to single-link them, and</span><br><span class="line">since chunks are never removed from the middles of these lists,</span><br><span class="line">double linking is not necessary. Also, unlike regular bins, they</span><br><span class="line">are not even processed in FIFO order (they use faster LIFO) since</span><br><span class="line">ordering doesn&#39;t much matter in the transient contexts in which</span><br><span class="line">fastbins are normally used.</span><br><span class="line"></span><br><span class="line">Chunks in fastbins keep their inuse bit set, so they cannot</span><br><span class="line">be consolidated with other free chunks. malloc_consolidate</span><br><span class="line">releases all chunks in fastbins and consolidates them with</span><br><span class="line">other free chunks.</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>设计fast bin的初衷就是进行快速的小内存分配和释放</p>
+</li>
+<li>
+<p>chunk大小 小于64(0x40)（32位）/ 128(0x80)（64位）字节的free chunk为fast chunk，其由fast bin管理<br>
+该大小是在<code>malloc_init_state</code>函数中设置的<br>
+其默认值为<code>(DEFAULT_MXFAST + SIZE_SZ) &amp; ~MALLOC_ALIGN_MASK</code><br>
+相关代码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> DEFAULT_MXFAST     (64 * SIZE_SZ / 4)</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_max_fast(s) \</span></span><br><span class="line">  global_max_fast = (((s) == <span class="number">0</span>)      \</span><br><span class="line">                    ? SMALLBIN_WIDTH : ((s + SIZE_SZ) &amp; ~MALLOC_ALIGN_MASK))</span><br><span class="line">#define get_max_fast() global_max_fast</span><br><span class="line"></span><br><span class="line">#define MALLOC_ALIGNMENT       (<span class="number">2</span> *SIZE_SZ)</span><br><span class="line"><span class="comment">/* The corresponding bit mask value */</span></span><br><span class="line">#define MALLOC_ALIGN_MASK      (MALLOC_ALIGNMENT - <span class="number">1</span>)</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>fast bin链共有10条</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* The maximum fastbin request size we support */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MAX_FAST_SIZE     (80 * SIZE_SZ / 4)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> NFASTBINS  (fastbin_index (request2size (MAX_FAST_SIZE)) + 1)</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>fast bin的分组依据fast chunk的大小<br>
+两个相邻bin链里的chunk最大值相差8字节（32位）或16字节（64位）</p>
+<ul>
+<li>
+<p>以64字节为例<br>
+<code>fastbinY[0]</code>指向的chunk大小为0x20 - 0x30<br>
+<code>fastbinY[1]</code>指向的chunk大小为0x30 - 0x40<br>
+<code>......</code><br>
+<code>fastbinY[5]</code>指向的chunk大小为0x70 - 0x80</p>
+</li>
+<li>
+<p>相关代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* offset 2 to use otherwise unindexable first 2 bins */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> fastbin_index(sz) \</span></span><br><span class="line">    ((((<span class="keyword">unsigned</span> <span class="keyword">int</span>) (sz)) &gt;&gt; (SIZE_SZ == <span class="number">8</span> ? <span class="number">4</span> : <span class="number">3</span>)) - <span class="number">2</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="特点">特点</h3>
+<ul>
+<li><strong>LIFO</strong>（后进先出, 从链头取出 / 插入chunk），更快速的分配chunk</li>
+<li><strong>单向</strong> 链表，fast chunk只使用fd指针指向下一个fast chunk，其bk指针置空</li>
+<li>属于fast bin的chunk的PREV_INUSE位 <strong>总是设置为1</strong> ，以保证当前fast chunk不会被其他free chunks合并</li>
+</ul>
+<h2 id="5-Bins">5. Bins</h2>
+<ul>
+<li>
+<p>glibc的介绍</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line">Bins</span><br><span class="line"></span><br><span class="line">An array of bin headers for free chunks. Each bin is doubly</span><br><span class="line">linked.  The bins are approximately proportionally (log) spaced.</span><br><span class="line">There are a lot of these bins (128). This may look excessive, but</span><br><span class="line">works very well in practice.  Most bins hold sizes that are</span><br><span class="line">unusual as malloc request sizes, but are more usual for fragments</span><br><span class="line">and consolidated sets of chunks, which is what these bins hold, so</span><br><span class="line">they can be found quickly.  All procedures maintain the invariant</span><br><span class="line">that no consolidated chunk physically borders another one, so each</span><br><span class="line">chunk in a list is known to be preceeded and followed by either</span><br><span class="line">inuse chunks or the ends of memory.</span><br><span class="line"></span><br><span class="line">Chunks in bins are kept in size order, with ties going to the</span><br><span class="line">approximately least recently used chunk. Ordering isn&#39;t needed</span><br><span class="line">for the small bins, which all contain the same-sized chunks, but</span><br><span class="line">facilitates best-fit allocation for larger chunks. These lists</span><br><span class="line">are just sequential. Keeping them in order almost never requires</span><br><span class="line">enough traversal to warrant using fancier ordered data</span><br><span class="line">structures.</span><br><span class="line"></span><br><span class="line">Chunks of the same size are linked with the most</span><br><span class="line">recently freed at the front, and allocations are taken from the</span><br><span class="line">back.  This results in LRU (FIFO) allocation order, which tends</span><br><span class="line">to give each chunk an equal opportunity to be consolidated with</span><br><span class="line">adjacent freed chunks, resulting in larger free chunks and less</span><br><span class="line">fragmentation.</span><br><span class="line"></span><br><span class="line">To simplify use in double-linked lists, each bin header acts</span><br><span class="line">as a malloc_chunk. This avoids special-casing for headers.</span><br><span class="line">But to conserve space and improve locality, we allocate</span><br><span class="line">only the fd&#x2F;bk pointers of bins, and then use repositioning tricks</span><br><span class="line">to treat these as the fields of a malloc_chunk*.</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>bin链共有128条</p>
+<ul>
+<li>
+<p>相关代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> NBINS             128</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// in struct malloc_state</span></span><br><span class="line"><span class="comment">/* Normal bins packed as described above */</span></span><br><span class="line">mchunkptr bins[NBINS * <span class="number">2</span> - <span class="number">2</span>];</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<blockquote>
+<p>为什么arena中，bins数组的大小为 NBINS * 2 - 2 呢？<br>
+因为每个bin链在bins数组中存储的是一个指针fd指针和一个bk指针，即两个malloc chunk指针，所以要NBINS * 2<br>
+又因为数组bins中索引为0、1的指针是不使用的，所以要减去2</p>
+<blockquote>
+<p>例： bins[2]为unsorted bin链的fd成员，bin[3]为其bk成员</p>
+</blockquote>
+</blockquote>
+</li>
+</ul>
+<h3 id="1-Unsorted-bin">1. Unsorted bin</h3>
+<h4 id="介绍-2">介绍</h4>
+<ul>
+<li>
+<p>glibc的介绍</p>
+  <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">Unsorted chunks</span><br><span class="line"></span><br><span class="line">All remainders from chunk splits, as well as all returned chunks,</span><br><span class="line">are first placed in the &quot;unsorted&quot; bin. They are then placed</span><br><span class="line">in regular bins after malloc gives them ONE chance to be used before</span><br><span class="line">binning. So, basically, the unsorted_chunks list acts as a queue,</span><br><span class="line">with chunks being placed on it in free (and malloc_consolidate),</span><br><span class="line">and taken off (to be either used or placed in bins) in malloc.</span><br><span class="line"></span><br><span class="line">The NON_MAIN_ARENA flag is never set for unsorted chunks, so it</span><br><span class="line">does not have to be taken into account in size comparisons.</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>被用户释放的allocated chunk，以及分割其他free chunk产生的剩余free chunk，都会被放置进unsorted bin里</p>
+</li>
+<li>
+<p>其主要目的是为了让 <em>glibc malloc机制</em> 能够有第二次机会重新利用最近释放的chunk</p>
+</li>
+<li>
+<p>unsorted bin只有 <strong>一个</strong>，位于arena中的 <strong>bin[1]</strong> 。 <strong>任何大小</strong> 的chunk都可加入unsorted bin中</p>
+</li>
+</ul>
+<h4 id="特点-2">特点</h4>
+<ul>
+<li><strong>无序双向</strong> 链表</li>
+<li><strong>FIFO</strong>（从链尾取出chunk，从链头插入chunk）</li>
+</ul>
+<h3 id="2-Small-bin">2. Small bin</h3>
+<h4 id="介绍-3">介绍</h4>
+<ul>
+<li>
+<p>chunk大小 小于512(0x200)（32位）/ 1024(0x400)（64位）字节的free chunk为small chunk，其由small bin管理</p>
+<ul>
+<li>
+<p>相关代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> NSMALLBINS         64</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SMALLBIN_WIDTH    MALLOC_ALIGNMENT</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SMALLBIN_CORRECTION (MALLOC_ALIGNMENT &gt; 2 * SIZE_SZ)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MIN_LARGE_SIZE    ((NSMALLBINS - SMALLBIN_CORRECTION) * SMALLBIN_WIDTH)</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> in_smallbin_range(sz)  \</span></span><br><span class="line">  ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz) &lt; (<span class="keyword">unsigned</span> <span class="keyword">long</span>) MIN_LARGE_SIZE)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>small bin共有62个</p>
+</li>
+<li>
+<p>small bin的分组依据small chunk的大小<br>
+两个相邻bin链里的chunk最大值相差8字节（32位）或16字节（64位）,<br>
+与fastbin的分组策略相同</p>
+<ul>
+<li>
+<p>以64字节为例<br>
+索引为<code>2</code>中chunk大小为0x20 - 0x30<br>
+索引为<code>3</code>里的chunk大小为0x30 - 0x40<br>
+<code>......</code><br>
+索引为<code>63</code>里的chunk大小为0x3F0 - 0x400</p>
+</li>
+<li>
+<p>相关代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> smallbin_index(sz) \</span></span><br><span class="line">  ((SMALLBIN_WIDTH == <span class="number">16</span> ? (((<span class="keyword">unsigned</span>) (sz)) &gt;&gt; <span class="number">4</span>) : (((<span class="keyword">unsigned</span>) (sz)) &gt;&gt; <span class="number">3</span>))\</span><br><span class="line">  + SMALLBIN_CORRECTION)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="特点-3">特点</h4>
+<ul>
+<li><strong>无序双向</strong> 链表</li>
+<li><strong>FIFO</strong>（从链尾取出chunk，从链头插入chunk）</li>
+<li>就内存的分配和释放速度而言，small bin比large bin快，但比fast bin慢</li>
+</ul>
+<h3 id="3-Large-bin">3. Large bin</h3>
+<h4 id="介绍-4">介绍</h4>
+<ul>
+<li>
+<p>chunk大小 小于512(0x200)（32位）/ 1024(0x400)（64位）字节的free chunk为small chunk，其由small bin管理</p>
+</li>
+<li>
+<p>large bin共有64个</p>
+</li>
+<li>
+<p>large bin的分组同样依据large chunk的大小，不过稍有不同</p>
+<ul>
+<li>
+<p>large bin 大体上分为6大组，其中每个大组里都有若干小组（此处不再展开，笔者想偷懒了QwQ）</p>
+</li>
+<li>
+<p>相关源代码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 2^6 = 64 ; 2^9 = 512 ; 2^12 = 4096 ; 2^15 = 32768 ;</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_32(sz)                                                \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">38</span>) ?  <span class="number">56</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_32_big(sz)                                            \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">45</span>) ?  <span class="number">49</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// XXX It remains to be seen whether it is good to keep the widths of</span></span><br><span class="line"><span class="comment">// XXX the buckets the same or whether it should be scaled by a factor</span></span><br><span class="line"><span class="comment">// XXX of two as well.</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_64(sz)                                                \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">48</span>) ?  <span class="number">48</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index(sz) \</span></span><br><span class="line">  (SIZE_SZ == <span class="number">8</span> ? largebin_index_64 (sz)                                     \</span><br><span class="line">  : MALLOC_ALIGNMENT == <span class="number">16</span> ? largebin_index_32_big (sz)                     \</span><br><span class="line">  : largebin_index_32 (sz))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>large bin相对于small bin和fast bin来讲，比较特殊<br>
+在一条large bin链里，free chunks的大小并不相同，所以</p>
+<ul>
+<li>large chunk中有两个特殊的指针
+<ul>
+<li>指针fd_nextsize : 该指针指向下一个大小更小的chunk（注意可能不是相邻chunk）</li>
+<li>指针bk_nextsize : 该指针指向上一个大小更大的chunk（注意可能不是相邻chunk）</li>
+<li>一个例子<br>
+<img src="/2020/04/heap-3-bins/large-bin.png" alt="img"></li>
+</ul>
+</li>
+<li>large bin上chunks是按大小排列的
+<ul>
+<li>从链头(bin处) 到 链尾，沿着各个chunk的fd指针，chunks大小从高到低，依次排序</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="特点-4">特点</h4>
+<ul>
+<li><strong>有序双向</strong> 链表，有序插入和取出chunks</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/04/heap-3-bins/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Heap/" rel="tag">Heap</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/04/heap-5-heap_definitions/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            heap - 5 - malloc、free函数相关的宏定义
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/03/heap-2-chunks/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 2 - chunk的分类</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

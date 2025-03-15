@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="blockchain, curve, finance,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Curve Finance 漏洞复现 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-curve_finance_vuln"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Curve Finance 漏洞复现
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2023/08/curve_finance_vuln/" class="article-date">
+  <time datetime="2023-08-09T16:00:00.000Z" itemprop="datePublished">2023-08-10</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/Blockchain/">Blockchain</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">7 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>智能合约在区块链的世界中较为重要。本文记录了笔者在复现 Python 智能合约编译器 Vyper 中的一个编译漏洞，该漏洞导致智能合约中的重入锁变得无效，进而使得合约易受<strong>重入攻击</strong>。</p>
+<a id="more"></a>
+<h2 id="二、环境搭建">二、环境搭建</h2>
+<h3 id="1-Vyper-构建">1. Vyper 构建</h3>
+<p>下载 Vyper 编译器源代码并通过 pip 安装依赖。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git@github.com:vyperlang/vyper.git</span><br><span class="line"><span class="built_in">cd</span> vyper</span><br><span class="line"></span><br><span class="line"><span class="comment"># 依赖来自 setup.py &amp; requirements-docs.txt，不可直接照搬</span></span><br><span class="line">pip3 install <span class="string">"asttokens&gt;=2.0.5,&lt;3"</span> <span class="string">"pycryptodome&gt;=3.5.1,&lt;4"</span> <span class="string">"semantic-version&gt;=2.10,&lt;3"</span> <span class="string">"importlib-metadata"</span> <span class="string">"wheel"</span> <span class="string">"sphinx==4.5.0"</span> <span class="string">"recommonmark==0.6.0"</span> <span class="string">"sphinx_rtd_theme==0.5.2"</span></span><br></pre></td></tr></table></figure>
+<p>运行 <code>python3 -m vyper --help</code>，能正常输出帮助信息即可：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">$ python3 -m vyper --<span class="built_in">help</span></span><br><span class="line">usage: __main__.py [-h] [--version] [--show-gas-estimates] [-f FORMAT] [--storage-layout-file STORAGE_LAYOUT [STORAGE_LAYOUT ...]]</span><br><span class="line">                   [--evm-version &#123;istanbul,berlin,london,paris,shanghai,cancun&#125;] [--no-optimize] [--optimize &#123;gas,codesize,none&#125;] [--debug] [--no-bytecode-metadata]</span><br><span class="line">                   [--traceback-limit TRACEBACK_LIMIT] [--verbose] [--standard-json] [--hex-ir] [-p ROOT_FOLDER] [-o OUTPUT_PATH]</span><br><span class="line">                   input_files [input_files ...]</span><br><span class="line"></span><br><span class="line">Pythonic Smart Contract Language <span class="keyword">for</span> the EVM</span><br><span class="line"></span><br><span class="line">positional arguments:</span><br><span class="line">  input_files           Vyper sourcecode to compile</span><br><span class="line"></span><br><span class="line">options:</span><br><span class="line">  -h, --<span class="built_in">help</span>            show this <span class="built_in">help</span> message and <span class="built_in">exit</span></span><br><span class="line">  --version             show program<span class="string">'s version number and exit</span></span><br><span class="line"><span class="string">  ...</span></span><br></pre></td></tr></table></figure>
+<p>最后切换到漏洞引入点：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># https://github.com/vyperlang/vyper/commit/a09cdddd8ba249d1ce68ac31ec4496e50b8a25c7</span></span><br><span class="line">git checkout a09cdddd</span><br></pre></td></tr></table></figure>
+<p>如果想要单步调试跟进，那就需要：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 在 vyper 项目根目录下</span></span><br><span class="line">cp ./vyper/__main__.py vyper.py</span><br><span class="line">python3 vyper.py --<span class="built_in">help</span></span><br></pre></td></tr></table></figure>
+<h3 id="2-合约下载">2. 合约下载</h3>
+<p>合约的代码可以在链上合约地址处找到，例如 <a href="https://bscscan.com/address/0x245a45cdf2271d026976811a80c091fe5b49ac40#code" target="_blank" rel="noopener">https://bscscan.com/address/0x245a45cdf2271d026976811a80c091fe5b49ac40#code</a></p>
+<p><img src="/2023/08/curve_finance_vuln/image-20230810175940172.png" alt="image-20230810175940172"></p>
+<p>合约是开源的，肯定有不止一种找到合约源代码的方式，上面也只是举例演示一下。</p>
+<h2 id="三、漏洞根因">三、漏洞根因</h2>
+<h3 id="1-安全的重入锁状态维护逻辑">1. 安全的重入锁状态维护逻辑</h3>
+<p>在讲解漏洞根因之前，我们先来简单了解一下<strong>在引入漏洞 commit 之前，关于重入锁的状态维护逻辑</strong>。</p>
+<p>对于重入锁来说，自然是需要在 Storage 上有一个 slot 用来存放锁的状态。也就是 <code>get_nonreentrant_lock</code> 函数做的事情：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 引入漏洞 commit 前</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">get_nonreentrant_lock</span><span class="params">(func_type, global_ctx)</span>:</span></span><br><span class="line">    nonreentrant_pre = [[<span class="string">"pass"</span>]]</span><br><span class="line">    nonreentrant_post = [[<span class="string">"pass"</span>]]</span><br><span class="line">    <span class="keyword">if</span> func_type.nonreentrant:</span><br><span class="line">        nkey = global_ctx.get_nonrentrant_counter(func_type.nonreentrant)</span><br><span class="line">        nonreentrant_pre = [[<span class="string">"seq"</span>, [<span class="string">"assert"</span>, [<span class="string">"iszero"</span>, [<span class="string">"sload"</span>, nkey]]], [<span class="string">"sstore"</span>, nkey, <span class="number">1</span>]]]</span><br><span class="line">        nonreentrant_post = [[<span class="string">"sstore"</span>, nkey, <span class="number">0</span>]]</span><br><span class="line">    <span class="keyword">return</span> nonreentrant_pre, nonreentrant_post</span><br></pre></td></tr></table></figure>
+<p>从代码中可以看到，当某个函数被标记为<strong>禁止重入</strong>时，vyper 会在需要用到重入锁的合约逻辑时，编译生成以上一系列的 IR。这些 IR 做的事情很简单，获取锁时<strong>检查锁是否为 0 &amp;&amp; 将锁状态设置为 1</strong>；释放锁时<strong>重设锁状态为 0</strong>。</p>
+<p>而存放锁状态的 slot 是通过 <code>global_ctx.get_nonrentrant_counter</code> 函数所得，也就是那个在漏洞 commit 里被标记为 dead code 的函数，该函数会根据传入的 key 来确定要用哪个 slot 来存放锁状态：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">get_nonrentrant_counter</span><span class="params">(self, key)</span>:</span></span><br><span class="line">    <span class="string">"""</span></span><br><span class="line"><span class="string">    Nonrentrant locks use a prefix with a counter to minimise deployment cost of a contract.</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">    We're able to set the initial re-entrant counter using the sum of the sizes</span></span><br><span class="line"><span class="string">    of all the storage slots because all storage slots are allocated while parsing</span></span><br><span class="line"><span class="string">    the module-scope, and re-entrancy locks aren't allocated until later when parsing</span></span><br><span class="line"><span class="string">    individual function scopes. This relies on the deprecated _globals attribute</span></span><br><span class="line"><span class="string">    because the new way of doing things (set_data_positions) doesn't expose the</span></span><br><span class="line"><span class="string">    next unallocated storage location.</span></span><br><span class="line"><span class="string">    """</span></span><br><span class="line">    <span class="keyword">if</span> key <span class="keyword">in</span> self._nonrentrant_keys:</span><br><span class="line">        <span class="keyword">return</span> self._nonrentrant_keys[key]</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        counter = (</span><br><span class="line">            sum(v.size <span class="keyword">for</span> v <span class="keyword">in</span> self._globals.values() <span class="keyword">if</span> <span class="keyword">not</span> isinstance(v.typ, MappingType))</span><br><span class="line">            + self._nonrentrant_counter</span><br><span class="line">        )</span><br><span class="line">        self._nonrentrant_keys[key] = counter</span><br><span class="line">        self._nonrentrant_counter += <span class="number">1</span></span><br><span class="line">        <span class="keyword">return</span> counter</span><br></pre></td></tr></table></figure>
+<p>而在函数重入中，这个 key 值是 vyper 脚本中的那个字符串，例如以下代码中的 <code>lock</code> 字符串，它用于区分开不同的重入锁：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@external</span></span><br><span class="line"><span class="meta">@nonreentrant('lock')</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">add_liquidity</span><span class="params">()</span> -&gt; uint256:</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span></span><br><span class="line"></span><br><span class="line"><span class="meta">@external</span></span><br><span class="line"><span class="meta">@nonreentrant('lock')</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">exchange</span><span class="params">()</span> -&gt; uint256:</span></span><br><span class="line">   <span class="keyword">return</span> <span class="number">0</span></span><br></pre></td></tr></table></figure>
+<p>总结一句话，在引入漏洞 commit 之前，vyper 使用脚本里<strong>重入锁的字符串</strong>来<strong>区分开不同的重入锁</strong>，而区分的方式是<strong>根据字符串来选择用于存放重入锁状态的 slot 位置</strong>。这样一来，倘若<strong>不同函数</strong>使用了<strong>相同名称的重入锁</strong>，则这些重入锁将会使用同一个 slot，来抵御重入攻击。</p>
+<h3 id="2-带有漏洞的重入锁状态维护逻辑">2. 带有漏洞的重入锁状态维护逻辑</h3>
+<p>引入漏洞前，vyper 用于存放重入锁状态的各个 slot 是直接追加在<strong>全局变量分配存储</strong>的末尾：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">get_nonrentrant_counter</span><span class="params">(self, key)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> key <span class="keyword">in</span> self._nonrentrant_keys:</span><br><span class="line">        <span class="keyword">return</span> self._nonrentrant_keys[key]</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        <span class="comment"># 注意这里的 counter 是怎么计算得出的</span></span><br><span class="line">        counter = (</span><br><span class="line">            sum(v.size <span class="keyword">for</span> v <span class="keyword">in</span> self._globals.values() <span class="keyword">if</span> <span class="keyword">not</span> isinstance(v.typ, MappingType))</span><br><span class="line">            + self._nonrentrant_counter</span><br><span class="line">        )</span><br><span class="line">        self._nonrentrant_keys[key] = counter</span><br><span class="line">        self._nonrentrant_counter += <span class="number">1</span></span><br><span class="line">        <span class="keyword">return</span> counter</span><br></pre></td></tr></table></figure>
+<p>漏洞 commit <strong>尝试将重入锁的状态变量与其他全局变量的分配合并掉</strong>，即在解析 vyper  AST 阶段时就一并做掉重入锁的 slot 分配，而非在后续生成 IR 阶段时再去动态生成和指定重入锁的 slot 位置。因此 <code>global_ctx.get_nonrentrant_counter</code> 这个用来动态生成重入锁 slot 位置的函数就不再被调用了，被开发者标记为 dead code。而指定重入锁位置的重任则交付到了 <code>set_storage_slots</code> 函数上，该函数在 <strong>AST 解析阶段</strong>执行，其先前的作用<strong>只是用来指定各个变量存储的 slot 位置</strong>。</p>
+<p><img src="/2023/08/curve_finance_vuln/image-20230810181144949.png" alt="image-20230810181144949"></p>
+<p>从这里我们可以看到，在漏洞 commit 里 vyper 是怎么指定各个函数的重入锁所在 slot 呢？没错，它每个函数分配一个重入锁 slot，也就是说对于<strong>不同函数</strong>的<strong>同名重入锁</strong>而言，这些重入锁相互之间不会阻止重入。</p>
+<h3 id="3-漏洞演示">3. 漏洞演示</h3>
+<p>以下是一个关于该 vyper 重入漏洞的 POC：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@external</span></span><br><span class="line"><span class="meta">@nonreentrant('lock')</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">add_liquidity</span><span class="params">()</span> -&gt; uint256:</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span></span><br><span class="line"></span><br><span class="line"><span class="meta">@external</span></span><br><span class="line"><span class="meta">@nonreentrant('lock')</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">exchange</span><span class="params">()</span> -&gt; uint256:</span></span><br><span class="line">   <span class="keyword">return</span> <span class="number">0</span></span><br></pre></td></tr></table></figure>
+<p>这个 POC 的逻辑很简单，它声明了<strong>两个不同的函数</strong>，但这两个函数使用了<strong>相同名称的重入锁</strong>。我们来输出它的 IR 看看：</p>
+<p>输出 IR 命令：<code>python3 vyper.py -f ir &lt;vyper-script-path&gt;</code></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line">$ python3 vyper.py -f ir vyper_workdir/test.vy</span><br><span class="line">[seq,</span><br><span class="line">  [<span class="built_in">return</span>,</span><br><span class="line">    0,</span><br><span class="line">    [lll,</span><br><span class="line">      [seq,</span><br><span class="line">        [<span class="keyword">if</span>, [lt, calldatasize, 4], [goto, fallback]],</span><br><span class="line">        [mstore, 28, [calldataload, 0]],</span><br><span class="line">        [with,</span><br><span class="line">          _func_sig,</span><br><span class="line">          [mload, 0],</span><br><span class="line">          [seq,</span><br><span class="line">            [assert, [iszero, callvalue]],</span><br><span class="line">            <span class="comment"># Line 3</span></span><br><span class="line">            [<span class="keyword">if</span>,</span><br><span class="line">              [eq, _func_sig, 3964006281 &lt;add_liquidity()&gt;],</span><br><span class="line">              [seq,</span><br><span class="line">                [assert, [iszero, [sload, 0]]],    <span class="comment"># 检查重入锁状态</span></span><br><span class="line">                [sstore, 0 /*slot*/, 1 /*val*/],   <span class="comment"># 获取重入锁</span></span><br><span class="line">                pass,</span><br><span class="line">                <span class="comment"># Line 4</span></span><br><span class="line">                [mstore, 0, 0],</span><br><span class="line">                [seq_unchecked, [sstore, 0, 0], [<span class="built_in">return</span>, 0, 32]],</span><br><span class="line">                <span class="comment"># Line 3</span></span><br><span class="line">                [sstore, 0, 0],                    <span class="comment"># 释放重入锁</span></span><br><span class="line">                stop]],</span><br><span class="line">            <span class="comment"># Line 8</span></span><br><span class="line">            [<span class="keyword">if</span>,</span><br><span class="line">              [eq, _func_sig, 3539412570 &lt;exchange()&gt;],</span><br><span class="line">              [seq,</span><br><span class="line">                [assert, [iszero, [sload, 1]]],    <span class="comment"># 检查重入锁状态</span></span><br><span class="line">                [sstore, 1, 1],                    <span class="comment"># 获取重入锁</span></span><br><span class="line">                pass,</span><br><span class="line">                <span class="comment"># Line 9</span></span><br><span class="line">                [mstore, 0, 0],</span><br><span class="line">                [seq_unchecked, [sstore, 1, 0], [<span class="built_in">return</span>, 0, 32]],</span><br><span class="line">                <span class="comment"># Line 8</span></span><br><span class="line">                [sstore, 1, 0],                    <span class="comment"># 释放重入锁</span></span><br><span class="line">                stop]]]],</span><br><span class="line">        [seq_unchecked, [label, fallback], /* Default <span class="keyword">function</span> */ [revert, 0, 0]]],</span><br><span class="line">      0]]]</span><br></pre></td></tr></table></figure>
+<p>可以看到那两对 sstore 指令使用的 slot 不是同一个，第一个函数使用了 slot0，而第二个函数使用了 slot1。</p>
+<h3 id="4-漏洞修复">4. 漏洞修复</h3>
+<p><a href="https://github.com/vyperlang/vyper/commit/eae0eaf8#diff-bbb2d32046e0a730536ca9e7d0b871e3765826115fc9f0c0228ddf08f171dde6R35" target="_blank" rel="noopener">漏洞补丁</a>很简单，只允许在<strong>出现不同名的重入锁时</strong>才使用新的 slot：</p>
+<p><img src="/2023/08/curve_finance_vuln/image-20230810190717895.png" alt="image-20230810190717895"></p>
+<!--
+## 四、链上合约复现
+
+现在要复现一下在真实合约里利用该漏洞进行攻击的操作。首先是找到目标合约的源代码。
+
+通过一系列的搜索，最后确定源代码位置为 [CurveCryptoSwap2ETH - github](https://github.com/curvefi/curve-crypto-contract/blob/master/contracts/two/CurveCryptoSwap2ETH.vy)
+
+**注意：由于漏洞影响跨度大，因此合约代码的 commit 时间已经要和带有漏洞的 vyper commit 时间相对应，否则会编译失败。**
+
+我个人是先把 vyper checkout 到了[漏洞补丁的上一个 commit 处](https://github.com/vyperlang/vyper/commit/3931ba4bf83eed2b9af7635362905c1b6e3a48a7)，这个 commit 的时间是 2021.10.25；然后再把合约代码 checkout 到了 [2021.12.5 的版本](https://github.com/curvefi/curve-crypto-contract/commit/101af9bb511f832ca5b) 上。合约代码稍微有点超前但是还是可以正常编译（**注意要把合约里第一行的版本被删除掉**）：
+
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">$ python3 ../vyper.py ./curve-crypto-contract/contracts/two/CurveCryptoSwap2ETH.vy</span><br><span class="line">0x60206154b260c03960c0518060a01c6154ad5761014052602060206154b20160c03960c0518060a01c6154ad576101605261014051602055602060406154b20160c03960c05160801b61018052602060606154b20160c03960c05161018051176101805261018051600b5561018051600c55602060806154b20160c03960c051601755602060a06154b20160c03960c051601855602060c06154b20160c03960c0...</span><br></pre></td></tr></table></figure>
+<p>接下来就要去 <a href="https://remix.ethereum.org/" target="_blank" rel="noopener">Remix IDE</a> 上编译一下合约。但在进一步之前，在 Remix 需要里先点击插件处，安装 Vyper 插件，然后才能在侧边栏上找到 Vyper 的编译按钮。</p>
+<p><img src="curve_finance_vuln/image-20230811170232884.png" alt="image-20230811170232884"></p>
+<p>有意思的是，这里的 Vyper 版本刚好位于受影响范围内（0.2.15/0.2.16/0.3.0），因此我们本地就可以无需手动编译并上传 EVM 字节码了：</p>
+<p><img src="curve_finance_vuln/image-20230811170403914.png" alt="image-20230811170403914"></p>
+<blockquote>
+<p>但事实上如图所示我还是没编译成功， 返回了一个 “Failed to fetch” 错误，也不知道是不是因为网络环境的问题。<br>
+–&gt;</p>
+</blockquote>
+<h2 id="五、参考">五、参考</h2>
+<ul>
+<li><a href="https://medium.com/chainlight/curve-finance-analysis-and-post-mortem-ba55f2b26909" target="_blank" rel="noopener">Curve Finance Analysis and Post-mortem - medium</a></li>
+</ul>
+--> 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2023/08/curve_finance_vuln/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Curve-Finance/" rel="tag">Curve Finance</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2023/11/tailscale-derp/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            浅探 Tailscale DERP 中转服务
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2023/05/zerotier_moon_frpc/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">使用 Frpc 进行内网穿透构建 ZeroTier Moon 记录</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

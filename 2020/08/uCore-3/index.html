@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab3、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab3 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-3"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab3
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/08/uCore-3/" class="article-date">
+  <time datetime="2020-08-12T14:25:53.000Z" itemprop="datePublished">2020-08-12</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">20 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 3时写下的一些笔记</li>
+<li>内容涉及虚拟内存存储等</li>
+<li>内容较多，建议使用右侧导航栏。</li>
+</ul>
+<a id="more"></a>
+<h2 id="知识点">知识点</h2>
+<h3 id="1-虚拟内存">1. 虚拟内存</h3>
+<ul>
+<li>
+<p>虚拟内存是CPU可以看到的“内存”。</p>
+<ul>
+<li>虚拟内存所对应的实际物理内存单元可能不存在。</li>
+<li>虚拟内存的地址和对应物理内存的地址可能不一致。</li>
+<li>通过操作系统所实现的某种内存映射机制，可以达到访问的虚拟内存地址转换为物理内存地址的目的。</li>
+</ul>
+</li>
+<li>
+<p>当程序访问内存遇上特殊情况时，CPU会执行第十四号中断处理程序——缺页处理程序来处理。</p>
+<ul>
+<li>
+<p>特殊情况有以下两种</p>
+<ul>
+<li><strong>写入</strong>一个<strong>存在物理页</strong>的虚拟页——<strong>写时复制</strong>。</li>
+<li>读写一个不存在物理页的虚拟页——<strong>缺页</strong>。</li>
+<li>不满足访问权限。</li>
+</ul>
+</li>
+<li>
+<p>当程序触发缺页中断时，CPU会把产生异常的线性地址存储在<strong>CR2</strong>寄存器中，并且把<strong>页访问异常错误码</strong>保存在中断栈中。</p>
+<blockquote>
+<p>其中，页访问异常错误码的位0为１表示对应物理页不存在；位１为１表示写异常；位２为１表示访问权限异常。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>由于虚拟内存空间比物理内存空间大得多，所以必须在合适的情况下，将不常用的页面调至外存，或者将待用的页面从外存调入内存中。 <strong>这个过程对应用程序无感。</strong> 而什么时候调进调出，选择哪个页面调出，这都是值得考究的，这就是使用页面置换算法的目的。</p>
+</li>
+</ul>
+<h3 id="2-页面置换算法小叙">2. 页面置换算法小叙</h3>
+<blockquote>
+<p>当物理页面不够用时，需要将某个页面置换到外存中。</p>
+<p>那么该置换哪个物理页面呢？这就是页面置换算法的用处。</p>
+</blockquote>
+<h4 id="I-局部页面置换算法">I. 局部页面置换算法</h4>
+<blockquote>
+<p>置换页面的选择范围仅限于当前进程占用的物理页面内.</p>
+</blockquote>
+<h5 id="1-最近最少用算法（LRU）">1) 最近最少用算法（LRU）</h5>
+<h6 id="a-简介">a. 简介</h6>
+<ul>
+<li>思路：选择<strong>最长时间没有被引用</strong>的页面进行置换。</li>
+<li>实现：缺页时，计算内存中每个逻辑页面的上一个访问时间，并选择<strong>上一个使用到当前时间最长</strong>的页面。</li>
+<li>特征：最优置换算法的一种近似。</li>
+</ul>
+<h6 id="b-具体实现">b. 具体实现</h6>
+<ul>
+<li>页面链表
+<ul>
+<li>系统维护一个按最近一次访问时间排序的页面链表
+<ul>
+<li>链表首节点是最近刚刚使用过的页面</li>
+<li>链表尾结点是最久未使用的页面</li>
+</ul>
+</li>
+<li>访问内存时，找到相应页面并将其移至链表之首</li>
+<li>缺页时，置换链表尾结点的页面</li>
+</ul>
+</li>
+<li>活动页面栈
+<ul>
+<li>访问页面时，将此页号压入栈底。并将栈内相同的页号抽出</li>
+<li>缺页时，置换栈底的页面。</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>上述的两种实现都需要维护以及遍历搜索某个数据结构，</p>
+<p>同时LRU对于过去的访问情况统计<strong>过于细致</strong>，所以该方法较为复杂。</p>
+</blockquote>
+<h5 id="2-改进的时钟页面置换算法（Clock）">2) 改进的时钟页面置换算法（Clock）</h5>
+<h6 id="a-简介-2">a. 简介</h6>
+<ul>
+<li>思路：
+<ul>
+<li>仅对页面的访问情况进行大致统计</li>
+<li>减小修改页的缺页处理开销</li>
+</ul>
+</li>
+<li>数据结构：
+<ul>
+<li>在页表项中增加访问位，描述页面在过去一段时间的内访问情况。</li>
+<li>在页表项中增加修改位，以判断当前页面是否修改过但没有存入外存。</li>
+<li>各页面组织成环形链表，同时指针指向最先调入的页面。</li>
+</ul>
+</li>
+<li>算法
+<ul>
+<li>访问页面时，在页表项记录页面访问情况</li>
+<li>缺页时，从指针处开始顺序查找<strong>未被访问与未被修改</strong>的页面进行置换。</li>
+</ul>
+</li>
+<li>特征： 时钟算法是LRU与FIFO的折中。</li>
+</ul>
+<h6 id="b-具体实现-2">b. 具体实现</h6>
+<ul>
+<li>页面装入内存时，访问位初始化为0</li>
+<li>访问页面（读/写）时，访问位置为1</li>
+<li>缺页时，从指针当前位置顺序检查环形链表。
+<ul>
+<li>若当前遍历到的页面访问位为0，则<strong>置换该页</strong></li>
+<li>若当前遍历到的页面访问位为1，则<strong>设置该页的访问位为0</strong>，并移动指针到下一个页面，直到找到可置换的页面。</li>
+</ul>
+</li>
+</ul>
+<h4 id="II-全局置换算法">II. 全局置换算法</h4>
+<ul>
+<li>思路：全局置换算法为进程分配可变数目的物理页面。</li>
+<li>要解决的问题：
+<ul>
+<li>进程在不同阶段的内存需求是有变化的。</li>
+<li>分配给进程的内存也需要在不同阶段有所变化。</li>
+<li>全局置换算法需要确定分配给进程的物理页面数。</li>
+</ul>
+</li>
+<li>CPU利用率与并发进程数存在相互制约的关系。
+<ul>
+<li>进程数少时，提高并发进程数，可提高CPU利用效率。</li>
+<li>并发进程导致内存访问增加</li>
+<li>并发进程的内存访问会降低了访存的局部性特征。</li>
+<li>局部性特征的下降会导致缺页率上升和CPU利用率下降。</li>
+</ul>
+</li>
+</ul>
+<h5 id="1-工作集置换算法">1) 工作集置换算法</h5>
+<h6 id="a-工作集与常驻集">a. 工作集与常驻集</h6>
+<ul>
+<li><strong>工作集</strong>是一个进程当前正在使用的<strong>逻辑页面</strong>集合，可表示为二元函数$W(t, \Delta)$
+<ul>
+<li>$t$是当前的执行时刻</li>
+<li>$\Delta$ 称为<strong>工作集窗口</strong>(working-set window)，即一个定长的页面访问时间的窗口。</li>
+<li>$W(t, \Delta)$指在当前时刻$t$前的$\Delta$时间窗口中的<strong>所有访问页面</strong>所组成的集合。</li>
+<li>$|W(t, \Delta)|$指工作集的大小，即页面数目。</li>
+</ul>
+</li>
+<li><strong>常驻集</strong>是当前时刻进程<strong>实际驻留</strong>在内存中的页面集合。</li>
+<li>工作集与常驻集的关系
+<ul>
+<li>工作集是进程在运行过程中固有的性质</li>
+<li>常驻集取决于系统分配给进程的物理页面数目和页面置换算法。</li>
+</ul>
+</li>
+</ul>
+<h6 id="b-思路">b. 思路</h6>
+<ul>
+<li>
+<p>当前时刻前$\tau$个内存访问的页引用是工作集。其中$\tau$被称为<strong>窗口大小</strong>。</p>
+</li>
+<li>
+<p>换出不在工作集中的页面</p>
+</li>
+</ul>
+<h6 id="c-具体实现">c. 具体实现</h6>
+<ul>
+<li>访存链表：维护窗口内的访存页面</li>
+<li><strong>访存时，换出不在工作集的页面；</strong> 更新访存链表。</li>
+<li>缺页时，换入页面，更新访存链表。</li>
+</ul>
+<h5 id="2-缺页率置换算法（PPF）">2) 缺页率置换算法（PPF）</h5>
+<h6 id="a-简介-3">a. 简介</h6>
+<p>通过调节常驻集大小，使每个进程的缺页率保持在一个合理的范围内。</p>
+<ul>
+<li>若进程缺页率过高，则增加常驻集以分配更多的物理内存</li>
+<li>若进程缺页率过低，则减小常驻集以减小它的物理页面数。</li>
+</ul>
+<h6 id="b-具体实现-3">b. 具体实现</h6>
+<ul>
+<li>访存时，设置引用位标志</li>
+<li>缺页时，计算从上次缺页时间$t_{last}$到现在$t_{current}$的时间间隔
+<ul>
+<li>如果$t_{current}-t_{last}&gt;T$，则置换所有在$[t_{last}, t_{current}]$时间内<strong>没有被引用</strong>的页。</li>
+<li>如果$t_{current}-t_{last}&lt;T$，则增加缺失页到常驻集中。</li>
+</ul>
+</li>
+</ul>
+<h4 id="III-Belady现象">III. Belady现象</h4>
+<ul>
+<li>现象： 采用FIFO等算法时，可能出现分配的物理页面数增加，缺页次数反而升高的异常情况。</li>
+<li>原因：
+<ul>
+<li>FIFO算法的置换特征与进程访问内存的动态特征矛盾</li>
+<li>被置换出去的页面并不一定是进程近期不会访问的。</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-uCore虚拟内存机制的实现">3. uCore虚拟内存机制的实现</h3>
+<h4 id="I-虚拟内存管理">I. 虚拟内存管理</h4>
+<ul>
+<li>
+<p>结构体变量<code>check_mm_struct</code>用于管理虚拟内存页面，其结构体如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// the control struct for a set of vma using the same PDT</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> mmap_list;        <span class="comment">// 按照虚拟地址顺序双向连接的虚拟页链表</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vma_struct</span> *<span class="title">mmap_cache</span>;</span> <span class="comment">// 当前使用的虚拟页地址，该成员加速页索引速度。</span></span><br><span class="line">    <span class="keyword">pde_t</span> *pgdir;                  <span class="comment">// 虚拟页对应的PDT</span></span><br><span class="line">    <span class="keyword">int</span> map_count;                 <span class="comment">// 虚拟页个数</span></span><br><span class="line">    <span class="keyword">void</span> *sm_priv;                 <span class="comment">// 用于指向swap manager的某个链表,在FIFO算法中，该双向链表用于将可交换的已分配物理页串起来</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当分配出新的虚拟页时，程序会执行<code>insert_vma_struct</code>函数，此时虚拟页<code>vma_struct</code>就会被插入<code>mm_struct::mmap_list</code>双向链表中。</p>
+</li>
+<li>
+<p>若程序首次访问该内存而触发缺页中断时，程序会在缺页处理程序中为该虚拟页划分出一块新的物理页。同时，还会更新<code>mm_struct::pgdir</code>上的对应页表条目，之后该页的内存访问即可正常执行。</p>
+</li>
+<li>
+<p>在FIFO页面置换算法中，初始时，<code>mm_struct</code>中的<code>sm_priv</code>会被设置为<code>pra_list_head</code>。而<code>pra_list_head</code>是一个双向链表的起始结点，该双向链表用于将<strong>可交换的已分配物理页</strong>串起来。</p>
+</li>
+</ul>
+<h4 id="II-页面置换">II. 页面置换</h4>
+<ul>
+<li>
+<p><code>swap_manager</code>与<code>pmm_manager</code>类似，都设置了一个用于管理某个功能的模块。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">swap_manager</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">     <span class="keyword">const</span> <span class="keyword">char</span> *name;</span><br><span class="line">     <span class="comment">/* Global initialization for the swap manager */</span></span><br><span class="line">     <span class="keyword">int</span> (*init)            (<span class="keyword">void</span>);</span><br><span class="line">     <span class="comment">/* Initialize the priv data inside mm_struct */</span></span><br><span class="line">     <span class="keyword">int</span> (*init_mm)         (struct mm_struct *mm);</span><br><span class="line">     <span class="comment">/* Called when tick interrupt occured */</span></span><br><span class="line">     <span class="keyword">int</span> (*tick_event)      (struct mm_struct *mm);</span><br><span class="line">     <span class="comment">/* Called when map a swappable page into the mm_struct */</span></span><br><span class="line">     <span class="keyword">int</span> (*map_swappable)   (struct mm_struct *mm, <span class="keyword">uintptr_t</span> addr, struct Page *page, <span class="keyword">int</span> swap_in);</span><br><span class="line">     <span class="comment">/* When a page is marked as shared, this routine is called to</span></span><br><span class="line"><span class="comment">      * delete the addr entry from the swap manager */</span></span><br><span class="line">     <span class="keyword">int</span> (*set_unswappable) (struct mm_struct *mm, <span class="keyword">uintptr_t</span> addr);</span><br><span class="line">     <span class="comment">/* Try to swap out a page, return then victim */</span></span><br><span class="line">     <span class="keyword">int</span> (*swap_out_victim) (struct mm_struct *mm, struct Page **ptr_page, <span class="keyword">int</span> in_tick);</span><br><span class="line">     <span class="comment">/* check the page relpacement algorithm */</span></span><br><span class="line">     <span class="keyword">int</span> (*check_swap)(<span class="keyword">void</span>);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>若使用FIFO页面置换算法，则在缺页中断程序中，程序只会<strong>换入</strong>目标物理页，而不会主动换出。</p>
+<p>只有在分配空闲物理页时，若<code>pmm_manager-&gt;alloc_pages(n)</code>失败，则程序才会执行一次页面换出，以腾出空闲的物理页，并重新分配。</p>
+</li>
+<li>
+<p><code>swap_in</code>函数只会将目标物理页加载进内存中，而不会修改页表条目。所以相关的标志位设置必须在<code>swap_in</code>函数的外部手动处理。而<code>swap_out</code>函数会先执行<code>swap_out_victim</code>，找出最适合换出的物理页，并将其换出，最后刷新TLB。需要注意的是<code>swap_out</code>函数会在函数内部设置PTE，当某个页面被换出后，PTE会被设置为所换出物理页在硬盘上的偏移。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">cprintf(<span class="string">"swap_out: i %d, store page in vaddr 0x%x to disk swap entry %d\n"</span>, i, v, page-&gt;pra_vaddr/PGSIZE+<span class="number">1</span>);</span><br><span class="line">*ptep = (page-&gt;pra_vaddr/PGSIZE+<span class="number">1</span>)&lt;&lt;<span class="number">8</span>;</span><br><span class="line">free_page(page);</span><br></pre></td></tr></table></figure>
+<p>当PTE所对应的物理页存在于内存中，那么该PTE就是正常的页表条目，可被CPU直接寻址用于转换地址。但当所对应的物理页不在内存时，该PTE就成为<code>swap_entry_t</code>，保存该物理页数据在外存的偏移位置。相关代码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * swap_entry_t</span></span><br><span class="line"><span class="comment"> * --------------------------------------------</span></span><br><span class="line"><span class="comment"> * |         offset        |   reserved   | 0 |</span></span><br><span class="line"><span class="comment"> * --------------------------------------------</span></span><br><span class="line"><span class="comment"> *           24 bits            7 bits    1 bit</span></span><br><span class="line"><span class="comment"> * /</span></span><br><span class="line"><span class="comment"> /* *</span></span><br><span class="line"><span class="comment"> * swap_offset - takes a swap_entry (saved in pte), and returns</span></span><br><span class="line"><span class="comment"> * the corresponding offset in swap mem_map.</span></span><br><span class="line"><span class="comment"> * */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> swap_offset(entry) (&#123;                                       \</span></span><br><span class="line">               <span class="keyword">size_t</span> __offset = (entry &gt;&gt; <span class="number">8</span>);                        \</span><br><span class="line">               <span class="keyword">if</span> (!(__offset &gt; <span class="number">0</span> &amp;&amp; __offset &lt; max_swap_offset)) &#123;    \</span><br><span class="line">                    panic(<span class="string">"invalid swap_entry_t = %08x.\n"</span>, entry);    \</span><br><span class="line">               &#125;                                                    \</span><br><span class="line">               __offset;                                            \</span><br><span class="line">          &#125;)</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>同时，不是所有物理页面都可以置换，例如内核关键代码和数据等等，所以在分配物理页时，需要对于那些可被置换的物理页执行<code>swap_map_swappable</code>函数，将该物理页加入到<code>mm_struct::sm_priv</code>指针所指向的双向链表中，换入和换出操作都会操作该链表（插入/移除<strong>可交换的已分配</strong>物理页）。</p>
+</li>
+<li>
+<p>数据结构<code>Page</code>和<code>vma_struct</code>分别用于管理物理页和虚拟页，其结构如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 用于描述某个虚拟页的结构</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">vma_struct</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">vm_mm</span>;</span> <span class="comment">// 管理该虚拟页的mm_struct</span></span><br><span class="line">    <span class="keyword">uintptr_t</span> vm_start;      <span class="comment">// 虚拟页起始地址，包括当前地址  </span></span><br><span class="line">    <span class="keyword">uintptr_t</span> vm_end;        <span class="comment">// 虚拟页终止地址，不包括当前地址（地址前闭后开）  </span></span><br><span class="line">    <span class="keyword">uint32_t</span> vm_flags;       <span class="comment">// 相关标志位</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> list_link;  <span class="comment">// 用于连接各个虚拟页的双向指针</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 数据结构Page相关成员的用途已在uCore-2中介绍过，这里只提它新增的两个成员pra_*</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Page</span> &#123;</span></span><br><span class="line">    <span class="keyword">int</span> ref;</span><br><span class="line">    <span class="keyword">uint32_t</span> flags;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> property;</span><br><span class="line">    <span class="keyword">list_entry_t</span> page_link;</span><br><span class="line">    <span class="keyword">list_entry_t</span> pra_page_link;     <span class="comment">// 用于连接上一个和下一个*可交换已分配*的物理页</span></span><br><span class="line">    <span class="keyword">uintptr_t</span> pra_vaddr;            <span class="comment">// 用于保存该物理页所对应的虚拟地址。</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>当分配某个虚拟页<code>vma_struct</code>时，程序会在<code>insert_vma_struct</code>函数中设置其<code>vm_mm</code>成员为某个<code>mm_struct</code>，这样便于后续的管理。</li>
+<li>在函数<code>pgdir_alloc_page</code>中，程序会设置<code>Page</code>的<code>pra_vaddr</code>成员，将其设置为当前物理页所对应的虚拟地址，之后便可通过<code>Page-&gt;pra_vaddr-&gt;pte</code>一条链，直接找到当前<strong>物理页</strong>地址所对应的PTE条目。同时，也可通过<code>pra_vaddr</code>来确定对应外存的相对偏移<code>page-&gt;pra_vaddr/PGSIZE+1</code>。</li>
+<li><code>Page::page_link</code>用于将空闲物理页连接至双向链表中，而<code>page::pra_page_link</code>用于将<strong>可交换的已分配</strong>物理页连接至另一个双向链表中，注意两者的用途是不同的。</li>
+</ul>
+</li>
+</ul>
+<h2 id="练习解答">练习解答</h2>
+<h3 id="1-练习0">1. 练习0</h3>
+<blockquote>
+<p><strong>填写已有实验</strong></p>
+</blockquote>
+<ul>
+<li>抄就对了。</li>
+</ul>
+<h3 id="2-练习1">2. 练习1</h3>
+<blockquote>
+<p><strong>给未被映射的地址映射上物理页</strong></p>
+<p>完成do_pgfault（mm/vmm.c）函数，给未被映射的地址映射上物理页。设置访问权限 的时候需要参考页面所在 VMA 的权限，同时需要注意映射物理页时需要操作内存控制 结构所指定的页表，而不是内核的页表。</p>
+</blockquote>
+<p>实验代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">do_pgfault</span><span class="params">(struct mm_struct *mm, <span class="keyword">uint32_t</span> error_code, <span class="keyword">uintptr_t</span> addr)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> ret = -E_INVAL;</span><br><span class="line">    <span class="comment">// 获取触发pgfault的虚拟地址所在虚拟页</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">vma_struct</span> *<span class="title">vma</span> = <span class="title">find_vma</span>(<span class="title">mm</span>, <span class="title">addr</span>);</span></span><br><span class="line"></span><br><span class="line">    pgfault_num++;</span><br><span class="line">    <span class="comment">// 如果当前访问的虚拟地址不在已经分配的虚拟页中</span></span><br><span class="line">    <span class="keyword">if</span> (vma == <span class="literal">NULL</span> || vma-&gt;vm_start &gt; addr) &#123;</span><br><span class="line">        cprintf(<span class="string">"not valid addr %x, and  can not find it in vma\n"</span>, addr);</span><br><span class="line">        <span class="keyword">goto</span> failed;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 检测错误代码。这里的检测不涉及特权判断。</span></span><br><span class="line">    <span class="keyword">switch</span> (error_code &amp; <span class="number">3</span>) &#123;</span><br><span class="line">    <span class="keyword">default</span>:</span><br><span class="line">        <span class="comment">// 写，同时存在物理页，则写时复制</span></span><br><span class="line">        <span class="comment">// 需要注意的是，default会执行case2的代码，也就是判断是否有写权限。</span></span><br><span class="line">    <span class="keyword">case</span> <span class="number">2</span>:</span><br><span class="line">        <span class="comment">// 读，同时不存在物理页</span></span><br><span class="line">        <span class="comment">// 同时如果当前操作是写入，但所在虚拟页不允许写入</span></span><br><span class="line">        <span class="keyword">if</span> (!(vma-&gt;vm_flags &amp; VM_WRITE)) &#123;</span><br><span class="line">            cprintf(<span class="string">"do_pgfault failed: error code flag = write AND not present, but the addr's vma cannot write\n"</span>);</span><br><span class="line">            <span class="keyword">goto</span> failed;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">1</span>: <span class="comment">/* error code flag : (W/R=0, P=1): read, present */</span></span><br><span class="line">        <span class="comment">// 读，同时存在物理页。那就不可能会调用page fault，肯定哪里有问题，直接failed</span></span><br><span class="line">        cprintf(<span class="string">"do_pgfault failed: error code flag = read AND present\n"</span>);</span><br><span class="line">        <span class="keyword">goto</span> failed;</span><br><span class="line">    <span class="keyword">case</span> <span class="number">0</span>: <span class="comment">/* error code flag : (W/R=0, P=0): read, not present */</span></span><br><span class="line">        <span class="comment">// 写，同时不存在物理页面</span></span><br><span class="line">        <span class="comment">// 如果当前操作是读取，但所在虚拟页不允许读取或执行</span></span><br><span class="line">        <span class="keyword">if</span> (!(vma-&gt;vm_flags &amp; (VM_READ | VM_EXEC))) &#123;</span><br><span class="line">            cprintf(<span class="string">"do_pgfault failed: error code flag = read AND not present, but the addr's vma cannot read or exec\n"</span>);</span><br><span class="line">            <span class="keyword">goto</span> failed;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 设置页表条目所对应的权限</span></span><br><span class="line">    <span class="keyword">uint32_t</span> perm = PTE_U;</span><br><span class="line">    <span class="keyword">if</span> (vma-&gt;vm_flags &amp; VM_WRITE) &#123;</span><br><span class="line">        perm |= PTE_W;</span><br><span class="line">    &#125;</span><br><span class="line">    addr = ROUNDDOWN(addr, PGSIZE);</span><br><span class="line">    ret = -E_NO_MEM;</span><br><span class="line">    <span class="keyword">pte_t</span> *ptep=<span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* LAB3 EXERCISE 1: YOUR CODE */</span></span><br><span class="line">    <span class="comment">// 查找当前虚拟地址所对应的页表项</span></span><br><span class="line">    <span class="keyword">if</span> ((ptep = get_pte(mm-&gt;pgdir, addr, <span class="number">1</span>)) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">        cprintf(<span class="string">"get_pte in do_pgfault failed\n"</span>);</span><br><span class="line">        <span class="keyword">goto</span> failed;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果这个页表项所对应的物理页不存在，则</span></span><br><span class="line">    <span class="keyword">if</span> (*ptep == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 分配一块物理页，并设置页表项</span></span><br><span class="line">        <span class="keyword">if</span> (pgdir_alloc_page(mm-&gt;pgdir, addr, perm) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            cprintf(<span class="string">"pgdir_alloc_page in do_pgfault failed\n"</span>);</span><br><span class="line">            <span class="keyword">goto</span> failed;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">/* LAB3 EXERCISE 2: YOUR CODE */</span></span><br><span class="line">        <span class="comment">// 如果这个页表项所对应的物理页存在，但不在内存中</span></span><br><span class="line">        <span class="comment">// 如果swap已经初始化完成</span></span><br><span class="line">        <span class="keyword">if</span>(swap_init_ok) &#123;</span><br><span class="line">            struct Page *page=<span class="literal">NULL</span>;</span><br><span class="line">            <span class="comment">// 将目标数据加载到某块新的物理页中。</span></span><br><span class="line">            <span class="comment">// 该物理页可能是尚未分配的物理页，也可能是从别的已分配物理页中取的</span></span><br><span class="line">            <span class="keyword">if</span> ((ret = swap_in(mm, addr, &amp;page)) != <span class="number">0</span>) &#123;</span><br><span class="line">                cprintf(<span class="string">"swap_in in do_pgfault failed\n"</span>);</span><br><span class="line">                <span class="keyword">goto</span> failed;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 将该物理页与对应的虚拟地址关联，同时设置页表。</span></span><br><span class="line">            page_insert(mm-&gt;pgdir, page, addr, perm);</span><br><span class="line">            <span class="comment">// 当前缺失的页已经加载回内存中，所以设置当前页为可swap。</span></span><br><span class="line">            swap_map_swappable(mm, addr, page, <span class="number">1</span>);</span><br><span class="line">            page-&gt;pra_vaddr = addr;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">else</span> &#123;</span><br><span class="line">            cprintf(<span class="string">"no swap_init_ok but ptep is %x, failed\n"</span>,*ptep);</span><br><span class="line">            <span class="keyword">goto</span> failed;</span><br><span class="line">        &#125;</span><br><span class="line">   &#125;</span><br><span class="line">   ret = <span class="number">0</span>;</span><br><span class="line">failed:</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>请描述页目录项（Page Directory Entry）和页表项（Page Table Entry）中组成部分对ucore实现页替换算法的潜在用处。
+<ul>
+<li>PTE结构与其标志位用途，请移步<a href="/2020/08/uCore-2#d-%E8%99%9A%E6%8B%9F%E9%A1%B5%E8%A1%A8%E7%BB%93%E6%9E%84">uCore Lab2 - 虚拟页表结构</a></li>
+</ul>
+</li>
+<li>如果ucore的缺页服务例程在执行过程中访问内存，出现了页访问异常，请问硬件要做哪些事情？
+<ul>
+<li>将发生错误的线性地址（虚拟地址）保存至CR2寄存器中。</li>
+<li>压入<code>EFLAGS</code>，<code>CS</code>, <code>EIP</code>，错误码和中断号至当前内核栈中。</li>
+<li>保存上下文。</li>
+<li>执行新的缺页中断程序。</li>
+<li>恢复上下文。</li>
+<li>继续执行上一级的缺页服务例程。</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-练习2">3. 练习2</h3>
+<blockquote>
+<p><strong>补充完成基于FIFO的页面替换算法</strong></p>
+<p>完成vmm.c中的do_pgfault函数，并且在实现FIFO算法的swap_fifo.c中完成map_swappable和swap_out_victim函数。</p>
+</blockquote>
+<ul>
+<li>
+<p><code>FIFO</code>中，当新加入一个物理页时，我们只需将该物理页加入至链表首部即可。当需要换出某个物理页时，选择链表末尾的物理页即可。</p>
+</li>
+<li>
+<p>相关实现如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">_fifo_map_swappable(struct mm_struct *mm, <span class="keyword">uintptr_t</span> addr, struct Page   *page, <span class="keyword">int</span> swap_in)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">list_entry_t</span> *head=(<span class="keyword">list_entry_t</span>*) mm-&gt;sm_priv;</span><br><span class="line">    <span class="keyword">list_entry_t</span> *entry=&amp;(page-&gt;pra_page_link);</span><br><span class="line"></span><br><span class="line">    assert(entry != <span class="literal">NULL</span> &amp;&amp; head != <span class="literal">NULL</span>);</span><br><span class="line">    <span class="comment">//record the page access situlation</span></span><br><span class="line">    <span class="comment">/*LAB3 EXERCISE 2: YOUR CODE*/</span></span><br><span class="line">    <span class="comment">//(1)link the most recent arrival page at the back of the pra_list_head qeueue.</span></span><br><span class="line">    list_add(head, entry);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">_fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, <span class="keyword">int</span> in_tick)</span><br><span class="line">&#123;</span><br><span class="line">     <span class="keyword">list_entry_t</span> *head=(<span class="keyword">list_entry_t</span>*) mm-&gt;sm_priv;</span><br><span class="line">         assert(head != <span class="literal">NULL</span>);</span><br><span class="line">     assert(in_tick==<span class="number">0</span>);</span><br><span class="line">     <span class="comment">/* Select the victim */</span></span><br><span class="line">     <span class="comment">/*LAB3 EXERCISE 2: YOUR CODE*/</span></span><br><span class="line">     <span class="comment">//(1)  unlink the  earliest arrival page in front of pra_list_head qeueue</span></span><br><span class="line">     <span class="comment">//(2)  assign the value of *ptr_page to the addr of this page</span></span><br><span class="line">     <span class="keyword">list_entry_t</span> *le = head-&gt;prev;</span><br><span class="line">     assert(head!=le);</span><br><span class="line">     <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">le2page</span>(<span class="title">le</span>, <span class="title">pra_page_link</span>);</span></span><br><span class="line">     list_del(le);</span><br><span class="line">     assert(p !=<span class="literal">NULL</span>);</span><br><span class="line">     *ptr_page = p;</span><br><span class="line"></span><br><span class="line">     <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>如果要在ucore上实现&quot;extended clock页替换算法&quot;请给你的设计方案，现有的swap_manager框架是否足以支持在ucore中实现此算法？如果是，请给你的设计方案。如果不是，请给出你的新的扩展和基此扩展的设计方案。并需要回答如下问题</p>
+<ul>
+<li>现有的swap_manager框架可以支持在ucore中实现此算法，具体见<strong>扩展练习1</strong>。</li>
+<li>需要被换出的页的特征是什么？
+<ul>
+<li><code>PTE_P</code>(Present)和<code>PTE_D</code>(Dirty)位均为0。</li>
+</ul>
+</li>
+<li>在ucore中如何判断具有这样特征的页？
+<ul>
+<li>获取线性地址所对应的页表项，之后使用位运算判断<code>PTE_P</code>和<code>PTE_D</code>。</li>
+</ul>
+</li>
+<li>何时进行换入和换出操作？
+<ul>
+<li>缺页时换入。</li>
+<li>物理页帧满时换出，不过需要注意dirtybit的处理。可以在修改dirty的时候写入外存，或者可以在最终要删除该物理页时再写入外存。后者有利于多个写操作的合并，降低缺页代价，但此时的页替换算法却退化成普通的clock算法，而不是extended clock算法了。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-扩展练习">4. 扩展练习</h3>
+<h4 id="Challenge-1">Challenge 1</h4>
+<blockquote>
+<p><strong>实现识别dirty bit的 extended clock页替换算法</strong></p>
+</blockquote>
+<ul>
+<li>
+<p>在<code>FIFO</code>的基础上，实现<code>swap_out_victim</code>函数即可。</p>
+</li>
+<li>
+<p>该函数中查找一块可用于换出的物理页，最多只需要遍历三次：</p>
+<ul>
+<li>第一次查找 !PTE_A &amp; !PTE_D，同时重置当前页的PTE_A，为第二次遍历的条件打基础</li>
+<li>第二次查找 !PTE_A &amp; !PTE_D， 同时重置当前页的PTE_D，为第三次遍历的条件打基础</li>
+<li>第三次查找，肯定能找到</li>
+</ul>
+</li>
+<li>
+<p>这里需要注意对于<code>PTE_D</code>的操作，若第一次、第二次遍历都找不到符合要求的物理页，则必须对<code>PTE_D</code>下手，重置该标志位。还有一点需要注意，在每次修改PTE标志位后，都需要重置TLB缓存。</p>
+</li>
+<li>
+<p><code>swap_out_victim</code>相关代码如下（偷了个小懒，每次遍历链表都是从头开始，同时其余函数沿用<code>FIFO</code>）：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">_extend_clock_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, <span class="keyword">int</span> in_tick)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">list_entry_t</span> *head=(<span class="keyword">list_entry_t</span>*) mm-&gt;sm_priv;</span><br><span class="line">        assert(head != <span class="literal">NULL</span>);</span><br><span class="line">    assert(in_tick==<span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 第一次查找 !PTE_A &amp; !PTE_D，同时重置当前页的PTE_A</span></span><br><span class="line">    <span class="comment">// 第二次查找 !PTE_A &amp; !PTE_D， 同时重置当前页的PTE_D</span></span><br><span class="line">    <span class="comment">// 第三次查找，肯定能找到</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; <span class="number">3</span>; i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">list_entry_t</span> *le = head-&gt;prev;</span><br><span class="line">        assert(head!=le);</span><br><span class="line">        <span class="keyword">while</span>(le != head)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">le2page</span>(<span class="title">le</span>, <span class="title">pra_page_link</span>);</span></span><br><span class="line">            <span class="keyword">pte_t</span>* ptep = get_pte(mm-&gt;pgdir, p-&gt;pra_vaddr, <span class="number">0</span>);</span><br><span class="line">            <span class="comment">// 如果满足未使用未修改这两个条件，则直接分配</span></span><br><span class="line">            <span class="keyword">if</span>(!(*ptep &amp; PTE_A) &amp;&amp; !(*ptep &amp; PTE_D))</span><br><span class="line">            &#123;</span><br><span class="line">                list_del(le);</span><br><span class="line">                assert(p !=<span class="literal">NULL</span>);</span><br><span class="line">                *ptr_page = p;</span><br><span class="line">                <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 如果在第一次查找中，访问到了一个已经使用过的PTE，则标记为未使用。</span></span><br><span class="line">            <span class="keyword">if</span>(i == <span class="number">0</span>)</span><br><span class="line">                *ptep &amp;= ~PTE_A;</span><br><span class="line">            <span class="comment">// 如果在第二次查找中，访问到了一个已修改过的PTE，则标记为未修改。</span></span><br><span class="line">            <span class="keyword">else</span> <span class="keyword">if</span>(i == <span class="number">1</span>)</span><br><span class="line">                *ptep &amp;= ~PTE_D;</span><br><span class="line"></span><br><span class="line">            le = le-&gt;prev;</span><br><span class="line">            <span class="comment">// 遍历了一回，肯定修改了标志位，所以要刷新TLB</span></span><br><span class="line">            tlb_invalidate(mm-&gt;pgdir, le);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 按照前面的assert与if，不可能会执行到此处，所以return -1</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">swap_manager</span> <span class="title">swap_manager_fifo</span> =</span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">     .name            = <span class="string">"extend_clock swap manager"</span>,</span><br><span class="line">     .init            = &amp;_fifo_init,</span><br><span class="line">     .init_mm         = &amp;_fifo_init_mm,</span><br><span class="line">     .tick_event      = &amp;_fifo_tick_event,</span><br><span class="line">     .map_swappable   = &amp;_fifo_map_swappable,</span><br><span class="line">     .set_unswappable = &amp;_fifo_set_unswappable,</span><br><span class="line">     .swap_out_victim = &amp;_extend_clock_swap_out_victim,</span><br><span class="line">     .check_swap      = &amp;_fifo_check_swap,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="Challenge-2">Challenge 2</h4>
+<blockquote>
+<p><strong>实现不考虑实现开销和效率的LRU页替换算法</strong></p>
+</blockquote>
+<p>遇到了一个较为麻烦的问题：如何在正常访问内存时设置<code>swap_manager</code>中相关链表上物理页的LRU，留坑…</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/08/uCore-3/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/08/uCore-4/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab4
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/08/uCore-2/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab2</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

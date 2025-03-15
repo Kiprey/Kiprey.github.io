@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CSAPP, 笔记,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CSAPP笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-csapp"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CSAPP笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/07/csapp/" class="article-date">
+  <time datetime="2020-07-26T03:12:44.000Z" itemprop="datePublished">2020-07-26</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">9.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">35 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里存放着一点笔者阅读CSAPP所记录的笔记</li>
+<li>由于CSAPP内容众多，这里只记录了一些笔者学习的主要点</li>
+<li>根据笔者的进度，持续更新。单次更新随缘记录。</li>
+</ul>
+<a id="more"></a>
+<h2 id="一、-计算机系统漫游">一、 计算机系统漫游</h2>
+<ul>
+<li>在计算机世界中，<strong>信息</strong> 就是位(bit) + 上下文。在不同的上下文中，其数据也会表示出不同的意思。<br>
+例如：
+<ul>
+<li>在一串数字中，0x90表示154</li>
+<li>在一串机器码中，0x90表示nop指令</li>
+<li>在 一串字符串中，0x90表示一个特殊的字符</li>
+</ul>
+</li>
+<li>代码语言可以被其他程序翻译为不同的格式。以C语言为例，其中可以分为如下几个阶段
+<ul>
+<li><strong>预处理阶段</strong>。 预处理器(cpp)根据<code>#</code>开头的预处理命令，插入或隐藏部分代码。修改后的源代码以<code>.i</code>为后缀</li>
+<li><strong>编译阶段</strong>。编译器(ccl)将<code>.i</code>文件编译为汇编代码<code>.s</code>文件</li>
+<li><strong>汇编阶段</strong>。汇编器(as)读取<code>.s</code>文件并将其转换为机器语言指令，打包生成一种<em>可重定位目标指令</em>的格式，并将其保存在<code>.o</code>文件中。</li>
+<li><strong>链接阶段</strong>。有些<code>.o</code>文件调用了某个库函数，但这个库函数的实现在另一个<code>.o</code>文件中。因此链接器(ld)需要将各种<code>.o</code>文件链接，最终生成可执行文件。</li>
+</ul>
+</li>
+<li>系统的硬件由以下几个部件组成
+<ul>
+<li>总线</li>
+<li>I/O设备</li>
+<li>主存</li>
+<li>处理器(CPU)
+<ul>
+<li>处理器执行的操作会围绕寄存器文件(register file)和算术/逻辑单元(ALU)进行。</li>
+<li>处理器在指令的要求下可能会执行<em>加载、存储、操作、跳转</em>等操作</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>处理器的运行速度很快，但数据从主存运送到CPU里却相当的慢。这其中速度可能相差百倍以上，大大拖累了CPU的速度。<br>
+针对这种处理器与主存之间的差异，系统设计者引入了更小更快的存储设备——<em>高速缓存存储器</em>(cache)，这其中利用了高速缓存的<em>局部性原理</em>。</li>
+<li>操作系统管理硬件
+<ul>
+<li>我们可以将做操系统看成是应用程序和硬件之间插入的一层软件，所有应用程序对硬件的操作尝试都必须通过操作系统。</li>
+<li>操作系统的基本功能
+<ul>
+<li>防止硬件被失控的应用程序滥用。</li>
+<li>向应用程序提供简单一致的机制来控制复杂而又通常大不相同的低级硬件设备。</li>
+</ul>
+</li>
+<li>文件是对I/O设备的抽象表示，虚拟内存是对主存和磁盘I/O设备的抽象表示。进程则是对处理器、主存和I/O设备的抽象表示。</li>
+<li><strong>进程</strong>
+<ul>
+<li>进程是操作系统对一个正在运行的程序的一种抽象。而<em>并发运行</em>，则是一个进程的指令和另一个进程的指令交错进行。</li>
+<li>操作系统实现这种进程交错指令的机制称为<em>上下文切换</em>。<em>上下文</em>是操作系统保持跟踪进程运行所需的所有状态信息。</li>
+</ul>
+</li>
+<li><strong>线程</strong>
+<ul>
+<li>一个进程实际上可以由多个称为<em>线程</em>的执行单位组成</li>
+<li>每个线程都运行在进程的上下文中，并共享同样代码和全局数据。</li>
+<li>多线程之间比多进程之间更容易共享数据。线程一般来说也比进程更高效。</li>
+</ul>
+</li>
+<li><strong>虚拟内存</strong>
+<ul>
+<li>虚拟内存为每个进程提供了一个假象——即每个继承都在独占地使用主存。每个进程看到的内存都是一致的，称为<em>虚拟地址空间</em>。</li>
+<li>虚拟内存的布局从低地址到高地址，分别为
+<ul>
+<li>程序代码和数据。其中的数据包括全局变量与只读变量（例如字符串）</li>
+<li>堆内存。当调用内存分配或释放函数时。对可以在运行时动态地扩展和收缩。</li>
+<li>共享库。地址中间部分是一块用来存放像C标准库和数学库这样地共享库代码和数据的区域。</li>
+<li>栈内存。位于用户虚拟地址空间顶部的是用户栈，编译器用它来实现函数调用。</li>
+<li>内核虚拟内存。地址空间最顶部的区域是为内核保留的。不允许应用程序读/写/执行这个区域的内容。应用程序只能调用内核来执行这些操作。<br>
+<img src="/2020/07/csapp/chapters1_vm.png" alt="img"></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="二、-信息的表示和处理">二、 信息的表示和处理</h2>
+<h3 id="1-字节顺序">1) 字节顺序</h3>
+<ul>
+<li>字节顺序分为<em>大端序</em>(big-endian)和<em>小端序</em>(liggle-endian)。大多数机器使用的都是小端序。<br>
+<img src="/2020/07/csapp/chapters2_endian.png" alt="img"></li>
+</ul>
+<h3 id="2-补码-two’s-complement">2) 补码(two’s complement)</h3>
+<ul>
+<li>
+<p>为了在正数的基础上实现负数的表达，将数据的最高位设置为符号位。当符号位为0时，当前数据表示为正数；当符号位为1时，当前数据表示为负数。</p>
+</li>
+<li>
+<p>故以32位int类型为例，其正数范围为<code>0x00000001 ~ 0x7fffffff</code>；负数范围为<code>0x80000000~0xffffffff</code>.取值范围为<code>-2147483648~2147483647</code>.</p>
+</li>
+<li>
+<p>取值范围不是对称的，负数的范围比正数的范围大一。故在int类型中，不是所有的负数都存在其相反数。例如以下例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>(-INT_MIN == INT_MIN)</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"This meassages will always be printed."</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>INT_MIN == -2147483648</code>，故<code>-INT_MIN == 2147483648 == INT_MAX + 1</code>，<code>-INT_MIN</code>范围超过int最大值，造成上溢，故最后的值还是<code>INT_MIN</code>，即<code>-INT_MIN == INT_MIN</code>。</p>
+</li>
+</ul>
+<h3 id="3-有符号整数和无符号整数">3) 有符号整数和无符号整数</h3>
+<ul>
+<li>
+<p>通过强制类型转换来转换无符号/有符号类型，其数据的<strong>位值不变</strong>，但改变了<strong>解释这些位的方式</strong>。</p>
+</li>
+<li>
+<p>需要注意的是，尽量避免无符号/有符号类型的混用，因为这样可能会进行隐式类型转换，造成非预期的错误。例如以下漏洞代码</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> KSIZE 1024</span></span><br><span class="line"><span class="keyword">char</span> kbuf[KSIZE];</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">memcpy</span><span class="params">(<span class="keyword">void</span> *dest, <span class="keyword">void</span>*src, <span class="keyword">size_t</span> n)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">copy_from_kernel</span><span class="params">(<span class="keyword">void</span>* user_dest, <span class="keyword">int</span> maxlen)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">int</span> len = KSIZE &lt; maxlen ? KSIZE : maxlen;</span><br><span class="line">  <span class="built_in">memcpy</span>(user_dest, kbuf, len);</span><br><span class="line">  <span class="keyword">return</span> len;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>当程度调用<code>copy_from_kernel</code>函数所传入的<code>maxlen</code>参数为负数时，由于隐式类型转换，最终<code>memcpy</code>里的参数<code>n</code>会是一个非常大的无符号整数，这将使程序读取到它没有被被授权的内核内存区域。</p>
+</li>
+</ul>
+<h3 id="4-IEEE浮点表示">4) IEEE浮点表示</h3>
+<ul>
+<li>
+<p>二进制小数表示的例子: $0.0011_2 = 0.1875_{10}$</p>
+<ul>
+<li>$0.0011_2 = 0\times0.1_2 + 0\times0.01_2 + 1\times0.001_2 + 1\times0.0001_2$</li>
+<li>$0.1875_{10} = 0\times0.5_{10} + 0\times0.25_{10} + 1\times0.125_{10} + 1\times0.0625_{10}$</li>
+<li>二进制与十进制之间的关系是一一对应的</li>
+</ul>
+</li>
+<li>
+<p>IEEE浮点标准用$V=(-1)^s\times M\times2^E$的形式来表示一个浮点数：</p>
+<ul>
+<li>符号(sign)，$s$决定这数是正数还是负数。</li>
+<li>尾数(significand)，M是一个二进制小数。</li>
+<li>阶码(exponent)， $E$的左右就是为浮点数加权，这个权重是$2^E$（阶码可为负）</li>
+</ul>
+</li>
+<li>
+<p>浮点数的位级表示方式</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">float</span>:</span><br><span class="line">位序号：   <span class="number">31</span> | <span class="number">30</span>           <span class="number">23</span> | <span class="number">22</span>                           <span class="number">0</span> |</span><br><span class="line">        +-------------------------------------------------------+</span><br><span class="line">位表示： |  s |     <span class="built_in">exp</span>         |       frac                     |</span><br><span class="line">        +-------------------------------------------------------+</span><br><span class="line"></span><br><span class="line"><span class="keyword">double</span>:</span><br><span class="line">位序号：   <span class="number">63</span> | <span class="number">62</span>    <span class="number">52</span> | <span class="number">51</span>                                  <span class="number">0</span> |</span><br><span class="line">        +-------------------------------------------------------+</span><br><span class="line">位表示： |  s |     <span class="built_in">exp</span>  |                frac                   |</span><br><span class="line">        +-------------------------------------------------------+</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>浮点数中的阶码并非真正的$2^{exp}$，而是需要减去一个偏移。该偏移为$offset = 2^{n-1} - 1$，其中n为阶码位数。</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// float类型</span></span><br><span class="line"><span class="keyword">int</span> offset = <span class="built_in">pow</span>(<span class="number">2</span>, <span class="number">7</span>) - <span class="number">1</span>;</span><br><span class="line"><span class="keyword">int</span> trueExp = <span class="built_in">exp</span> - offset;</span><br></pre></td></tr></table></figure>
+<p>真正的阶码为$2^{exp-offset}$</p>
+</li>
+<li>
+<p>浮点数编码的值有4钟不同的情况</p>
+<ul>
+<li><strong>规格化</strong> 的。exp != 0 &amp;&amp; exp != 255</li>
+<li><strong>非规格化</strong> 的。exp == 0</li>
+<li>特殊情况
+<ol>
+<li><strong>无穷大</strong> 。exp == 255 &amp;&amp; frac == 0</li>
+<li><strong>NaN</strong> 。exp == 255 &amp;&amp; frac != 0<br>
+<img src="/2020/07/csapp/chapters2_ieee_float_example.png" alt="img"></li>
+</ol>
+</li>
+</ul>
+</li>
+<li>
+<p>尽管浮点数可表达的范围较大，但当浮点数越来越大时，其精度会越来越小；当浮点数越来越小时，其精度也会越来越大。不管精度如何变化，这其中始终存在一个范围。</p>
+<blockquote>
+<p>浮点数无法精确表示所有的小数。大多数小数都只能近似表示，例如0.1表示为0.100000001。<br>
+浮点数也无法精确表示超大整数。超大整数的表示可能会丢失一些精度，例如表示的整数与预期值相差1等等。<br>
+<img src="/2020/07/csapp/chapters2_ieee_range.png" alt="img"></p>
+</blockquote>
+</li>
+<li>
+<p>float类型最好不要与double类型的数据进行比较，否则会产生一些奇怪的错误，例如以下代码</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">float</span> a = <span class="number">0.1</span>;</span><br><span class="line"><span class="keyword">double</span> b = <span class="number">0.1</span>;</span><br><span class="line"><span class="keyword">if</span> (a == b)</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"1"</span>;</span><br><span class="line"><span class="keyword">if</span> (a == (<span class="keyword">float</span>)b)</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"2"</span>;</span><br><span class="line"><span class="keyword">if</span> ((<span class="keyword">double</span>)a == b)</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"3"</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 只输出 2</span></span><br></pre></td></tr></table></figure>
+<p>当两个浮点数进行比较时，程序会自动将某个浮点数的类型转换成与另一个浮点数相同的类型，并比较其位级表示。 这段代码已经可以验证浮点数的不精确性。</p>
+</li>
+</ul>
+<h2 id="三、-程序的机器级表示">三、 程序的机器级表示</h2>
+<blockquote>
+<p>常用的汇编指令暂且不表，这里只记录一些特殊的指令</p>
+</blockquote>
+<h3 id="1-用条件传送来实现条件分支">1) 用条件传送来实现条件分支</h3>
+<ul>
+<li>
+<p>实现条件操作的传统方法是通过使用<em>控制</em>的条件转移，例如各类跳转指令。这种机制十分简单而通用。但在现代处理器上，它可能会非常低效。</p>
+<blockquote>
+<p>原因是现代处理器使用流水线方式来执行指令。<br>
+遇到条件跳转指令时，CPU会预判一条执行路径并将该路径上的指令装载进CPU里。<br>
+倘如预判失败，则必须清空流水线上的错误指令，而该操作会消耗大量时间，代价十分高昂。</p>
+</blockquote>
+</li>
+<li>
+<p>一种替代策略是使用数据的条件转移。这种方法计算一个条件操作的两种结果，然后根据条件是否满足从中选取一个。如果这种策略在某些情况下可行，则只需用一条简单的条件传送指令来实现。例如以下代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 原始C代码</span></span><br><span class="line"><span class="keyword">if</span>(a &gt; b)</span><br><span class="line">  a = b;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 条件转移实现条件分支</span></span><br><span class="line"><span class="comment">// %rdi: a, %rsi: b</span></span><br><span class="line">  test %rdi, %rsi</span><br><span class="line">  jle nextInst</span><br><span class="line">  mov %rdi, %rsi</span><br><span class="line">nextInst:</span><br><span class="line">  ...</span><br><span class="line"></span><br><span class="line"><span class="comment">// 条件传送实现条件分支</span></span><br><span class="line"><span class="comment">// %rdi: a, %rsi: b</span></span><br><span class="line">  test %rdi, %rsi</span><br><span class="line">  <span class="comment">// 当 %rdi &gt; %rsi时，将%rsi中的数据拷贝至%rdi中</span></span><br><span class="line">  cmovg %rdi, %rsi</span><br><span class="line">  ...</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="2-浮点代码">2) 浮点代码</h3>
+<ul>
+<li>浮点数所使用的寄存器与整型所使用的<code>%rdi,%rsi...</code>不同，它们分别是<code>%ymm0~ymm15</code>，每个<code>%ymmX</code>寄存器可以保存32字节。其中<code>%xmmX</code>寄存器是<code>%ymmX</code>寄存器的低16<strong>字节</strong>。</li>
+</ul>
+<blockquote>
+<p>由于浮点数指令使用频率较低，暂且不表</p>
+</blockquote>
+<h2 id="四、-处理器体系结构">四、 处理器体系结构</h2>
+<blockquote>
+<p>该章节中，作者定义了一个简单的<code>Y86</code>指令集用于学习，以下笔记均以<code>Y86</code>指令集为基础进行记录。<br>
+需要注意的是，尽管书上使用<code>Y86</code>指令集进行讲解，我们仍可通过该指令集来探究现代指令集。</p>
+</blockquote>
+<ul>
+<li>一个处理器支持的指令和指令的字节级编码，称为<em>指令集体系结构</em>(Instruction-Set Architecture, ISA)。</li>
+</ul>
+<h3 id="1-程序员可见状态">1) 程序员可见状态</h3>
+<ul>
+<li>程序中的每条指令都会读取或修改处理器状态的某些部分，这成为<em>程序员可见状态</em>
+<blockquote>
+<p>这里的<em>程序员</em>，既可以是用汇编代码写程序的人，也可以是产生机器级代码的编译器。</p>
+</blockquote>
+</li>
+<li><em>可见状态</em>包括：
+<ul>
+<li>RF: 程序寄存器</li>
+<li>CC: 条件码</li>
+<li>Stat: 程序状态。状态码指明程序是否运行正常或发生某个特殊事件。</li>
+<li>DMEM: 内存</li>
+<li>PC: 程序计数器</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-指令编码">2) 指令编码</h3>
+<ul>
+<li>
+<p>每条指令需要1~10个字节不等。其中</p>
+</li>
+<li>
+<p>每条指令的第一个字节表明指示的类型。其中高4位是<em>代码</em>(code)部分，低4位是<em>功能</em>(function)部分。</p>
+<blockquote>
+<p>功能值只有在一组相关指令共用一个代码时才有用。</p>
+</blockquote>
+<p>以下是部分指令的具体字节编码</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">注：方括号中的数据，是指令第一个字节的十六进制表示</span><br><span class="line"></span><br><span class="line">整数操作指令    分支指令                    传送指令</span><br><span class="line">addq [60]     jmp [70]  jne [74]    rrmovq [20] cmovne [24]</span><br><span class="line">subq [61]     jle [71]  jge [75]    cmovle [21] cmovge [25]</span><br><span class="line">andq [62]     jl  [72]  jg  [76]    cmovl  [22] cmovg  [26]</span><br><span class="line">xorq [63]     je  [73]              cmove  [23]</span><br></pre></td></tr></table></figure>
+<p>以上面的例子为例，<code>rrmovq</code>指令与条件传送有同样的指令代码，可以把它看作是一个“无条件传送”。</p>
+</li>
+<li>
+<p>指令的长度与指令功能相关，有些需要操作数的指令编码就更长一点。</p>
+<ul>
+<li>可能有附加的<em>寄存器指示符字节</em>(register specifier byte)，用于指定1~2个寄存器。</li>
+<li>有些指令需要一个附加的<em>常数 字</em>(constant word)。这个立即数成为指令的某个操作数.
+<blockquote>
+<p>例如<code>irmovq $1, %rax</code>。<br>
+<img src="/2020/07/csapp/chapters4_y86_isa.png" alt="img"></p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-异常">3) 异常</h3>
+<ul>
+<li>在现代处理器中，当某些代码发生了某种类型的<strong>异常</strong>(exception)，此时处理器会执行异常处理程序。如果程序员没有手动设置异常处理程序，则CPU会执行默认的处理程序。
+<blockquote>
+<p>大多数情况下默认的处理程序只会简单的关闭程序。</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="4-SEQ阶段">4) SEQ阶段</h3>
+<p><img src="/2020/07/csapp/chapters4_y86_graph.png" alt="img"></p>
+<blockquote>
+<p>详细细节请翻阅CSAPP第三版第277页，这里只是简单概述</p>
+</blockquote>
+<ul>
+<li>取指阶段
+<ul>
+<li>以PC作为第一个字节的地址，指令内存硬件单元会一次从内存中读出10个字节。并将第一个字节分割成两个4位的数，用于计算指令和功能码。</li>
+<li>PC增加硬件单元会根据当前PC以及CPU内的信号来生成下一条指令的PC。<br>
+$new PC = old PC + 1 + r + 8i$（$r$为当前指令是否需要寄存器指示字节，$i$为需要的常数字节数）
+<blockquote>
+<p>注意，此时只是计算，还没有设置下一条的PC<br>
+<img src="/2020/07/csapp/chapters4_y86_fetch.png" alt="img"></p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>译码和写回阶段
+<ul>
+<li>寄存器文件有两个读端口A和B，从这两个端口同时读取寄存器值valA和valB<br>
+<img src="/2020/07/csapp/chapters4_y86_translate.png" alt="img"></li>
+</ul>
+</li>
+<li>执行阶段
+<ul>
+<li>执行阶段包括ALU，该单元更具<code>alufun</code>信号的设置，对输入的<code>aluA</code>、<code>aluB</code>执行特定操作。</li>
+<li>指令阶段还包括条件码寄存器。每次运行时，ALU都会产生三个与条件码相关的信号——零、符号、溢出。</li>
+<li>标号为<code>cond</code>的硬件单元会根据条件码和功能码来确定是否进行条件分支或条件数据传送。<br>
+<img src="/2020/07/csapp/chapters4_y86_exec.png" alt="img"></li>
+</ul>
+</li>
+<li>访存阶段
+<ul>
+<li>该阶段的任务为读写程序数据。读写的对象除了主存以外，还包括寄存器文件<br>
+<img src="/2020/07/csapp/chapters4_y86_visitM.png" alt="img"></li>
+</ul>
+</li>
+<li>更新PC阶段
+<ul>
+<li>根据指令的类型以及是否选择分支来设置新的PC。如果没有跳转，则使用取指阶段计算出的新PC值。<br>
+<img src="/2020/07/csapp/chapters4_y86_updatePC.png" alt="img"></li>
+</ul>
+</li>
+</ul>
+<h3 id="5-流水线">5) 流水线</h3>
+<h4 id="a-流水线冒险">a. 流水线冒险</h4>
+<ul>
+<li>
+<p>将流水线技术引入一个待反馈的系统，当相邻指令间存在相关时会导致问题。</p>
+<blockquote>
+<p>这里的<em>相关</em>有两种形式：<br>
+1.数据相关。下一条指令会用到当前指令计算出的结果。<br>
+2.控制相关。一条指令要确定下一条指令的位置。</p>
+</blockquote>
+<p>这些相关可能会导致流水线产生计算错误，称为冒险(hazard)。其中也分为<em>数据冒险</em>和<em>控制冒险</em>。</p>
+</li>
+<li>
+<p>避免冒险的方式</p>
+<ul>
+<li>暂停(stalling)。暂停技术阻塞一组指令在它们所处的阶段，而允许其他指令继续通过流水线，直到冒险条件不再满足。其处理方法为：每次要阻塞一条指令在译码阶段，就在指令阶段插入一个气泡（bubble）。气泡类似nop指令，不会更改寄存器、内存、条件码与程序状态。<br>
+<img src="/2020/07/csapp/chapters4_pipelin_bubble.png" alt="img"></li>
+<li>转发(formarding)。将结果值直接从一个流水线阶段传到较早阶段的技术称为数据转发，也称旁路(bypassing)。<br>
+<img src="/2020/07/csapp/chapters4_pipelin_forward.png" alt="img"></li>
+</ul>
+</li>
+<li>
+<p>为了提高CPU的运行速度，应尽量避免流水线冒险</p>
+</li>
+</ul>
+<h2 id="五、-优化程序性能">五、 优化程序性能</h2>
+<h3 id="1-代码移动">1) 代码移动</h3>
+<p>将循环不变量从循环中提出。例如以下操作</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 优化前</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; <span class="built_in">strlen</span>(str); i++)</span><br><span class="line">  Statements;</span><br><span class="line"><span class="comment">// 优化后</span></span><br><span class="line"><span class="keyword">size_t</span> str_len = <span class="built_in">strlen</span>(str);</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; str_len; i++)</span><br><span class="line">  Statements;</span><br></pre></td></tr></table></figure>
+<p>上面的例子中，未优化版本在某些情况下，其时间复杂度可达到$O(N^2)$级别！改进后的时间复杂度只有$O(N)$。</p>
+<h3 id="2-消除不必要的内存引用">2) 消除不必要的内存引用</h3>
+<p>减少不必要的内存读/写以获得更高的执行速度。</p>
+<h3 id="3-理解现代处理器">3) 理解现代处理器</h3>
+<p>现代处理器使用流水线机制，同时搭配高速缓存内存以达到更高的速度。避免流水线暂停或cache中数据未命中，可以让CPU尽可能地发挥出全部性能。</p>
+<h3 id="4-循环展开">4) 循环展开</h3>
+<ul>
+<li>
+<p>循环展开是一种程序变换，通过增加每次迭代计算的元素数量，减少循环的迭代次数。</p>
+</li>
+<li>
+<p>例子：</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 循环展开前</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; lmits; i++)</span><br><span class="line">  acc0 = acc0 OP data[i];</span><br><span class="line"></span><br><span class="line"><span class="comment">// 循环展开后</span></span><br><span class="line"><span class="keyword">int</span> limits = length - n;</span><br><span class="line"><span class="keyword">int</span> i;</span><br><span class="line"><span class="keyword">for</span>(i = <span class="number">0</span>; i &lt; lmits; i += <span class="number">2</span>)</span><br><span class="line">&#123;</span><br><span class="line">  acc0 = acc0 OP data[i];</span><br><span class="line">  acc0 = acc0 OP data[i+<span class="number">1</span>];</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">for</span>(; i &lt; length; i ++)</span><br><span class="line">  acc0 = acc0 OP data[i];</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="5-多个累计变量">5) 多个累计变量</h3>
+<ul>
+<li>
+<p>对于一个可结合或可交换的合并运算，我们可以通过将一组合并运算分割成两个或更多的部分，并在最后合并结果来提高性能。</p>
+</li>
+<li>
+<p>例子</p>
+<blockquote>
+<p>该例子还运用了循环展开技术。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> limits = length - n;</span><br><span class="line"><span class="keyword">int</span> i;</span><br><span class="line"><span class="keyword">for</span>(i = <span class="number">0</span>; i &lt; lmits; i += <span class="number">2</span>)</span><br><span class="line">&#123;</span><br><span class="line">  acc0 = acc0 OP data[i];</span><br><span class="line">  acc1 = acc0 OP data[i+<span class="number">1</span>];</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">for</span>(; i &lt; length; i ++)</span><br><span class="line">  acc0 = acc0 OP data[i];</span><br><span class="line"><span class="keyword">int</span> total = acc0 + acc1;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="六、-存储器层次结构">六、 存储器层次结构</h2>
+<h3 id="1-局部性">1) 局部性</h3>
+<ul>
+<li>一个编写良好的计算机程序常常具有良好的<em>局部性</em>(locality)。</li>
+<li>程序倾向于引用邻近于其他最近引用过的数据项的数据项，或者最近引用过的数据项本身。这种倾向性，被称为<em>局部性原理</em>(principle of locality)。</li>
+<li>局部性通常由两种不同的形式，分别为<em>时间局部性</em>和<em>空间局部性</em>
+<ul>
+<li>时间局部性：被引用过的一次的内存位置很可能在不远的将来被多次引用。</li>
+<li>空间局部性：如果一个内存位置被引用了一次，那么程序很可能在不远处的将来引用附近的一个内存位置。</li>
+</ul>
+</li>
+<li>有良好局部性的程序比局部性差的程序运行的更快。</li>
+</ul>
+<h3 id="2-高速缓存存储器">2) 高速缓存存储器</h3>
+<ul>
+<li>Cache是一种小容量高速缓冲存储器，它由SRAM组成，其直接制作在CPU芯片内，速度几乎与CPU一样快。</li>
+<li>程序运行时，CPU使用的一部分数据/指令会预先成批拷贝在Cache中，当CPU需要从内存读/写数据或指令时，先检查Cache，若有，就直接从Cache中读取，而不用访问主存储器。</li>
+<li>由于程序访问的局部性特征，大多数情况下CPU可以直接从这个高速缓存中取得指令和数据，不必再访问主存。这大大提高了访存速度。</li>
+<li>Cache的通用组织<br>
+<img src="/2020/07/csapp/chapter6_cache.png" alt="img"></li>
+<li>有效位
+<ul>
+<li>有效位为0时表示信息无效，为1表示信息有效</li>
+<li>开机或复位时，所有高速缓存行的有效位V = 0</li>
+<li>某行被替换后使其为1</li>
+<li>某行被装入新快后使其为1</li>
+<li>通过使V=0冲刷Cache（例如：进程切换）
+<blockquote>
+<p>“Cache冲刷”指令为操作系统所使用，对操作系统程序员不是透明的。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="a-直接映射高速缓存">a. 直接映射高速缓存</h4>
+<ul>
+<li>每个组只有一行的高速缓存称为<em>直接映射</em>高速缓存(direct-mapped cache)<br>
+<img src="/2020/07/csapp/chapter6_directMap-cache.png" alt="img"></li>
+<li>高速缓存请求数据的流程
+<ul>
+<li>组选择：从主存地址中的特定偏移处抽取s个组索引，这些位被解释成一个对应的无符号整数高速缓存组号。<br>
+<img src="/2020/07/csapp/chapter6_directMap-cache_group.png" alt="img"></li>
+<li>行匹配：直接映射高速缓存中每组只有一个高速缓存行。如果当前行的有效位已经设置，并且标记(tag)匹配，则缓存命中。</li>
+<li>字选择：根据后b位的块内偏移来获取所需的字<br>
+<img src="/2020/07/csapp/chapter6_directMap-cache_line.png" alt="img"></li>
+<li>行替换：如果缓存不命中，则需要从下一级存储层次结构中取出请求的块，并驱逐并替换高速缓存行。</li>
+</ul>
+</li>
+<li>优点：唯一映射；命中时间小</li>
+<li>缺点：缺失率高；关联度低</li>
+</ul>
+<h4 id="b-全相联高速缓存">b. 全相联高速缓存</h4>
+<ul>
+<li><em>全相联高速缓存</em>（fully associative cache）是由一个包含所有高速缓存行的组组成的。</li>
+<li>全相联高速缓存的结构较为简单<br>
+<img src="/2020/07/csapp/chapter6_fullMap-cache.png" alt="img"></li>
+<li>全相联高速缓存中的行匹配和字选择与上述的类似，组只有一行所以默认只选择组0。<br>
+<img src="/2020/07/csapp/chapter6_fullMap-cache_found.png" alt="img"></li>
+<li>由于全相联高速缓存电路必须并行搜索许多相匹配的标记，构成一个又大又快的相联高速缓存十分困难，而且造价昂贵。因此全相联高速缓存只适合做小的高速缓存。
+<blockquote>
+<p>例如虚拟内存系统中的翻译备用缓冲器，该部件用于缓存页表项。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="c-组相联高速缓存">c. 组相联高速缓存</h4>
+<ul>
+<li><em>组相联高速缓存</em>（set associative cache）是上述两种高速缓存的结合体。下图是它的结构<br>
+<img src="/2020/07/csapp/chapter6_setMapCache.png" alt="img"></li>
+<li>组相联高速缓存的组匹配<br>
+<img src="/2020/07/csapp/chapter6_setMapCache_group.png" alt="img"></li>
+<li>组相联高速缓存的行匹配与字选择<br>
+<img src="/2020/07/csapp/chapter6_setMapCache_line.png" alt="img"></li>
+<li>组相联高速缓存的不命中。
+<ul>
+<li>当数据不命中时，需要替换该组中的某一行。其常用的替换算法有：
+<ul>
+<li>随机替换算法（rand）</li>
+<li>先进先出算法（FIFO）</li>
+<li>最近最少用LRU（least-recently used）</li>
+<li>最不经常用LFU（least-frequently used）</li>
+</ul>
+</li>
+<li>以LRU算法为例。LRU是一种栈算法，它的命中率随组的增大而提高。<br>
+LRU具体实现时，通过给每个cache行设定一个计数器，根据计数值来记录主存块的使用情况。
+<blockquote>
+<p>这个计数值称为<strong>LRU位</strong><br>
+当CPU访问了Cache时，每个Cache行的LRU位均递增。在下一次数据未命中时，操作系统通过比较特定组内的LRU位，选出最近最少用的Cache行，驱逐并重新加载数据。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="d-写策略">d. 写策略</h4>
+<ul>
+<li>必须保持Cache中的数据和主存中数据一致，否则会出现Cache一致性问题。
+<blockquote>
+<p>例如当多个设备都允许访问主存，或多个CPU都带有各自的Cache而共享主存时</p>
+</blockquote>
+</li>
+<li>写操作有两种情况
+<ul>
+<li>写命中（Write Hit）：要写的单元已经在Cache中
+<ul>
+<li>直写（Write Through）: 同时写Cache和主存单元。（速度十分缓慢）</li>
+<li>回写（Write Back）: 只写Cache不写主存，缺失时一次写回，每行有个修改位（dirty bit, 脏位），大大降低主存带宽要求，但控制可能很复杂。</li>
+</ul>
+</li>
+<li>写不命中（Write Miss）: 要写的单元不在Cache中
+<ul>
+<li>写分配（Write Allocate）
+<ul>
+<li>将主存块装入Cache，然后更新相应单元。</li>
+<li>试图利用空间局部性，但每次都要从主存中读入一个块。</li>
+</ul>
+</li>
+<li>写不分配（Not Write Allocate）
+<ul>
+<li>直接写主存单元，不把主存装入到Cache。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-编写高速缓存友好的代码">3) 编写高速缓存友好的代码</h3>
+<ul>
+<li>
+<p>确保代码高速缓存友好的基本方法</p>
+<ul>
+<li>让最常见的情况运行的快</li>
+<li>尽量减小每个循环内部的缓存不命中数量</li>
+</ul>
+</li>
+<li>
+<p>编写高速缓存友好的代码的重要问题</p>
+<ul>
+<li>对局部变量的反复引用是好的，因为编译器能将它们缓存在寄存器中（时间局部性）</li>
+<li>步长为1的引用模式是好的，因为存储器层次结构中所有层次上的缓存都是将数据存储为连续的块（空间局部性）</li>
+</ul>
+</li>
+<li>
+<p>示例代码</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;ctime&gt;</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">int</span> m = <span class="number">10000</span>;</span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">int</span> n = <span class="number">1000</span>;</span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">int</span> testNum = <span class="number">1000</span>;</span><br><span class="line">  <span class="keyword">int</span> total = <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">int</span>** nums = <span class="keyword">new</span> <span class="keyword">int</span>* [m];</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; m; i++)</span><br><span class="line">  &#123;</span><br><span class="line">    nums[i] = <span class="keyword">new</span> <span class="keyword">int</span>[n];</span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">int</span> j = <span class="number">0</span>; j &lt; n; j++)</span><br><span class="line">      nums[i][j] = (i%<span class="number">10</span>) * (j%<span class="number">10</span>);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">clock_t</span> t1 = clock();</span><br><span class="line">  <span class="comment">// 高速缓存友好的代码</span></span><br><span class="line">  total = <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">int</span> a = <span class="number">0</span>; a &lt; testNum; a++)</span><br><span class="line">    <span class="comment">// 索引顺序为 i,j</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; m; i++)</span><br><span class="line">      <span class="keyword">for</span> (<span class="keyword">int</span> j = <span class="number">0</span>; j &lt; n; j++)</span><br><span class="line">        total += nums[i][j];</span><br><span class="line"></span><br><span class="line">  <span class="keyword">clock_t</span> t2 = clock();</span><br><span class="line">  <span class="comment">// 高速缓存不友好的代码</span></span><br><span class="line">  total = <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">int</span> a = <span class="number">0</span>; a &lt; testNum; a++)</span><br><span class="line">    <span class="comment">// 索引顺序为 j, i</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> j = <span class="number">0</span>; j &lt; n; j++)</span><br><span class="line">      <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; m; i++)</span><br><span class="line">        total += nums[i][j];</span><br><span class="line"></span><br><span class="line">  <span class="keyword">clock_t</span> t3 = clock();</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"t1: "</span> &lt;&lt; t1 &lt;&lt; <span class="string">" t2: "</span> &lt;&lt; t2 &lt;&lt; <span class="string">" t3: "</span> &lt;&lt; t3 &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"高速缓存  友好代码所需时间: "</span> &lt;&lt; t2 - t1 &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  <span class="built_in">cout</span> &lt;&lt; <span class="string">"高速缓存不友好代码所需时间: "</span> &lt;&lt; t3 - t2 &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>程序输出<br>
+<img src="/2020/07/csapp/cache_code.png" alt="img"><br>
+其速度差距在这段代码的输出上表现的淋漓尽致，差距十分明显。</p>
+</li>
+</ul>
+<h2 id="七、-链接">七、 链接</h2>
+<blockquote>
+<p>暂略</p>
+</blockquote>
+<h2 id="八、异常控制流">八、异常控制流</h2>
+<h3 id="1-异常">1) 异常</h3>
+<ul>
+<li>
+<p>现代系统通过使控制流发生突变来对各种系统状态的变化做出反应，这种突变称为<strong>异常控制流</strong>(Exceptional Control Flow, ECF)。异常控制流发生在计算机系统的各个阶段，例如上下文切换、发送与接受信号，以及应用程序通过使用<em>陷阱</em>(trap)或<em>系统调用</em>(system call)的ECF形式，向操作系统请求服务。</p>
+</li>
+<li>
+<p>在任何情况下，当CPU检测到<em>事件</em>发生时，它会通过一张叫做<em>异常表</em>(exception-table)的跳转表，跳转至处理特定异常的<em>异常处理程序</em>(exception handler)进行处理。</p>
+</li>
+<li>
+<p>异常处理完成后，会发生以下三种情况中的一种</p>
+<ul>
+<li>控制流返回当前指令(即引起异常的指令，例如缺页异常)</li>
+<li>控制流返回下一条指令</li>
+<li>终止当前被中断的程序</li>
+</ul>
+</li>
+<li>
+<p>异常的类别</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:left">类别</th>
+<th style="text-align:left">原因</th>
+<th style="text-align:center">异步/同步</th>
+<th style="text-align:left">返回行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left">中断(interrupt)</td>
+<td style="text-align:left">来自I/O设备的信号</td>
+<td style="text-align:center">异步</td>
+<td style="text-align:left">总是返回到下一条指令</td>
+</tr>
+<tr>
+<td style="text-align:left">陷阱(trap)</td>
+<td style="text-align:left">有意的异常</td>
+<td style="text-align:center">同步</td>
+<td style="text-align:left">总是返回到下一条指令</td>
+</tr>
+<tr>
+<td style="text-align:left">故障(fault)</td>
+<td style="text-align:left">潜在可恢复的错误</td>
+<td style="text-align:center">同步</td>
+<td style="text-align:left">可能返回到当前指令</td>
+</tr>
+<tr>
+<td style="text-align:left">终止(abort)</td>
+<td style="text-align:left">不可恢复的错误</td>
+<td style="text-align:center">同步</td>
+<td style="text-align:left">不会返回</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>中断
+<ul>
+<li>一些I/O设备或芯片通过向CPU上的某个引脚发送信号，并将异常号放至系统总线上来触发中断。</li>
+<li>在当前指令执行完成后，CPU注意该引脚上的电压变为高电平，则获取异常号并调用中断处理程序，最后将控制流返回到下一条指令。</li>
+</ul>
+</li>
+<li>陷阱
+<ul>
+<li>陷阱是一种<em>有意</em>的异常，其最重要的用途是在用户程序与内核间提供一个<em>系统调用</em>接口。利用该接口可进行读/写文件，加载程序等等。</li>
+<li>执行syscall指令会导致一个异常处理程序的陷阱，该程序会解析参数并调用适当的内核程序。</li>
+</ul>
+</li>
+<li>故障
+<ul>
+<li>故障由错误情况引起，它可能被故障处理程序所修正。</li>
+<li>其中一个经典的故障示例是<strong>缺页异常</strong>。</li>
+</ul>
+</li>
+<li>终止
+<ul>
+<li>终止是不可恢复的致命错误造成的后果，通常是一些硬件错误。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-进程">2) 进程</h3>
+<ul>
+<li><strong>进程</strong>(process)是<em>一个执行中程序的实例</em>。系统中的每个程序都运行在某个进程的<strong>上下文</strong>(context)</li>
+<li>进程上下文由程序运行所需的状态组成，包括内存中的代码与数据、栈、寄存器内容、环境变量、文件描述符集合等等。</li>
+<li>进程这个抽象类型提供了一种假象：程序独占CPU与内存。其中程序占用CPU的控制流称为逻辑流，注意与CPU的物理流不一样。</li>
+<li>一个逻辑流的执行时间在时间上与另一个流重叠，称为<em>并发流</em>(concurrent flow)。<br>
+多个流并发执行的一般现象称为<em>并发</em>(concurrency)。<br>
+一个进程和其他进程轮流运行的概念称为<em>多任务</em>(multitasking)。<br>
+一个进程执行它的控制流的一部分的每一时间段叫做<em>时间片</em>(time slice).<br>
+如果两个流并发的运行在不同的处理器或计算机上，则这些流称为<em>并行流</em>(parallel flow)。它们<strong>并行运行，并发执行。</strong></li>
+<li><strong>内核模式</strong>
+<ul>
+<li>一个运行在内核模式的进程可以执行指令集中的任何指令，并且可以访问系统中的任何内存位置。</li>
+<li>与之相反的是，用户模式中的进程不允许执行<em>特权指令</em>(privileged instruction)，例如停止处理器，改变模式位，或清空cache等操作。同时也不允许直接访问内核区中的数据与代码，只能通过异常处理程序进入内核模式。</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-进程控制">3) 进程控制</h3>
+<ul>
+<li>进程总是处于下面三种状态之一
+<ul>
+<li><strong>运行</strong>。运行中的进程正在CPU上执行或等待被执行。</li>
+<li><strong>停止</strong>。进程的执行被挂起(suspended)，并且不会被调度。
+<ul>
+<li><code>SIGSTOP, SIGTSTP, SIGTTIN, SIGTTOU</code>信号会使一个运行中的进程停止</li>
+<li><code>SIGCONT</code>信号会使一个暂停的程序再次开始执行。</li>
+</ul>
+</li>
+<li><strong>终止</strong>。进程永远的停止了。进程终止的三个原因：
+<ul>
+<li>收到某个信号，其中该信号的默认行为是终止当前进程。</li>
+<li>从主程序返回</li>
+<li>调用exit函数。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>回收子进程
+<ul>
+<li>当一个进程由于某种原因终止时，该进程会被内核保存在一种已终止的状态，直到它被父进程回收(reaped)。</li>
+<li>当回收完成后，内核将子进程退出状态传递给父进程并抛弃已终止的进程。</li>
+<li>其中，一个终止但尚未被回收的进程称为<em>僵尸进程</em>(zonbie)。</li>
+<li>若父进程已经终止了，则该子进程称为<em>孤儿进程</em>，内核会安排init进程成为该子进程的父进程，并回收该僵尸进程。
+<blockquote>
+<p>init进程的pid为1，它不会终止，是所有进程的祖先。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>sleep函数会使当前进程休眠。需要注意的是，休眠的进程可能因为一个信号中断而提前返回。</li>
+</ul>
+<h3 id="4-信号">4) 信号</h3>
+<ul>
+<li>Linux<em>信号</em>(signal)是一种更高层的软件形式的异常。它允许进程和内核中断其他进程。</li>
+<li>信号提供了一种机制，通知用户进程发生了这些异常。</li>
+<li>以下是linux系统上支持的信号列表<br>
+<img src="/2020/07/csapp/signals.png" alt="img"></li>
+<li>传递一个信号到目的进程的步骤
+<ul>
+<li>发送信号
+<ul>
+<li>内核通过 更新目的进程上下文的某个状态，发送一个信号给目标进程</li>
+</ul>
+</li>
+<li>接收信号
+<ul>
+<li>进程可以忽略信号，终止或者通过执行信号处理程序来捕获这个信号。</li>
+<li>每个信号类型都有一个预定义的默认行为。
+<ul>
+<li>进程终止</li>
+<li>进程终止并转储内存</li>
+<li>进程停止(挂起)直到被SIGCONT信号重启</li>
+<li>进程忽略该信号</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>信号是不排队的。如果待接受信号里已经存在当前类型的信号，则当前信号会被丢弃。</li>
+<li>使用信号时，需要考虑是否存在<strong>条件竞争</strong></li>
+</ul>
+<h3 id="5-非本地跳转">5) 非本地跳转</h3>
+<ul>
+<li>C语言提供了一种用户级异常控制流形式，称为<em>非本地跳转</em>(nonlocal jump)。它将程序直接从一个函数转移到另一个当前正在执行的函数，而不需要经过正常的调用——返回序列。</li>
+<li>非本地跳转通过<code>setjmp</code>和<code>longjmp</code>函数来提供实现的
+<ul>
+<li><code>setjmp</code>/<code>sigsetjmp</code>
+<ul>
+<li>setjmp函数会在env缓冲区中保存当前的<em>调用环境</em>，以供longjmp使用，同时返回0。</li>
+<li>调用环境包括程序计数器，栈指针和通用目的寄存器等等</li>
+<li>setjmp返回值无法赋值给变量</li>
+</ul>
+</li>
+<li><code>longjmp</code>/<code>siglongjmp</code>
+<ul>
+<li>longjmp函数从env缓冲区中恢复调用环境，然后触发一个从最近一次初始化env的setjmp调用的返回。</li>
+<li>然后setjmp返回，并带有非零的返回值retval。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>重要应用
+<ul>
+<li>一个重要应用就是允许从一个深层嵌套的函数调用中立即返回，通常是由检测到某个错误情况引起的。</li>
+<li>C++和Java提供的异常机制是较高层次的，是C语言的setjmp和longjmp函数的更加结构化的版本。<br>
+可以简单的将try语句中的catch子句看作类似于setjmp函数；throw语句类似于longjmp函数。</li>
+</ul>
+</li>
+</ul>
+<h2 id="九-虚拟内存">九. 虚拟内存</h2>
+<blockquote>
+<p>虚拟内存部分暂时跳过，待学习操作系统时再回顾<br>
+动态内存分配部分，由于笔者曾经学习了glibc的ptmalloc机制（这部分笔记也在blog中），故该部分也暂且跳过。</p>
+</blockquote>
+<h2 id="十-系统级I-O">十. 系统级I/O</h2>
+<blockquote>
+<p>暂时跳过</p>
+</blockquote>
+<h2 id="十一-网络编程">十一. 网络编程</h2>
+<h3 id="1-网络">1) 网络</h3>
+<ul>
+<li>互联网络至关重要的特性：它能由采用完全不同和不兼容计数的各种局域网和广域网组成。</li>
+<li>如何让某台源主机跨过所有不兼容网络发送数据位到另一台目的主机？解决方法是<strong>一层运行在每台主机和路由器上的协议软件</strong>，它消除了不同网络之间的差异。该协议必须提供两种基本能力：
+<ul>
+<li><strong>命名机制</strong>。互联网络协议通过定义一种一致的主机地址格式消除命名差异。每台主机会被分配至少一个这种<em>互联网络地址</em>(internet address), 该地址唯一标识了这台主机。</li>
+<li><strong>传送机制</strong>。互联网协议通过定义一种把数据位捆扎成不连续的片（称为<em>包</em>）的统一方式，从而消除了传送差异。一个包是由<em>包头</em>和<em>有效载荷</em>组成的，其中包头包括包的大小以及源主机和目的主机的地址，有效载荷包括从源主机发出的数据位。</li>
+</ul>
+</li>
+<li>互联网络思维的精髓：<strong>封装</strong></li>
+</ul>
+<h3 id="2-全球IP因特网">2) 全球IP因特网</h3>
+<h4 id="1-IP地址">1. IP地址</h4>
+<ul>
+<li>
+<p>一个IPv4地址是一个32位无符号整数。网络程序将IP地址存放在以下结构中</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* IP address structure */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">in_addr</span>&#123;</span></span><br><span class="line">  <span class="keyword">uint32_t</span> s_addr; <span class="comment">/* Address in network byte order (Big-endian) */</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>因为因特网主机中可以有不同的主机字节序列，TCP/IP为任意整数数据项定义了一个统一的<em>网络字节顺序</em>(network byte order) —— <strong>大端字节顺序</strong>。</p>
+</li>
+<li>
+<p>Unix提供以下函数在网络和主机字节顺序间实现转换。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;arpa/inet.h&gt;</span></span></span><br><span class="line"><span class="comment">// 返回按照网络字节顺序的值</span></span><br><span class="line"><span class="function"><span class="keyword">uint32_t</span> <span class="title">htonl</span><span class="params">(<span class="keyword">uint32_t</span> hostlong)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">uint16_t</span> <span class="title">htons</span><span class="params">(<span class="keyword">uint16_t</span> hostsort)</span></span>;</span><br><span class="line"><span class="comment">// 返回按照主机字节顺序的值</span></span><br><span class="line"><span class="function"><span class="keyword">uint32_t</span> <span class="title">ntohl</span><span class="params">(<span class="keyword">uint32_t</span> netlong)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">uint16_t</span> <span class="title">ntohs</span><span class="params">(<span class="keyword">uint16_t</span> netshort)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>IP地址通常是以一种称为<em>点分十进制表示法</em>来表示的。</p>
+<blockquote>
+<p>例如<code>128.2.194.242</code>就是地址<code>0x8002c2f2</code>的点分十进制表示。<br>
+应用程序使用以下函数实现IP地址和点分十进制串之间的转换。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;arpa/inet.h&gt;</span></span></span><br><span class="line"><span class="comment">// 返回： 若成功则1，若src为非法点分十进制地址则为0，若出错则为-1</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">inet_pton</span><span class="params">(AF_INET, <span class="keyword">const</span> <span class="keyword">char</span>* src, <span class="keyword">void</span>* dst)</span></span>;</span><br><span class="line"><span class="comment">// 返回： 若成功则指向点分十进制字符串的指针，若出错则为NULL</span></span><br><span class="line"><span class="function"><span class="keyword">const</span> <span class="keyword">char</span>* <span class="title">inet_ntop</span><span class="params">(AF_INET, <span class="keyword">const</span> <span class="keyword">void</span>* src, <span class="keyword">char</span>*dst, <span class="keyword">socklen_t</span> size)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="2-因特网域名">2. 因特网域名</h4>
+<ul>
+<li>因特网定义了一组<em>域名</em>(domain name)以及一种将域名映射到IP地址的机制，便于人们记忆。</li>
+<li>域名集合形成了一个层次结构。<br>
+<img src="/2020/07/csapp/doman_struct.png" alt="img"></li>
+<li>因特网定义了域名集合和IP地址集合之间的映射。在现代，映射通过DNS(Doman Name System，域名系统)维护。</li>
+</ul>
+<h4 id="3-因特网连接">3. 因特网连接</h4>
+<ul>
+<li>因特网客户端和服务端通过在<em>连接</em>上发送和接收字节流来通信。连接是<strong>点对点、全双工、可靠</strong>的。</li>
+<li>一个<strong>套接字</strong>是连接的一个端点。每个套接字都有相应的<strong>套接字地址</strong>，由一个因特网地址和一个16位的<em>整数端口</em>组成，用“地址:端口”表示。</li>
+<li>当客户端发起连接请求时，客户端套接字地址中的端口是由内核自动分配的，称为<strong>临时端口</strong>(ephemeral port)。但服务器套接字地址中的端口通常是某个<strong>知名端口</strong>，与服务相对应。
+<blockquote>
+<p>例如Web服务的80端口，FTF服务的20端口。</p>
+</blockquote>
+</li>
+<li>一个连接是由两端的套接字地址唯一确定。这对套接字地址叫做<strong>套接字对</strong>(socket pair)，由下列元组表示：<code>(cliaddr:cliport, servaddr:servport)</code></li>
+</ul>
+<h3 id="3-套接字接口">3) 套接字接口</h3>
+<ul>
+<li>
+<p><strong>套接字接口</strong>(socket interface)是一组函数，它们和Unix I/O 函数结合，用以创建网络应用。</p>
+</li>
+<li>
+<p>以下是一个典型的客户端-服务器事务的上下文中的套接字接口概述。<br>
+<img src="/2020/07/csapp/socket_concept_pic.png" alt="img"></p>
+</li>
+<li>
+<p>套接字地址结构</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* IP socket address structure */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sockaddr_in</span>&#123;</span></span><br><span class="line">  <span class="keyword">uint16_t</span>      sin_family;   <span class="comment">/* Protocol family (always AF_INET) */</span></span><br><span class="line">  <span class="keyword">uint16_t</span>      sin_port;     <span class="comment">/* Port number in network byte order */</span></span><br><span class="line">  <span class="keyword">uint16_t</span>      sin_addr;     <span class="comment">/* IP address in network byte order */</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">char</span> sin_zero[<span class="number">8</span>];  <span class="comment">/* Pad to sizeof(struct sockaddr) */</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">/* Generic socket address structure (for connect, bind, and accept) */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sockaddr</span>&#123;</span></span><br><span class="line">  <span class="keyword">uint16_t</span>  sa_family;    <span class="comment">/* Protocol family */</span></span><br><span class="line">  <span class="keyword">char</span>      sa_data[<span class="number">14</span>];  <span class="comment">/* Address data */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>默认情况下，内核会认为<code>socket</code>函数创建的描述符对应于<strong>主动套接字</strong>(active socket)。<br>
+<code>listen</code>函数将sockfd从一个主动套接字转化为一个<strong>监听套接字</strong>(listening socket)，该套接字可以接收来自客户端的请求。<br>
+<code>accept</code>函数会返回一个<strong>已连接描述符</strong>(connected socket)。（套接字和描述符在这里都指代socket）</p>
+<blockquote>
+<p>注意区分开<strong>监听描述符</strong>和<strong>已连接描述符</strong>。<br>
+1.监听描述符作为客户端连接请求的一个端点，通常被创建一次，并存在于服务器的整个生命周期。<br>
+2.已连接描述符是客户端和服务器之间已经建立起的连接的一个端点。服务器每次接收连接请求时都会创建一次，它只存在于服务器为一个客户端服务的过程。<br>
+<img src="/2020/07/csapp/connfdOrlistenfg.png" alt="img"><br>
+<strong>监听描述符</strong>和<strong>已连接描述符</strong>概念的区分可以方便并发服务器的建立。</p>
+</blockquote>
+</li>
+<li>
+<p>程序可以使用<code>socket</code>、<code>connect</code>、<code>bind</code>、<code>listen</code>、<code>accept</code>函数等等来建立连接。</p>
+</li>
+</ul>
+<h2 id="十二-并发编程">十二. 并发编程</h2>
+<ul>
+<li>在访问一块共享变量时，并发程序需要对该变量进行上锁，以免产生不必要的条件竞争。</li>
+<li>并发编程一定要避免死锁<br>
+<img src="/2020/07/csapp/deadLockPic.png" alt="img"></li>
+</ul>
+<blockquote>
+<p>其余暂略，待学习操作系统时再学并发</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/07/csapp/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CSAPP/" rel="tag">CSAPP</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/" rel="tag">计算机基础</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/08/uCore-1/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/07/csapp-lab-writeup/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CSAPP Lab WriteUp</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

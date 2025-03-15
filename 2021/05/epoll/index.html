@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="Web, Server,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Epoll 小叙 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-epoll"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Epoll 小叙
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/05/epoll/" class="article-date">
+  <time datetime="2021-05-21T16:00:00.000Z" itemprop="datePublished">2021-05-22</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/Project/">Project</a> / <a class="article-category-link" href="/categories/Project/WebServer/">WebServer</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">11 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、概述">一、概述</h2>
+<ul>
+<li>
+<p>epoll 是  Linux 内核为了处理大批量的文件描述符而改进的 poll，是 Linux 下多路复用IO接口select/poll的增强版本。epoll可以显著提高程序在大量并发连接中只有少量活跃的情况下的系统的CPU利用率。</p>
+</li>
+<li>
+<p>服务器要管理多个客户端的连接，而 recv 函数只能监视单个 socket，因此引入了 select/poll。</p>
+<p>但 select 能监测的文件描述符个数限制在 FD_SETSIZE，通常是1024个。这对于并发量达到上万的服务器来说显然不够。与之相对的是，epoll所支持的fd上限是最大可以打开的数目，具体数字可以<code>cat /proc/sys/fs/file-max</code>查看（本人机器上该值为<code>9223372036854775807</code>）。</p>
+</li>
+<li>
+<p>当存在部分<strong>活跃</strong>socket时，传统 select/poll 会<strong>线性扫描</strong>整个socket集合，这会让效率随着socket数量的增加而线性下降，而这就是限制了 select 最大监视数量的原因，程序被唤醒后不知道是哪个 socket 处于活跃状态，需要遍历。</p>
+<p>而 epoll 是基于每个 fd 上面的 callback 函数实现，因此只会对活跃的 socket 进行处理，效率更高。</p>
+</li>
+<li>
+<p>select、poll、epoll之间的区别</p>
+<ul>
+<li>select：只知道有I/O事件发生，但不知道是具体哪一个，因此只能无差别遍历所有流。时间复杂度$O(n)$，fd数量限制在 FD_SETSIZWE。</li>
+<li>poll：大致同上，轮询所有套接字，时间复杂度为 $O(n)$，但fd没有数量限制，因为它使用链表存储fd。</li>
+<li>epoll: <strong>事件驱动</strong>，epoll会把<strong>哪个流</strong>发生了<strong>怎样的IO事件</strong>通知给用户。时间复杂度$O(1)$。</li>
+</ul>
+</li>
+<li>
+<p>epoll提供了两种触发方式</p>
+<ul>
+<li>一种是传统 select/poll 的水平触发（Level Triggered, LT），缺省工作模式，同时还支持<strong>阻塞</strong>和<strong>非阻塞</strong>的socket。当某个文件描述符准备就绪后，内核会<strong>持续通知</strong>用户，直到重新变为未就绪状态。</li>
+<li>再一种是边缘触发（Edge Triggered），高速工作模式，只支持<strong>非阻塞</strong>的socket。当某个文件描述符从未就绪<strong>变成</strong>就绪时，内核会通过epoll通知用户。<strong>注意，只通知一次</strong>。通知动作只会在文件描述符从未就绪变成就绪这个时刻触发。如果一个已经就绪的文件描述符迟迟不被处理，即一直位于就绪状态，那么该文件描述符就一直<strong>不会</strong>触发通知。</li>
+</ul>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="二、相关函数-用法">二、相关函数 &amp; 用法</h2>
+<h3 id="1-epoll-API-概述">1. epoll API 概述</h3>
+<ul>
+<li>
+<p>epoll API 的核心概念为 <strong>epoll 实例</strong>，它是一个内核数据结构。从用户空间角度上考虑,可以将其视为两个列表:</p>
+<ul>
+<li>
+<p>The <strong>interest</strong> list (有时也称作 epoll set)。它是一个存放<strong>已经注册 interest</strong> 的文件描述符集合。</p>
+<blockquote>
+<p>这个 interest 不太好翻译。可以简单的认为是工作列表。</p>
+<p>为了便于说明，下文中关于 interest list相关的说明，一律以<strong>工作列表</strong>等价替换。</p>
+</blockquote>
+</li>
+<li>
+<p>The <strong>ready</strong> list。即<strong>就绪列表</strong>，是工作列表中，一组文件描述符子集的引用。当工作列表中存在某个文件描述符有IO活动，内核将会动态的把当前文件描述符填充至就绪列表中。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>有些函数会涉及到关于 epoll 实例的操作</p>
+<ul>
+<li><code>epoll_create</code>：新建一个 epoll 实例，执行时会返回一个指向 <strong>epoll 实例</strong>的文件描述符。</li>
+<li><code>epoll_ctl</code> ：动态设置某个 epoll 实例的<strong>工作列表</strong>上的条目。</li>
+<li><code>epoll_wait</code>：等待IO事件。如果当前没有事件（即就绪队列为空）则阻塞等待。</li>
+</ul>
+</li>
+<li>
+<p><strong>水平触发</strong>和<strong>边缘触发</strong></p>
+<p>思考一下这个例子：</p>
+<ol>
+<li>文件描述符 rfd 作为管道的读取端，被注册进 epoll 实例中。</li>
+<li>管道的另一端写入2kb数据至管道。</li>
+<li>调用 <code>epoll_wait</code> 等待IO事件，返回 rfd。</li>
+<li>管道本地端通过 rfd 读取了1kb的数据。</li>
+<li>继续调用<code>epoll_wait</code>。结果是?</li>
+</ol>
+<p>如果文件描述符 rfd 被注册进 epoll 实例时使用<strong>边缘触发模式（EPOLLET）</strong>，那么第5步的函数调用<strong>将会被挂起</strong>，<strong>即便有数据没有读完</strong>。因为边缘触发模式仅在受监视的文件描述符上发生更改才会传送事件。</p>
+<p>使用边缘触发模式时，最好使用<strong>非阻塞的文件描述符</strong>，这样可以避免阻塞其他等待读写的任务。</p>
+<p><strong>水平触发模式</strong>在第5步的函数调用中不会被挂起，而是返回 rfd，因为缓冲区中仍然存在没有读完的数据。</p>
+</li>
+<li>
+<p>一个简单的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MAX_EVENTS 10</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">epoll_event</span> <span class="title">ev</span>, <span class="title">events</span>[<span class="title">MAX_EVENTS</span>];</span></span><br><span class="line"><span class="keyword">int</span> listen_sock, conn_sock, nfds, epollfd;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Code to set up listening socket, 'listen_sock',</span></span><br><span class="line"><span class="comment">              (socket(), bind(), listen()) omitted */</span></span><br><span class="line"></span><br><span class="line">epollfd = epoll_create1(<span class="number">0</span>);</span><br><span class="line"><span class="keyword">if</span> (epollfd == <span class="number">-1</span>) &#123;</span><br><span class="line">    perror(<span class="string">"epoll_create1"</span>);</span><br><span class="line">    <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">ev.events = EPOLLIN;</span><br><span class="line">ev.data.fd = listen_sock;</span><br><span class="line"><span class="keyword">if</span> (epoll_ctl(epollfd, EPOLL_CTL_ADD, listen_sock, &amp;ev) == <span class="number">-1</span>) &#123;</span><br><span class="line">    perror(<span class="string">"epoll_ctl: listen_sock"</span>);</span><br><span class="line">    <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> (;;) &#123;</span><br><span class="line">    nfds = epoll_wait(epollfd, events, MAX_EVENTS, <span class="number">-1</span>);</span><br><span class="line">    <span class="keyword">if</span> (nfds == <span class="number">-1</span>) &#123;</span><br><span class="line">        perror(<span class="string">"epoll_wait"</span>);</span><br><span class="line">        <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (n = <span class="number">0</span>; n &lt; nfds; ++n) &#123;</span><br><span class="line">        <span class="keyword">if</span> (events[n].data.fd == listen_sock) &#123;</span><br><span class="line">            conn_sock = accept(listen_sock,</span><br><span class="line">                               (struct sockaddr *) &amp;addr, &amp;addrlen);</span><br><span class="line">            <span class="keyword">if</span> (conn_sock == <span class="number">-1</span>) &#123;</span><br><span class="line">                perror(<span class="string">"accept"</span>);</span><br><span class="line">                <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">            &#125;</span><br><span class="line">            setnonblocking(conn_sock);</span><br><span class="line">            ev.events = EPOLLIN | EPOLLET;</span><br><span class="line">            ev.data.fd = conn_sock;</span><br><span class="line">            <span class="keyword">if</span> (epoll_ctl(epollfd, EPOLL_CTL_ADD, conn_sock,</span><br><span class="line">                          &amp;ev) == <span class="number">-1</span>) &#123;</span><br><span class="line">                perror(<span class="string">"epoll_ctl: conn_sock"</span>);</span><br><span class="line">                <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            do_use_fd(events[n].data.fd);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>注意事项</p>
+<ul>
+<li>两个不同的 epoll 实例可以等待相同的文件描述符。这样当目标文件描述符存在事件时，两个 epoll 实例均会收到该事件。</li>
+<li>一个 epoll 实例的文件描述符可以被注册进另一个 epoll 实例的工作列表中，但是不能注册进自己的工作列表。</li>
+<li>epoll API 是 <strong>Linux 平台独有</strong>的。</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-epoll-create">2. epoll_create</h3>
+<ul>
+<li>
+<p>函数声明</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/epoll.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">epoll_create</span><span class="params">(<span class="keyword">int</span> size)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">epoll_create1</span><span class="params">(<span class="keyword">int</span> flags)</span></span>; <span class="comment">// 除了 flags 可以传 EPOLL_CLOEXEC，其他与epoll_create一样。</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>功能：打开一个指向新的 <strong>epoll 实例</strong>的文件描述符，该描述符将会用在所有 epoll 族的函数中。当该文件描述符不再使用时，使用<code>close</code>函数关闭。</p>
+</li>
+<li>
+<p>函数参数size：调用者希望添加到epoll实例的文件描述符的<strong>数量</strong>。内核将使用该数量来<strong>提示</strong>初始时存放事件的内部数据结构中所分配的空间量。</p>
+<blockquote>
+<p>自 Linux 2.6.8 以后，epoll_create 中的 size参数被忽略，原因是现在的内核无需任何提示的size，即可动态调整所需数据结构的大小。</p>
+<p>但是，<strong>size 不能传0</strong>。这是为了向后兼容。</p>
+</blockquote>
+</li>
+<li>
+<p>返回值</p>
+<p>如果执行成功，则返回一个非负整数的文件描述符。否则返回-1并设置errno。</p>
+</li>
+</ul>
+<h3 id="3-epoll-ctl">3. epoll_ctl</h3>
+<ul>
+<li>
+<p>函数声明</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/epoll.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">epoll_ctl</span><span class="params">(<span class="keyword">int</span> epfd, <span class="keyword">int</span> op, <span class="keyword">int</span> fd, struct epoll_event *event)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>功能：<strong>添加、修改或移除</strong> 参数 epfd 维护的<strong>工作列表</strong>中的<strong>条目</strong>。其中要求对<strong>目标描述符 fd</strong> 执行<strong>操作 op</strong>。</p>
+</li>
+<li>
+<p>参数说明</p>
+<ul>
+<li>
+<p>epfd：待操作的epoll 实例的文件描述符</p>
+</li>
+<li>
+<p>op：操作码，有以下几个可选项：</p>
+<ul>
+<li><strong>EPOLL_CTL_ADD</strong>：将 fd 与事件 event 相联系，并添加进 epfd 的工作列表中。</li>
+<li><strong>EPOLL_CTL_MOD</strong>：修改 fd 相联系的事件为传入的 event。</li>
+<li><strong>EPOLL_CTL_DEL</strong>：将 fd 从工作列表中移除。event参数被忽略。</li>
+</ul>
+</li>
+<li>
+<p>fd：待操作的目标文件描述符</p>
+</li>
+<li>
+<p>event：epoll事件结构</p>
+<p>该结构如下所示：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">union</span> epoll_data &#123;</span><br><span class="line">    <span class="keyword">void</span>        *ptr;</span><br><span class="line">    <span class="keyword">int</span>          fd;</span><br><span class="line">    <span class="keyword">uint32_t</span>     u32;</span><br><span class="line">    <span class="keyword">uint64_t</span>     u64;</span><br><span class="line">&#125; <span class="keyword">epoll_data_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">epoll_event</span> &#123;</span></span><br><span class="line">    <span class="keyword">uint32_t</span>     events;      <span class="comment">/* Epoll events */</span></span><br><span class="line">    <span class="keyword">epoll_data_t</span> data;        <span class="comment">/* User data variable */</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>其中的<code>events</code>参数是一系列<strong>事件枚举的OR运算结果</strong>。事件枚举主要有以下几种：</p>
+<ul>
+<li>
+<p><strong>EPOLLIN</strong>：关联的 fd 可用于 read 操作。</p>
+</li>
+<li>
+<p><strong>EPOLLOUT</strong>：关联的 fd 可用于 write 操作。</p>
+</li>
+<li>
+<p><strong>EPOLLRDHUP</strong>：远程主机关闭了连接。该标志对于在<strong>边缘触发模式</strong>下检查连接是否被关闭，有很大的帮助。</p>
+</li>
+<li>
+<p><strong>EPOLLET</strong>：对关联的 fd 使用边缘触发模式，默认状态下是水平触发模式。</p>
+</li>
+<li>
+<p><strong>EPOLLONESHOT</strong>：设置关联 fd 的单发行为。当使用 epoll_wait 将目标fd提取事件以后，当前fd将会在内部被禁用，此时 epoll 不会再报告其他事件。</p>
+<p>这在 socket 里相当有用，即便使用ET模式，一个socket上的某个事件还是可能被触发多次。例如希望处理完当前socket的当前事件后，再来处理该socket的下一个事件，顺序处理。</p>
+<p>处理完成后，用户必须手动调用 epoll_ctl 重置该标志位。</p>
+</li>
+<li>
+<p><strong>EPOLLEXCLUSIVE</strong>：若有多个 epoll 实例关联当前 fd时，默认情况下当该fd有事件发生时，所有关联 epoll 实例均会收到事件。而倘若设置了EPOLLEXCLUSIVE标志，则每次事件来临时<strong>只会唤醒一个</strong> epoll 实例，避免<strong>惊群效应</strong>。</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>返回值说明</p>
+<ul>
+<li>当 epoll_ctl 函数工作正常，则返回 0。</li>
+<li>当有错误发生时，返回 -1 并设置 errno。</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-epoll-wait">4. epoll_wait</h3>
+<ul>
+<li>
+<p>函数声明</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/epoll.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">epoll_wait</span><span class="params">(<span class="keyword">int</span> epfd, struct epoll_event *events,</span></span></span><br><span class="line"><span class="function"><span class="params">               <span class="keyword">int</span> maxevents, <span class="keyword">int</span> timeout)</span></span>;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">epoll_pwait</span><span class="params">(<span class="keyword">int</span> epfd, struct epoll_event *events,</span></span></span><br><span class="line"><span class="function"><span class="params">                <span class="keyword">int</span> maxevents, <span class="keyword">int</span> timeout,</span></span></span><br><span class="line"><span class="function"><span class="params">                <span class="keyword">const</span> <span class="keyword">sigset_t</span> *sigmask)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>功能：等待 epoll 实例中的事件发生。</p>
+<p><code>epoll_wait</code>和<code>epoll_pwait</code>的不同点在于：<code>epoll_pwait</code>可以指定忽略部分信号。</p>
+</li>
+<li>
+<p>参数说明</p>
+<ul>
+<li>epfd：待处理的 epoll 实例描述符。</li>
+<li>events：用于存放 epoll_event 的<strong>数组</strong>指针。</li>
+<li>maxevents：最多返回多少个事件至<code>events</code>数组中，注意该参数<strong>必须大于0</strong>。</li>
+<li>timeout：最长等待/阻塞时间（毫秒）。置为 <code>-1</code> 将导致该函数<strong>无限期阻塞</strong>；置为0将导致函数立即返回，而不管是否存在可用事件。该时间基于<strong>CLOCK_MONOTONIC</strong>时钟测量。</li>
+</ul>
+</li>
+<li>
+<p>返回值说明</p>
+<ul>
+<li>
+<p>若执行成功，则该函数返回<strong>处于就绪状态</strong>的文件描述符<strong>个数</strong>（起始可以简单看作事件个数）。</p>
+</li>
+<li>
+<p>如果等待超时，则返回0，表示没有处于就绪状态的文件描述符。</p>
+</li>
+<li>
+<p>若有错误发生，则返回 -1 并设置 errno。</p>
+<blockquote>
+<p>注意：若wait被 signal 中断，则 errno 会设置为 EINTR。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>其他说明</p>
+<ul>
+<li>
+<p>对于返回的事件中，某个epoll_event结构体中的 events 字段可能会被 epoll API 设置以下几种错误标志</p>
+<ul>
+<li><strong>EPOLLERR</strong>：相关联的 fd 发生了错误。若远程主机的读取端被关闭，则本地写入端会报告该错误。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>EPOLLHUP</strong>：相关联的 fd 被中断。该事件只表示远程主机关闭了该连接。当读取完管道中剩余的数据后，读取端会收到一个 EOF。</p>
+</li>
+<li>
+<p>每个返回的 epoll_event 包含的 <strong>data 字段</strong>与最近调用 epoll_ctl（EPOLL_CTL_ADD，EPOLL_CTL_MOD）中为相应打开文件描述所指定的<strong>data 字段</strong>相同。 其中，<strong>events字段</strong>将会包含<strong>返回的事件</strong>位标志。</p>
+<p><strong>epoll_event::data</strong> 是一个随着事件一起携带的字段，功能类似于多线程调用中的线程参数传递。</p>
+<ul>
+<li>
+<p>epoll 实例的就绪队列中可能会同时存在多个事件。那么在调用 epoll_wait 函数时，该函数将会把对应的<strong>所有事件</strong>中的一小部分（maxevents 限制）统一返回给用户，而<strong>不是</strong>调用一次返回一个事件。</p>
+</li>
+<li>
+<p>接上条，若事件个数超过 maxevents ，则接下来的epoll_wait调用将循环访问<strong>就绪文件描述符集</strong>。 此行为有助于避免出现饥饿的情况，即防止由于进程<strong>集中在一组已知的就绪文件描述符上</strong>，而无法注意到其他文件描述符进入就绪状态。</p>
+</li>
+<li>
+<p>若epoll 实例的工作队列为空，则仍然可以执行 epoll_wait函数，该函数的运行将被阻塞，直到<strong>有文件描述符放入该工作队列并转为就绪状态</strong>。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="三、参考链接">三、参考链接</h2>
+<ul>
+<li><a href="https://baike.baidu.com/item/epoll/10738144?fr=aladdin" target="_blank" rel="noopener">epoll - 百度百科</a></li>
+<li><a href="https://blog.csdn.net/armlinuxww/article/details/92803381" target="_blank" rel="noopener">Epoll原理解析 - CSDN</a></li>
+<li><a href="https://www.cnblogs.com/aspirant/p/9166944.html" target="_blank" rel="noopener">select、poll、epoll之间的区别(搜狗面试) - cnblog</a></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/05/epoll/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/WebServer/" rel="tag">WebServer</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/05/cnatda-2/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            计算机网络笔记-2
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/05/cnatda-1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">计算机网络笔记-1</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

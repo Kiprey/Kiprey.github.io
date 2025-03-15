@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="docker,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CTF Docker 小记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-docker"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CTF Docker 小记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2023/01/docker/" class="article-date">
+  <time datetime="2023-01-07T16:00:00.000Z" itemprop="datePublished">2023-01-08</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.5k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">6 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<p>每次玩玩 CTF 时总是会因为 Docker 速度慢、忘记命令等等使自己非常抗拒启 Docker 环境，但是没有 Docker 环境实操题目就又成了纸上谈兵。</p>
+<p>因此趁着 RealworldCTF 5th 来熟悉并记录一下 Docker 的使用，感兴趣的 pwn 手可以一起实操一下 docker。</p>
+<a id="more"></a>
+<h2 id="Docker-管理命令">Docker 管理命令</h2>
+<ul>
+<li>
+<p><code>docker image list --all</code> ：查看各种 image</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">➜ docker image list                        </span><br><span class="line">REPOSITORY   TAG        IMAGE ID       CREATED         SIZE</span><br><span class="line">&lt;none&gt;       &lt;none&gt;     cc3193e40804   8 minutes ago   121MB</span><br><span class="line">&lt;none&gt;       &lt;none&gt;     fd184cbecbe0   3 months ago    72.8MB</span><br><span class="line">ubuntu       20.04      a0ce5a295b63   4 months ago    72.8MB</span><br><span class="line">python       3.6-slim   c1e40b69532f   12 months ago   119MB</span><br><span class="line">ubuntu       14.04      13b66b487594   21 months ago   197MB</span><br></pre></td></tr></table></figure>
+<p><code>docker image rm &lt;image-id&gt;</code> ：删除特定 image</p>
+</li>
+<li>
+<p><code>docker container list --all</code> ：查看当前所有容器。</p>
+<blockquote>
+<p>和 <code>docker ps -a</code> 等价。</p>
+</blockquote>
+<p><code>docker container rm &lt;container-id&gt;</code> ：删除容器</p>
+<blockquote>
+<p>和 <code>docker rm &lt;container-id&gt;</code> 等价。</p>
+</blockquote>
+</li>
+<li>
+<p><code>docker build -t &lt;name&gt; .</code>：构建当前目录下 Dockerfile 的 image，并将该 image 命名为 <code>&lt;name&gt;</code></p>
+</li>
+<li>
+<p><code>docker run &lt;args...&gt; &lt;image-id&gt; [cmd]</code>：从 image 构建出新的容器，并执行 cmd （如果有）。</p>
+</li>
+<li>
+<p><code>docker start -i &lt;container-id&gt;</code>：在交互模式下启动容器。</p>
+</li>
+<li>
+<p><code>docker stop &lt;container-id&gt;</code>：停止当前正在运行的容器。</p>
+</li>
+<li>
+<p><code>docker save -o &lt;export_fspath&gt; &lt;image-id&gt;</code>：导出 image 至文件路径 <code>&lt;export_fspath&gt;</code> 处</p>
+</li>
+<li>
+<p><code>docker load -i &lt;import_fspath&gt;</code>：导入外部 image 文件至 docker 中。通常这两步导入导出和 docker tar 有关。</p>
+</li>
+<li>
+<p><code>docker exec -it &lt;container-id&gt; &lt;cmd&gt;</code>： 在某个<strong>正在运行</strong>的容器中执行命令</p>
+<blockquote>
+<p>在非运行状态下容器执行命令则需要先用 docker start 启动容器再去执行 docker exec</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="Dockerfile-相关">Dockerfile 相关</h2>
+<ul>
+<li>
+<p>Docker 换源</p>
+<ol>
+<li>
+<p><code>sudo nano /etc/docker/daemon.json</code></p>
+<p>写入以下内容</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"registry-mirrors"</span>: [</span><br><span class="line">        <span class="string">"https://yxzrazem.mirror.aliyuncs.com"</span>,</span><br><span class="line">        <span class="string">"http://hub-mirror.c.163.com"</span>,</span><br><span class="line">        <span class="string">"https://registry.docker-cn.com"</span>,</span><br><span class="line">        <span class="string">"http://hub-mirror.c.163.com"</span>,</span><br><span class="line">        <span class="string">"https://docker.mirrors.ustc.edu.cn"</span></span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>上面那个奇怪的阿里云镜像地址是 <strong>阿里云镜像加速器专属地址</strong>。这里我直接抄了别人的，反正还有其他几个源，这个不行其他还能继续用。</p>
+</blockquote>
+</li>
+<li>
+<p>重启 docker 服务</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo service docker restart</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注：如果宿主机能连接网络但是 docker 无法连接， 则重启docker服务就能解决该问题。</p>
+</blockquote>
+</li>
+</ol>
+</li>
+<li>
+<p>Dockerfile 替换 apt 源</p>
+<p>默认 apt 源的下载速度非常感人，因此需要额外添加几句来替换默认 apt 源。</p>
+<figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">RUN</span><span class="bash"> cat /etc/apt/sources.list</span></span><br><span class="line"><span class="keyword">RUN</span><span class="bash"> sed -i s@/archive.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list \</span></span><br><span class="line"><span class="bash">   &amp;&amp; sed -i s@/deb.debian.org/@/mirrors.aliyun.com/@g /etc/apt/sources.list \</span></span><br><span class="line"><span class="bash">   &amp;&amp; sed -i s@/security.debian.org/@/mirrors.aliyun.com/@g /etc/apt/sources.list \</span></span><br><span class="line"><span class="bash">   &amp;&amp; sed -i s@/security.ubuntu.com/@/mirrors.aliyun.com/@g /etc/apt/sources.list \</span></span><br><span class="line"><span class="bash">   &amp;&amp; apt-get clean</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Dockerfile 替换 pip 源</p>
+<p>在 Dockerfile 中添加以下代码：</p>
+<figure class="highlight dockerfile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">RUN</span><span class="bash"> mkdir ~/.pip &amp;&amp; \</span></span><br><span class="line"><span class="bash">    <span class="built_in">cd</span> ~/.pip/  &amp;&amp; \</span></span><br><span class="line"><span class="bash">    <span class="built_in">echo</span> <span class="string">"[global] \ntrusted-host =  pypi.douban.com \nindex-url = http://pypi.douban.com/simple"</span> &gt;  pip.conf</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Dockerfile 网络加速</p>
+<ul>
+<li>
+<p>github 加速：可以使用 <a href="https://gh.api.99988866.xyz/" target="_blank" rel="noopener">GitHub 文件加速</a> 网站来生成加速后的 github 文件下载链接。</p>
+</li>
+<li>
+<p>Docker 配置代理：可以参考这个 <a href="https://blog.csdn.net/qq_39698985/article/details/123748820" target="_blank" rel="noopener">Docker 配置网络代理 - CSDN</a></p>
+</li>
+</ul>
+</li>
+<li>
+<p>Dockerfile 构建 image</p>
+<p>在 Dockerfile 所在文件夹下，运行 <code>docker build -t chal .</code> 以构建 docker 实例。</p>
+<p>这里指定了构建好后的 image 名称为 <code>chal</code>，便于后面启动实例时指定名称，而不用再去查找 image id。</p>
+</li>
+<li>
+<p><strong>构建</strong> Docker 容器并启动</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -i 交互模式</span></span><br><span class="line"><span class="comment"># -t 分配伪终端</span></span><br><span class="line"><span class="comment"># -name 指定所启动 container 的名称</span></span><br><span class="line"><span class="comment"># -d 后台运行容器，通常这个选项我们几乎用不到(detach 分离模式)</span></span><br><span class="line"><span class="comment"># –privileged=true 提升系统执行权限</span></span><br><span class="line"><span class="comment"># -p 宿主机端口:容器端口  端口映射</span></span><br><span class="line"><span class="comment"># -v 本地路径：容器路径 路径映射</span></span><br><span class="line">docker run -name &lt;container-name&gt; -it &lt;image-name&gt; [cmd]</span><br></pre></td></tr></table></figure>
+<p>例如</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">docker run -it --name paddle_chal_container paddle_chal:latest</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>如果 docker run 末尾不额外携带运行的命令，并且 Dockerfile 中带有 CMD 命令（例如 <code>CMD [&quot;python&quot;, &quot;web_service.py&quot;]</code>），则 docker run 将会自动运行该命令。</p>
+</blockquote>
+<p>注意，最好不要通过在 Dockerfile 末尾添加 <code>CMD [&quot;/bin/bash&quot;]</code> 来启动终端，因为这样启动的终端<strong>退格键将被转义</strong>无法使用。</p>
+<p>当通过 docker run 成功<strong>构建并启动</strong>容器后，该命令将不可再被二次执行（因为该命令包含了构建容器这一步，而现在容器已经构建好了），后面想再启动所构建好的容器，则需要执行 <code>docker start -i &lt;container&gt;</code>。</p>
+<p>可以参考 <a href="https://m.runoob.com/docker/docker-run-command.html" target="_blank" rel="noopener">docker run - 菜鸟教程</a> 查看更多参数信息。</p>
+</li>
+</ul>
+<h2 id="Dockerfile-格式">Dockerfile 格式</h2>
+<p>如果有小小伙伴想自制 Dockerfile 则需要了解一下其中的各个命令。</p>
+<p>这里直接参考这个 <a href="https://developer.aliyun.com/article/484262" target="_blank" rel="noopener">Dockerfile格式以及Dockerfile示例 - 阿里云开发者社区</a>，非常全面，我就不再贴了。</p>
+<h2 id="CTF-调试">CTF 调试</h2>
+<p>CTF 调试最重要的无非两步，调试器和编辑器。</p>
+<p>先启动一下 docker 容器：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 启动容器。这里没有指定 -i 交互模式，因此容器将进入后台运行</span></span><br><span class="line">docker start &lt;container-id&gt;</span><br><span class="line"><span class="comment"># 在已运行容器中启动 bash</span></span><br><span class="line">docker <span class="built_in">exec</span> -i &lt;container-id&gt; /bin/bash</span><br></pre></td></tr></table></figure>
+<p>bash 执行成功后<strong>不会有任何提示</strong>，需要自行输入 <code>whoami</code> 等命令来测试是否已经成功。</p>
+<blockquote>
+<p>不要使用 ls 来测试，因为可能当前文件夹下没有文件，误导人判断错误。</p>
+</blockquote>
+<h3 id="调试器配置">调试器配置</h3>
+<p>首先是调试器，这里直接在 docker 中执行安装 pwndbg 的过程即可，无需将这个安装过程写到 dockerfile 中：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 此时是 root 权限，因此无需 sudo</span></span><br><span class="line">apt-get update</span><br><span class="line">apt-get install git</span><br><span class="line"></span><br><span class="line"><span class="built_in">cd</span> ~</span><br><span class="line">git <span class="built_in">clone</span> https://github.com/pwndbg/pwndbg</span><br><span class="line"><span class="built_in">cd</span> pwndbg</span><br><span class="line">./setup.sh</span><br><span class="line"></span><br><span class="line"><span class="comment"># 安装 pwntools</span></span><br><span class="line">pip3 install pwntools</span><br></pre></td></tr></table></figure>
+<h3 id="编辑器配置">编辑器配置</h3>
+<p>这里首选 VSCode，VSCode 中包含了丰富的 Docker 插件可用于管理与处理容器。</p>
+<p>参照 <a href="https://zhuanlan.zhihu.com/p/496213879" target="_blank" rel="noopener">VsCode在Docker中进行开发 - 知乎</a>，在 VSCode 中安装 <code>Docker</code> 和 <code>Dev Containers</code>。</p>
+<p>安装好后即可直接通过宿主机的 VSCode 来附加至 Docker 容器中：</p>
+<p><img src="/2023/01/docker/image-20230108121448976.png" alt="image-20230108121448976"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2023/01/docker/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2023/01/idek_coroutine/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            idekCTF2022 - Coroutine Writeup
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2023/01/2022-summary/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">2022年年终总结</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

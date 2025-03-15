@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="virtual call,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《Counterfeit Object-oriented Programming》 论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-coop"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《Counterfeit Object-oriented Programming》 论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/coop/" class="article-date">
+  <time datetime="2021-12-01T16:00:00.000Z" itemprop="datePublished">2021-12-02</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">10 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>现阶段，ROP (面向返回的编程技术) 已经成为了一种非常流行的利用手法，同时现在也存在各种方式来保护程序免受 ROP 工具，例如 shadow stack 技术。而这篇 2015 年的论文向我们展示了一种新的利用手法，称为<strong>面向伪对象编程（COOP）</strong>，即只通过程序中现有虚函数链以及 callsite 来进行恶意攻击。该攻击方式是<strong>图灵完备</strong>的，即可以执行任何操作，包括条件分支等。</p>
+<p>同时，COOP 技术也可以绕过那些 <strong>不精确考虑C++面向对象语义</strong> 的防御手段。它并不针对与某一类语言（例如 C++），因此自然无法防护 COOP 技术。</p>
+<p>该攻击手法基于 C++ 虚函数的一些特性：</p>
+<ul>
+<li>
+<p>C++ 编译器通过 <strong>vtable 虚函数表</strong>来实现对 <strong>vcall 虚函数</strong> 的访问</p>
+<blockquote>
+<p>其中 vtable 是指向类的所有可能继承继承的虚函数的指针数组。</p>
+<p>根据逆向结果来看， vtable 通常位于 .rodata 段上。</p>
+</blockquote>
+</li>
+<li>
+<p>对于包含虚函数的类来说，其对象内存开始处（即偏移量为0）包含一个指向 vtable 的指针。</p>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="二、面向伪对象的编程">二、面向伪对象的编程</h2>
+<h3 id="1-目标">1. 目标</h3>
+<p>对于常规代码重用攻击，例如 ROP，其攻击手法包含一项或多项特性：</p>
+<ul>
+<li>
+<p>C-1：间接调用或跳转至<strong>非 address-taken</strong> 的位置。</p>
+<blockquote>
+<p>非 address-taken位置，个人认为应该是那些<strong>不使用函数指针而执行到</strong>的代码位置，例如各类 gadgets。</p>
+<p>即虚函数是 address-taken 的。</p>
+</blockquote>
+</li>
+<li>
+<p>C-2：从函数返回时，不符合调用堆栈</p>
+</li>
+<li>
+<p>C-3：过度使用间接分支</p>
+</li>
+<li>
+<p>C-4：劫持堆栈指针</p>
+</li>
+<li>
+<p>C-5：注入新代码或者操作现有代码</p>
+</li>
+</ul>
+<p>由于常规的攻击包含了这些特性，因此这类攻击，将会被那些低级且与语言无关的保护手法所检测出。</p>
+<p>故 COOP 所定义的目标如下所示：</p>
+<ul>
+<li>G-1：不得暴露特性 C-1 至 C-5</li>
+<li>G-2：务必展示出<strong>类似于正常 C++ 代码执行</strong>的控制流和数据流</li>
+<li>G-3：广泛应用于 C++ 应用</li>
+<li>G-4：实现图灵完备</li>
+</ul>
+<h3 id="2-敌手模型">2. 敌手模型</h3>
+<p>COOP 攻击的实施，要求攻击者</p>
+<ul>
+<li>可以劫持一个 <strong>使用 vptr 的 C++ 对象</strong>（即劫持一个存在虚函数的对象），并能推断出该对象的基地址，或者可以控制足够大小的缓冲区。</li>
+<li>能推断出一组 C++ 模块的基地址，并且了解该模块的二进制布局。</li>
+</ul>
+<h3 id="3-基本攻击方法">3. 基本攻击方法</h3>
+<p>在说明攻击方法之前，先给出以下几个定义</p>
+<ul>
+<li>
+<p>initial object （下称<strong>初始对象</strong>）：目标程序中被劫持的 C++ 对象，一切攻击从这里开始。</p>
+</li>
+<li>
+<p>counterfeit objects（下称<strong>伪造对象</strong>）： 携带攻击者<strong>所选择的 vptr</strong> 和一些<strong>精心构建的数据字段</strong>，并被攻击者批量注入进可控内存中。正如名字所示，这个“对象“是攻击者手动伪造的。</p>
+</li>
+<li>
+<p>Vfgadgets：COOP 攻击中将会使用到的<strong>虚函数</strong>。vfgadgets 的类型如下表所示：</p>
+<p><img src="/2021/12/coop/image-20211202111754544.png" alt="image-20211202111754544"></p>
+</li>
+</ul>
+<p>大体的定义已经在上面给出，接下来将详细说明攻击方式：</p>
+<ol>
+<li>
+<p>首先，为了重复调用虚函数，COOP 攻击需要<strong>依赖 ML-G 类型的 vfgadget</strong>（即上面列表中的第一个条目）</p>
+<blockquote>
+<p>ML-G：可以理解成攻击的事件循环。它将遍历一个<strong>指向伪造对象的指针数组</strong>，并依次调用其中的<strong>虚函数</strong>。</p>
+<p>这类 vfgadgets 在 C++ 应用程序中非常常见。</p>
+</blockquote>
+<p>如该图所示，图中的 <code>Course::~Course</code> 虚函数，即为ML-G 类型的 vfgadget。</p>
+<p><img src="/2021/12/coop/image-20211202161904967.png" alt="image-20211202161904967"></p>
+</li>
+<li>
+<p>接下来，攻击者将<strong>初始对象</strong>的内存，<strong>布局为类似 ML-G 的类的对象</strong>（例子中的目标对象为 Course）。</p>
+<p>其中，初始对象中的 vptr，被攻击者修改为 Course 类的原始 vptr 相对偏移一点的地址。这是为了使得初始对象<strong>接下来的第一个虚函数调用</strong>，可以调用至<strong>目标的虚函数</strong>（即可调用至 ML-G vfgadgets）。</p>
+<blockquote>
+<p>注意，图中左边那块内存，是<strong>攻击者完全可控</strong>的。即攻击者在可控的内存内<strong>构建了一个完整的 Course 类对象</strong>，包括其内部成员的指针数组。</p>
+<p>同时，字段 stutdents 指针数组所指向的各个 object，即为<strong>伪造对象</strong>，其 vptr 均可控。</p>
+<p>还需要注意的是，由于伪造对象是攻击者自己伪造的，因此实际上伪造对象<strong>可以不是同一种类型</strong>，例如一种伪造对象是 string 类型，另一种伪造对象是 Student 类型。</p>
+</blockquote>
+<p><img src="/2021/12/coop/image-20211202162256571.png" alt="image-20211202162256571"></p>
+</li>
+<li>
+<p>修改<strong>伪造对象的 vptr</strong>。由于伪造对象在被 ML-G 调用时，其调用目标可能不是攻击者所期望的 vfgadgets（例如Fig 1 中调用的是 <strong>Student::decCourseCount</strong> 函数），因此攻击者需要<strong>修改伪造对象的 vptr 指针</strong>，使得<strong>当伪造对象在虚函数调用点被调用时，可以调用到目标 vfgadget</strong>。</p>
+<p>这里的修改可以从原先的 vtable 地址（例如 Student 的 vtable 地址）相对的前后偏移一点位置，使得此时的 vptr 指针指向了原先 vtable 地址向后一点的函数位置。</p>
+<p>当上述三个步骤完成后，我们便可以通过<strong>操纵 伪造对象的 vptr</strong>，搭配 ML-G 类型的 vfgadget，来进行<strong>任意数量的 vfgadgets 调用</strong>。</p>
+<p><img src="/2021/12/coop/image-20211202164733622.png" alt="image-20211202164733622"></p>
+</li>
+<li>
+<p><strong>覆盖</strong>伪造对象。先上两张图，首先是给出的两个目标类的内存布局以及其目的 vfgadgets：</p>
+<p><img src="/2021/12/coop/image-20211202165553242.png" alt="image-20211202165553242"></p>
+<p>这里会用到两个 vfgadgets，分别是：</p>
+<ul>
+<li>Exam 类中的 ARITH-G（算数或逻辑操作）：注意到该函数会将三个成员变量的和，<strong>写入至当前类对象中的另一个字段</strong>。</li>
+<li>SimpleString 类中的 W-G（写入数据至目标地址）：注意到该函数会<strong>使用当前类对象的某个字段</strong>，作为复制操作的 length。</li>
+</ul>
+<p>注意到上面标注的粗体内容，一个是写入数据，一个是读取数据。因此攻击者可以<strong>精心将两个对象的内存重叠</strong>，使得 <strong>W-G 中使用的 length 刚好是 ARITH-G 所计算出的结果</strong>，这样就可以造成越界写入。<br>
+以下是构建的内存布局，注意 ARITH-G gadget <strong>会把计算出的结果写入至 SimpleString 类型的 len 字段中</strong>：</p>
+<p><img src="/2021/12/coop/image-20211202170110810.png" alt="image-20211202170110810"></p>
+<blockquote>
+<p>此时可能会有疑问，这里的 SimpleString 和 Exam 类会在哪里被使用呢？</p>
+<p>实际上，攻击者将会精心构建这两个类的类对象，以作为 ML-G 类中的 <strong>伪造对象</strong>，被 ML-G vfgadget 调用其虚函数。</p>
+</blockquote>
+</li>
+</ol>
+<p>综上，基本的攻击方法如上所示。其攻击过程可以看成 <strong>单个 vcall -&gt; 多个 vcall -&gt; OOB</strong>。需要注意的是，基本攻击手法<strong>没能传递任何参数</strong>给<strong>vfgadget</strong>。</p>
+<h3 id="4-vfgadget-参数传递">4. vfgadget 参数传递</h3>
+<blockquote>
+<p>参数传递的方式，取决于函数调用约定。</p>
+</blockquote>
+<h4 id="a-通过多个寄存器传递调用参数">a. 通过多个寄存器传递调用参数</h4>
+<ol>
+<li>首先，挑选一个合适的 vfgadget 并执行，以便于将<strong>伪造的字段</strong>分别写入至<strong>函数调用参数传递寄存器</strong>。</li>
+<li>执行目标 vfgadget，其参数使用上一个 vfgadget 刚刚伪造的值。</li>
+</ol>
+<blockquote>
+<p>该操作要求 <strong>ML-G 不修改参数传递寄存器</strong>（包括不能传递参数给 vfgadget）。</p>
+</blockquote>
+<h4 id="b-通过单个寄存器-栈传递调用参数">b. 通过单个寄存器 + 栈传递调用参数</h4>
+<blockquote>
+<p>例如 thiscall 调用约定，this 指针通过 ecx 寄存器传递，其他参数通过栈传递。</p>
+</blockquote>
+<p>该情况的参数传递依赖于 ML-G 主循环。ML-G 应该将<strong>初始对象</strong>的某个字段作为参数（<strong>将传递参数的 ML-G 称为 ML-ARG-G</strong>）传入给每个 vfgadget。之后，攻击者可以使用以下方法来将目的参数传递给目标 vfgadget:</p>
+<ol>
+<li>
+<p>传递的参数是一个<strong>指针</strong>，指向一个临时可写内存。这样 vfgadgets 可以通过读写这块内存来传递参数，例如以下示例：</p>
+<p><img src="/2021/12/coop/image-20211202205055482.png" alt="image-20211202205055482"></p>
+<p>图中 ML-G <code>Course2::~Course2</code> vfgadget 传递了一个参数<code>id</code> 给其他 vfgadget。而在<code>Student2::getLatestExam</code> 方法中，实际上将参数视为一个指针，因为<strong>引用的本质是指针</strong>。在该函数中，控制流动态的修改了参数所指向的内存。这样当下一个 vfgadget 获取到参数后，它便能<strong>读取上一个 vfgadget 所保留的信息</strong>。</p>
+</li>
+<li>
+<p>动态重写参数。论文里说明该方法允许攻击者<strong>将任意参数传递给 vfgadgets</strong>，但该方法<strong>需要一个可用的 W-G 类型的 vfgadget。</strong></p>
+<blockquote>
+<p>该方法暂时存疑，因为私以为该方法和第一个方法有异曲同工之处。</p>
+<p>参数传递正常来说是按值传递，因此按理来说重写本地参数副本将无法影响到其他 vfgadgets 所获取到的参数值。</p>
+</blockquote>
+<p>而在这类 vfgadget 中，单独使用某个字段的较为少见，因此参数传递大多还是使用第一个方法。</p>
+</li>
+</ol>
+<h4 id="c-传递多个参数">c. 传递多个参数</h4>
+<p>先上张图：</p>
+<p><img src="/2021/12/coop/image-20211202210233297.png" alt="image-20211202210233297"></p>
+<ul>
+<li>若调用的 vfgadget 实际使用的参数个数比 ML-ARG-G 传递的要<strong>少</strong>时，新传递的参数将被永久压栈（因为不使用参数的 vfgadget 将不会清理栈）。多调用几次（即多压几次栈），那么栈内存上就有构建好的一组参数值。</li>
+<li>而若调用的 vfgadget 实际使用的参数个数比 ML-ARG-G 传递的要<strong>多</strong>时，在 vfgadget 函数返回时，该函数将额外弹出”参数“的栈空间，即向下恢复栈。</li>
+</ul>
+<h3 id="5-API-函数的调用">5. API 函数的调用</h3>
+<p>COOP 攻击可以使用以下三种方法尝试调用 WinAPI 函数：</p>
+<ol>
+<li>
+<p>使用一个正常调用 WinAPI 的 vfgadget。</p>
+<p>缺点：大多情况下不可行。</p>
+</li>
+<li>
+<p>在 ML-G 中像调用 vfgadget 一样调用 WinAPI。</p>
+<p>优点：易于实现。例如让 vptr 指向诸如 GOT、IAT、EAT 等表。</p>
+<p>缺点：</p>
+<ol>
+<li>违反目标G-2，没能展示出<strong>类似于正常 C++ 代码执行</strong>的控制流和数据流</li>
+<li>受限于调用约定，伪造对象的指针总是以第一个参数传递给 WinAPI。</li>
+<li>使用一个<strong>调用 C 风格函数指针</strong>的 vfgagdet。该方法需要使用一种特殊 vfgadget：INV-G。例如下图中的 vfgadget：</li>
+</ol>
+<p><img src="/2021/12/coop/image-20211202211308760.png" alt="image-20211202211308760"></p>
+</li>
+</ol>
+<h3 id="6-实现分支和跳转">6. 实现分支和跳转</h3>
+<p>COOP 攻击是图灵完备的，因此这里需要说明一下 COOP 攻击如何实现分支和跳转功能。</p>
+<p>注意到 ML-G 使用<strong>索引</strong>来遍历伪造对象。（例如 for 循环上的 int 类型索引，或者容器迭代器）。</p>
+<p>COOP 攻击可以通过使用 W-COND-G vfgadget 来在满足某些条件的情况下，<strong>重写 ML-G 的索引</strong>，或者<strong>修改下一个待遍历的伪对象的指针</strong>。</p>
+<p>这种重写需要知道对应变量的地址，若索引存放在栈上，则可以通过上面的压栈和弹栈来<strong>移动栈指针</strong>，达到<strong>修改目标地址上索引</strong>的目的。</p>
+<p><img src="/2021/12/coop/image-20211202215512956.png" alt="image-20211202215512956"></p>
+<h2 id="三、防护手法">三、防护手法</h2>
+<p>以下几种方式可以防止或缓解 COOP 攻击：</p>
+<ul>
+<li>
+<p>通用防护技术</p>
+<ol>
+<li>限制合法API的 callsite。但可能较难精确识别给定 API 函数模块的合法 callsite，而且即便限制 API 调用，COOP 仍然可以泄露一些敏感数据。</li>
+<li>监视栈指针是否发生异常。例如在 32 位下 COOP 准备参数期间，栈指针将异常抬高，但这类检测在 cdel 调用约定中，较难将恶意行为和正常行为区分开。</li>
+</ol>
+</li>
+<li>
+<p>C++语义敏感技术</p>
+<ol>
+<li>验证 vptr 是否指向合法的 vtable。缺点是开销可能较大。</li>
+<li>监视数据流。开销可能也比较大。</li>
+<li>C++ 数据结构的细粒度随机化。例如在 C++ 对象内部字段间插入随机大小的填充，或者对 vtable 位置和结构进行细粒度随机化。</li>
+</ol>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/12/coop/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/virtual-call/" rel="tag">virtual call</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/12/reversing_kr-1/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Reversing.kr 刷题笔记 - 1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/collafl/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《CollAFL - Path Sensitive Fuzzing》论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

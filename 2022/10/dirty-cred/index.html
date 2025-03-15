@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="linux, dirty cred, blackhat usa,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    浅析 Linux Dirty Cred 新型漏洞利用方式 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-dirty-cred"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  浅析 Linux Dirty Cred 新型漏洞利用方式
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/10/dirty-cred/" class="article-date">
+  <time datetime="2022-10-05T16:00:00.000Z" itemprop="datePublished">2022-10-06</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">20 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>Linux Dirty Cred 是一种基于 Dirty Pipe 漏洞所创新出来的新型<strong>漏洞利用方式</strong>。通过 Dirty Cred 的这种利用流程，其他位于 <strong>Linux 内核</strong>中的一些<strong>内存漏洞</strong>，在对其进行漏洞利用的过程里，可以转换为<strong>逻辑漏洞</strong>，来<strong>绕过当前所有的内核缓解机制</strong>（包括 CFI 控制流完整性保护）。</p>
+<p>Dirty Cred 的核心利用思路是<strong>使用高权限 credential 对象来交换低权限 credential 对象</strong>，从而达到提权的目的。该论文目前已中 CCS 2022 &amp; Black Hat USA 2022，属实是一个比较有趣的思路。</p>
+<a id="more"></a>
+<h2 id="二、背景介绍">二、背景介绍</h2>
+<p>在讲述 Dirty Cred 前，需要做一些背景介绍来帮助理解。</p>
+<h3 id="1-Dirty-Pipe">1. Dirty Pipe</h3>
+<p>Linux Dirty Pipe CVE-2022-0847 是今年早些时候爆发出来的一个 Linux 内核提权漏洞。我曾在上半年写过一篇分析它的文章 - <a href="https://kiprey.github.io/2022/04/dirty-pipe/">Linux Dirty Pipe CVE-2022-0847 漏洞分析 - Kipre’s Blog</a>，因此就不在这里赘述了。</p>
+<p>简单概括一下成因：</p>
+<p>Pipe 结构是由一个环形队列组成，其中队列元素分别为<strong>实际存放数据的物理页</strong>的引用。对于某次 pipe 的写入操作，如果 pipe <strong>队列头所在元素上的标志位</strong>为 <strong>PIPE_BUF_FLAG_CAN_MERGE</strong>，那就说明这次写入的数据<strong>可以直接合并</strong>至队列头的物理页里，无需重新创建新队列元素，减少内存占用。</p>
+<p>Linux 中存在一个称为 <strong>splice</strong> 的系统调用，它可以直接将文件中的数据追加进某个 pipe 中。其本质原理是将该文件的<strong>页面缓存</strong>引用直接添加进 pipe 的队列头部。由于文件页面缓存可能用在多个地方，因此这些页面缓存在 pipe 队列中元素上的标志位就<strong>不能标注</strong> <strong>PIPE_BUF_FLAG_CAN_MERGE</strong>，以便于防止在向 pipe 写入新数据时，错误地把新数据与页面缓存上的数据合并，对页面缓存进行误修改。</p>
+<p>由于 Dirty Pipe 漏洞的根源是 <strong>pipe 队列元素上标志位的未初始化漏洞</strong>，恶意黑客可以先往 pipe 内使用 write 函数灌注大量数据，使得 pipe 队列上的每个元素标志位都标有 <strong>PIPE_BUF_FLAG_CAN_MERGE</strong>，再紧接着 read 出这些数据，将 pipe 清空，并之后使用 splice 系统调用将任意可读文件（例如 <code>/etc/passwd</code>）的页面缓存加载进 pipe 中。但 pipe 队列元素上的<strong>标志位并没有被重置</strong>，因此对于加载进 pipe 中的页面缓存元素，每个队列元素上的标志位都将残留先前所设置的 <strong>PIPE_BUF_FLAG_CAN_MERGE</strong>，这样一来后续的 write 便可直接<strong>污染</strong>本不该被修改的文件页面缓存，使得特权文件（例如 <code>/etc/passwd</code>）在内存中的数据被<strong>篡改</strong>，造成提权。</p>
+<p>有意思的是，整个漏洞利用流程<strong>完全不涉及各类缓解机制</strong>。Dirty Pipe 是一个彻头彻尾的<strong>逻辑漏洞</strong>，这类逻辑漏洞可以完全绕过缓解机制，从而进行提权等操作。但 Dirty Pipe 又<strong>高度依赖 pipe 本身的能力</strong>（那种可以通过 pipe 将数据注入进任意文件的能力），换句话说即逻辑漏洞因为是<strong>逻辑</strong>错乱导致的问题，自然漏洞利用就必须与这个<strong>功能部件相关的逻辑</strong>高度关联。由于逻辑漏洞在相关逻辑的关联性较强，因此漏洞可以被非常容易地防护，影响范围并不会特别广。</p>
+<h3 id="2-Credentials">2. Credentials</h3>
+<p>Linux 的 Credentials，通常将其认为是内核中<strong>用于存放特权信息的内核属性</strong>。我们所熟知的 Credentials 有两种（总数不止两种）：</p>
+<ol>
+<li>
+<p><code>struct cred</code>：其中存放了一个 task 的权限信息，例如 GID、UID 等等。如果能任意修改一个低权限进程的 cred 结构体，那么我们就可以将该进程提权至高权限（例如 root）。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// include\linux\cred.h</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">cred</span> &#123;</span></span><br><span class="line"> <span class="keyword">atomic_t</span>    usage;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> CONFIG_DEBUG_CREDENTIALS</span></span><br><span class="line"> <span class="keyword">atomic_t</span>    subscribers;    <span class="comment">/* number of processes subscribed */</span></span><br><span class="line"> <span class="keyword">void</span>        *put_addr;</span><br><span class="line"> <span class="keyword">unsigned</span>    magic;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> CRED_MAGIC   0x43736564</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> CRED_MAGIC_DEAD  0x44656144</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"> <span class="keyword">kuid_t</span>      uid;        <span class="comment">/* real UID of the task */</span></span><br><span class="line"> <span class="keyword">kgid_t</span>      gid;        <span class="comment">/* real GID of the task */</span></span><br><span class="line"> <span class="keyword">kuid_t</span>      suid;       <span class="comment">/* saved UID of the task */</span></span><br><span class="line"> <span class="keyword">kgid_t</span>      sgid;       <span class="comment">/* saved GID of the task */</span></span><br><span class="line"> <span class="keyword">kuid_t</span>      euid;       <span class="comment">/* effective UID of the task */</span></span><br><span class="line"> <span class="keyword">kgid_t</span>      egid;       <span class="comment">/* effective GID of the task */</span></span><br><span class="line"> <span class="keyword">kuid_t</span>      fsuid;      <span class="comment">/* UID for VFS ops */</span></span><br><span class="line"> <span class="keyword">kgid_t</span>      fsgid;      <span class="comment">/* GID for VFS ops */</span></span><br><span class="line"> <span class="keyword">unsigned</span>    securebits; <span class="comment">/* SUID-less security management */</span></span><br><span class="line"> <span class="keyword">kernel_cap_t</span>    cap_inheritable; <span class="comment">/* caps our children can inherit */</span></span><br><span class="line"> <span class="keyword">kernel_cap_t</span>    cap_permitted;   <span class="comment">/* caps we're permitted */</span></span><br><span class="line"> <span class="keyword">kernel_cap_t</span>    cap_effective;   <span class="comment">/* caps we can actually use */</span></span><br><span class="line"> <span class="keyword">kernel_cap_t</span>    cap_bset;        <span class="comment">/* capability bounding set */</span></span><br><span class="line"> <span class="keyword">kernel_cap_t</span>    cap_ambient;     <span class="comment">/* Ambient capability set */</span></span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>struct file</code>： 存放一个文件的部分权限信息，例如 read &amp; write 权限等。如果一个低权限用户可以任意修改高权限文件（例如 /etc/passwd），那么同样也能造成提权的目的。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// include\linux\fs.h</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">file</span> &#123;</span></span><br><span class="line"> ...</span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">path</span>    <span class="title">f_path</span>;</span></span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">inode</span>        *<span class="title">f_inode</span>;</span>   <span class="comment">/* cached value */</span></span><br><span class="line"> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span>    *<span class="title">f_op</span>;</span></span><br><span class="line"></span><br><span class="line"> <span class="comment">/*</span></span><br><span class="line"><span class="comment">  * Protects f_ep_links, f_flags.</span></span><br><span class="line"><span class="comment">  * Must not be taken from IRQ context.</span></span><br><span class="line"><span class="comment">  */</span></span><br><span class="line"> <span class="keyword">spinlock_t</span>          f_lock;</span><br><span class="line"> <span class="keyword">enum</span> rw_hint        f_write_hint;</span><br><span class="line"> <span class="keyword">atomic_long_t</span>       f_count;</span><br><span class="line"> <span class="keyword">unsigned</span> <span class="keyword">int</span>        f_flags;</span><br><span class="line"> <span class="keyword">fmode_t</span>             f_mode;           <span class="comment">// !!: O_RDWR</span></span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">mutex</span>        <span class="title">f_pos_lock</span>;</span></span><br><span class="line"> <span class="keyword">loff_t</span>              f_pos;</span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">fown_struct</span>  <span class="title">f_owner</span>;</span></span><br><span class="line"> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">cred</span>   *<span class="title">f_cred</span>;</span>      <span class="comment">// !!: cred</span></span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">file_ra_state</span>   <span class="title">f_ra</span>;</span></span><br><span class="line"> ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，struct file 只保存<strong>已被打开</strong>文件的信息。如果某个文件连打开的权限都没有，那自然就不可能会有对应的 struct file 结构体。</p>
+<p>至于文件的属主等其他特权信息，则存放在 <code>struct inode</code> 中，这里不再赘述。</p>
+</li>
+</ol>
+<h3 id="3-Allocator">3. Allocator</h3>
+<p>众所周知，Linux 内核主要使用 slab 分配器来进行内存分配。slab 分配器中主要维护了两种内存缓存（即可以理解成两套作用不同的内存分配方式）：</p>
+<ol>
+<li>dedicated cache: 这里的内存是用于分配给<strong>内核中的常用对象</strong>。在该缓存中被分配的结构体将始终保持初始化状态，以便于提高分配速度。</li>
+<li>generic cache: 通用缓存。大多数情况下其内存块的大小与 2 的幂次方对齐。</li>
+</ol>
+<p>这类 cred 和 file 结构体等 credential 对象都是在 dedicated cache 中分配，而大多数内存漏洞发生的地方都是在 generic cache 中。</p>
+<p>可以在终端中键入 <code>sudo cat /proc/slabinfo</code> 来查看 slab 分配器的具体信息。其中这些名字互不相同的内存块即 dedicated cache：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006192115747.png" alt="image-20221006192115747"></p>
+<p>后面那些名称中带有 kmalloc 的即 generic cache：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006192309397.png" alt="image-20221006192309397"></p>
+<h2 id="三、威胁模型">三、威胁模型</h2>
+<ul>
+<li>
+<p>攻击者层面</p>
+<ul>
+<li>低权限用户可以接触访问目标 Linux 系统</li>
+<li>已经存在一个堆破坏的内存漏洞</li>
+<li>打算使用该漏洞进行本地提权</li>
+</ul>
+<blockquote>
+<p>不考虑硬件对漏洞利用所带来的帮助。</p>
+</blockquote>
+</li>
+<li>
+<p>被攻击平台层面</p>
+<ul>
+<li>启用<strong>所有缓解机制</strong>（例如 KASLR, SMAP, SMEP, CFI, KPTI）</li>
+</ul>
+</li>
+</ul>
+<h2 id="四、面对的挑战">四、面对的挑战</h2>
+<p>先简单介绍一下 CVE-2021-4154， 来说明 Dirty Cred 是如何利用的，先上一张图：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006195145289.png" alt="image-20221006195145289"></p>
+<p>其实看图也能大致看出来是什么样的过程。太长不看版本就是，写入一个文件需要顺序执行：</p>
+<ol>
+<li>文件权限检查（是否可写）</li>
+<li>开始实际写入数据至文件</li>
+</ol>
+<p>如果在这两个步骤之中进行<strong>竞争</strong>，在成功检查文件权限后（/tmp/x 可写），触发漏洞恶意将原先的 credential 结构体（这里是 file 结构体）<strong>释放</strong>，并<strong>创建</strong> <strong>高权限</strong>的 credential 结构体（例如<code>/etc/passwd</code> 的 file 结构体）来<strong>占据</strong>这个内存空洞，那么待写入的数据就会被写入进 /etc/passwd 中，造成本地提权。</p>
+<p>那么 Dirty Cred 所面对的挑战其实也可以看得出来：</p>
+<ol>
+<li>如何将<strong>内存破坏漏洞</strong>，转换为能够<strong>置换 credential object</strong> 的原语。</li>
+<li>如何延长文件的<strong>权限检查- 数据写入</strong>的竞争窗口。</li>
+<li>如何创建高权限的 credential object，来占据先前被释放的低权限 credential object 内存空洞。</li>
+</ol>
+<h2 id="五、-置换-credential-object">五、 置换 credential object</h2>
+<p>内存破坏漏洞常见的种类有：</p>
+<ol>
+<li>Invalid-Write: <strong>Out Of Bound Write</strong> (Read 肯定没法利用了，只能泄露数据)、以及 <strong>Use after Free</strong>。</li>
+<li>Invalid-Free: <strong>Double Free</strong></li>
+</ol>
+<p>接下来将分别说明如何利用这几种内存漏洞，来达到<strong>使用 privileged credential 置换 unprivileged credential</strong> 的目的。</p>
+<h3 id="1-Out-Of-Bound-Write">1.  Out Of Bound Write</h3>
+<p>太长不看，直接看图：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006203908551.png" alt="image-20221006203908551"></p>
+<p>还是常规的 OOB write 的利用操作：尝试越界写入下一个结构体的字段，将该结构体原先指向<strong>低权限 credential 结构体指针</strong>被修改为<strong>指向高权限 credential 结构体指针</strong>。这种修改指向的方法是通过往指针<strong>低两个字节</strong>写入0（即 0x0000）来进行的，之所以是写两个字节的 0 而不是其他的，是因为攻击者希望把原指针修改为<strong>当前页所在首部的 privileged credentials</strong>。攻击者可以通过频繁创建 privileged credentials 对象来占据新页面的首部位置，为后续修改指针做准备。<br>
+由于页面以 0x1000 字节对齐，而写入两个字节的 0 要求 privilege credential 所在的地址以 0x1<strong>0</strong>000 字节对齐，因此可能需要以 1/16 的概率进行爆破才能利用成功。</p>
+<h3 id="2-Use-After-Free">2. Use After Free</h3>
+<p>UAF 和先前介绍的 CVE-2021-4154 漏洞利用流程差不多。</p>
+<ol>
+<li>如果 UAF 的地方在 credential dedicated cache上，那只需释放掉原先的 unprivileged credential，使用新创建的 privileged credential 对象来占据这个内存空洞，即可完成置换。</li>
+<li>如果 UAF 的地方在 generic cache 上（大多数情况），那就<strong>要求这个 UAF 漏洞拥有 invalid-write 的能力</strong>。即先释放出一个内存空洞，使用一个带有 credential pointer 的可利用对象来占据这个内存空洞，然后利用 UAF 悬垂指针来改这个 credential pointer 即可。</li>
+</ol>
+<h3 id="3-Double-Free">3. Double Free</h3>
+<p>Double Free 的利用略显复杂，先上图：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006220306654.png" alt="image-20221006220306654"></p>
+<p>利用流程大致是：</p>
+<ol>
+<li>
+<p>在 <strong>vulnerable object 所在的 cache</strong> 中，大量分配对象，使得</p>
+<ol>
+<li>这些所分配的对象，其释放时机可控</li>
+<li>“大量分配对象” 的这个<strong>大量</strong>，是要分配至少一个页面的内存空间。</li>
+</ol>
+<p>这么做的目的只有一个：<strong>使某个内存页面的被回收时机可控</strong>。因为如果这个页面上的所有对象全部释放，那么该空闲页面自然就会被回收。</p>
+</li>
+<li>
+<p>尝试触发两次 double free 漏洞，使得最终<strong>某个被释放内存块上有两个悬垂指针</strong>。</p>
+</li>
+<li>
+<p>释放该 vulnerable object 所在页面上的所有对象，使得该页面被回收进分配器中，并被用于 credential 的内存分配（即成为 dedicated cache）</p>
+</li>
+<li>
+<p>在这块已经成为 credential dedicate cache 的内存页面上大量分配 credential 结构体，占据该页面的内存空间（即 <strong>Figure 3(f)</strong>）。</p>
+</li>
+<li>
+<p>注意到两个悬垂指针可能不会与 credential object 对齐，因此需要用掉一个悬垂指针来释放出一块 credential object 的内存空洞出来。</p>
+</li>
+<li>
+<p>分配新 credential object，占据这个内存空洞。这样就可以达到<strong>两个指针共同指向一个 credential object</strong> 的效果，后续的利用就可参照 UAF 的方式来进行，这里就不再赘述了。</p>
+</li>
+</ol>
+<p>这里有个有趣的问题：一个<strong>原先指向 generic cache</strong> 的指针，如果这个指针所指向内存变更为 <strong>dedicated cache</strong>，那么后续对这个以为是 generic pointer 实则是 dedicated pointer 进行 free 操作时，这个 free 的大小是如何界定的？为什么 free 的大小是 credential object 的大小呢？</p>
+<p>通过查阅 slab 分配器的 kfree 逻辑，发现它的释放逻辑与被释放地址高度相关。首先会尝试根据被释放地址获取其对应的 slab_cache 结构，然后再根据结构中所存放的信息来释放对应的 object size。换句话说，如果 kfree 释放的地址在 generic cache中，那就会走 generic cache 的释放逻辑；如果是在 dedicated cache 中，那就会走 dedicated cache 的释放逻辑。这么做或许是为了提高可用性，使得释放两个不同 cache 的内存块可以使用同一个 kfree 接口。</p>
+<h2 id="六、延长竞争窗口">六、延长竞争窗口</h2>
+<p>Dirty Cred 需要在<strong>检查文件写权限 - 实际写入数据</strong> 这两步之中，成功将低权限 credential 替换为高权限 credential。由于 credential 的替换需要一些时间，因此如果能延长这个竞争窗口，那就能非常成功的进行漏洞利用。</p>
+<h3 id="1-有趣的机制">1. 有趣的机制</h3>
+<p>这里需要先介绍两个有趣的机制，分别是 <strong>Userfaultfd</strong> 和 <strong>FUSE</strong>，这两种机制都<strong>允许用户无限延长竞争窗口</strong>。</p>
+<h4 id="a-Userfaultfd">a. Userfaultfd</h4>
+<p>在多线程程序中，userfaultfd 允许一个线程管理其他线程所产生的 Page Fault 事件。当某个线程触发了 Page Fault，该线程将<strong>立即陷入 sleep</strong>，而其他线程则可以通过 userfaultfd 来读取出这个 Page Fault 事件，并进行处理。</p>
+<p>Userfaultfd 常用于条件竞争漏洞利用中。但悲伤的是，为了防止 userfaultfd 在内核漏洞利用中的滥用，在内核 5.11 版本开始，<strong>非特权</strong>的 userfaultfd <strong>默认是禁用的</strong>（<a href="https://lwn.net/Articles/819834/" target="_blank" rel="noopener">LWN: Blocking userfaultfd() kernel-fault handling</a>）。</p>
+<blockquote>
+<p>参考：Linux Manual Page（<code>man userfaultfd</code>）。</p>
+</blockquote>
+<h4 id="b-FUSE">b. FUSE</h4>
+<p>FUSE 是一个用户层文件系统框架，允许用户实现自己的文件系统。用户可以在该框架中注册 handler，来指定应对文件操作请求。这样一来便可以在实际操作文件之前，执行 handler 暂停内核执行，尽可能地延长窗口。</p>
+<h3 id="2-Userfaultfd-利用方式">2. Userfaultfd 利用方式</h3>
+<p>在 Linux 4.13 之前，<strong>系统调用 writev</strong>  的实现大致如下：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006234319329.png" alt="image-20221006234319329"></p>
+<p>攻击者可以在权限检查执行完成后，在调用 <code>import_iovec</code> 时触发缺页错误，从而利用 userfaultfd 机制来暂停内核的执行。</p>
+<p>但在 linux 4.13 版本之后，该函数的实现变成了如下，即将 import_iovec 函数的调用提前了：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006234539132.png" alt="image-20221006234539132"></p>
+<p>这就使得刚刚所说的利用方法不再有效，需要换一种方式。</p>
+<p>由于 Linux 中文件系统是以多层形式实现，即高层接口调用底层函数来实现操作，因此在写入文件数据时，最终都会调用到一个称为 <code>generic_perform_write</code> 的函数，该函数中会主动触发一次 Page Fault，同样可以利用 userfaultfd 来实现利用：</p>
+<p><img src="/2022/10/dirty-cred/image-20221006235624520.png" alt="image-20221006235624520"></p>
+<h3 id="3-文件系统-lock-的利用方式">3. 文件系统 lock 的利用方式</h3>
+<p>以 ext4 文件系统的数据写入为例，可以看到在执行 <code>generic_perform_write</code> 函数进行实际的数据写入之前，都需要对 inode 进行一次上锁（即 <code>inode_lock(inode)</code> 调用）：</p>
+<p><img src="/2022/10/dirty-cred/image-20221007000247163.png" alt="image-20221007000247163"></p>
+<p>如果有一个进程率先对某个文件进行<strong>超大量数据写入</strong>，那么另一个进程在对相同文件执行写入操作时，将会一直等待 inode 锁的释放。通过测试可知，4GB 数据的写入可以使得后一个进程等待数十秒（取决于硬盘性能），因此这个 inode 锁同样可以延长竞争窗口。</p>
+<h2 id="七、分配特权对象">七、分配特权对象</h2>
+<p>由于 Dirty Cred 十分需要控制 privilege credential 对象的分配时机，控制该对象的分配成为了一个关键点。</p>
+<p>在<strong>用户层</strong>中，有两种方法可以分配 privilege credential:</p>
+<ol>
+<li>大量执行 Set-UID 程序（例如 sudo），或者频繁创建特权级守护进程（例如 sshd），从而创建 privilege cred 结构体。</li>
+<li>使用 ReadOnly 方式来打开诸如 <code>/etc/passwd</code> 等特权文件。</li>
+</ol>
+<p>在<strong>内核层</strong>中，当内核创建新的 kernel thread 时，当前 kernel thread 将会被复制，于此同时其 privileged cred 结构体也会被拷贝一份。因此只要能找到稳定创建 kernel thread 的方式，Dirty Cred 就能稳定地创建 privileged cred 结构体。有两种方法可以做到这点：</p>
+<ol>
+<li>
+<p>往 kernel workqueue 中填充大量任务，动态创建新的 kernel thread 来执行任务。</p>
+</li>
+<li>
+<p>调用 usermode helper （一种允许内核创建用户模式进程的机制），一种最常见的应用场所是加载内核模块至内核空间中。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// kernel\kmod.c</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">call_modprobe</span><span class="params">(<span class="keyword">char</span> *module_name, <span class="keyword">int</span> wait)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line"> <span class="class"><span class="keyword">struct</span> <span class="title">subprocess_info</span> *<span class="title">info</span>;</span></span><br><span class="line"> <span class="keyword">static</span> <span class="keyword">char</span> *envp[] = &#123;</span><br><span class="line">     <span class="string">"HOME=/"</span>,</span><br><span class="line">     <span class="string">"TERM=linux"</span>,</span><br><span class="line">     <span class="string">"PATH=/sbin:/usr/sbin:/bin:/usr/bin"</span>,</span><br><span class="line">     <span class="literal">NULL</span></span><br><span class="line"> &#125;;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">char</span> **argv = kmalloc(<span class="keyword">sizeof</span>(<span class="keyword">char</span> *[<span class="number">5</span>]), GFP_KERNEL);</span><br><span class="line"> <span class="keyword">if</span> (!argv)</span><br><span class="line">     <span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line"> module_name = kstrdup(module_name, GFP_KERNEL);</span><br><span class="line"> <span class="keyword">if</span> (!module_name)</span><br><span class="line">     <span class="keyword">goto</span> free_argv;</span><br><span class="line"></span><br><span class="line"> argv[<span class="number">0</span>] = modprobe_path;</span><br><span class="line"> argv[<span class="number">1</span>] = <span class="string">"-q"</span>;</span><br><span class="line"> argv[<span class="number">2</span>] = <span class="string">"--"</span>;</span><br><span class="line"> argv[<span class="number">3</span>] = module_name;  <span class="comment">/* check free_modprobe_argv() */</span></span><br><span class="line"> argv[<span class="number">4</span>] = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 调用 usermode helper</span></span><br><span class="line"> info = call_usermodehelper_setup(modprobe_path, argv, envp, GFP_KERNEL,</span><br><span class="line">                <span class="literal">NULL</span>, free_modprobe_argv, <span class="literal">NULL</span>);</span><br><span class="line"> <span class="keyword">if</span> (!info)</span><br><span class="line">     <span class="keyword">goto</span> free_module_name;</span><br><span class="line"></span><br><span class="line"> <span class="keyword">return</span> call_usermodehelper_exec(info, wait | UMH_KILLABLE);</span><br><span class="line"></span><br><span class="line">free_module_name:</span><br><span class="line"> kfree(module_name);</span><br><span class="line">free_argv:</span><br><span class="line"> kfree(argv);</span><br><span class="line">out:</span><br><span class="line"> <span class="keyword">return</span> -ENOMEM;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>内核在<strong>加载内核模块</strong>时，需要<strong>在内核层执行 modprobe 程序</strong>，来<strong>在标准安装驱动路径下搜索目标驱动</strong>。</p>
+</li>
+</ol>
+<h2 id="八、评估">八、评估</h2>
+<h3 id="1-评估环境">1. 评估环境</h3>
+<p>Linux 5.16.15</p>
+<h3 id="2-可利用的内核对象">2. 可利用的内核对象</h3>
+<p><strong>对象中包含 credential 对象</strong>且<strong>可控制该对象在内核堆上的分配时机</strong>。</p>
+<p><img src="/2022/10/dirty-cred/image-20221007101939000.png" alt="image-20221007101939000"></p>
+<p>从上图中可以看到，</p>
+<ol>
+<li>
+<p>几乎每个 generic cache 都<strong>至少有两个</strong>可利用对象</p>
+</li>
+<li>
+<p>credential 在可利用对象中的偏移量有较大差别，而这可以提高 Dirty Cred 的利用成功率</p>
+<blockquote>
+<p>尤其是 OOB 漏洞可覆写的偏移量可能偏差较大。</p>
+</blockquote>
+</li>
+<li>
+<p>有五个可利用对象<strong>所包含的 credential 的相对偏移量为 0</strong>，提高了 Dirty Cred <strong>在内存破坏范围较小情况下</strong>的利用成功率。</p>
+</li>
+</ol>
+<h3 id="3-满足评估条件的-CVE-漏洞">3. 满足评估条件的 CVE 漏洞</h3>
+<p>要求：</p>
+<ul>
+<li>在 2019 年及以后报告的 Linux 内核漏洞</li>
+<li>能够在 Linux 堆上进行堆破坏</li>
+<li>触发无需特定硬件条件支持</li>
+<li>可复现相应内核 panic</li>
+</ul>
+<p><img src="/2022/10/dirty-cred/image-20221007101924928.png" alt="image-20221007101924928"></p>
+<p>从上图中可得知，在所有缓解机制全部启动的情况下，Dirty Cred 的利用成功率为：<strong>16/24</strong>。其中：</p>
+<ol>
+<li>Double Free 的漏洞能全部完成利用</li>
+<li>OOB 中存在一些不能完成利用的 case，有些是因为 OOB write 所在的地方是 virtual memory 而不是 kmalloc‘ed 内存，暂无可利用对象。</li>
+<li>UAF 中一些不能完成利用的 case 是：有些只能 UAF read，不能进行 invalid-write；还有些是能 invalid-write 但是写入的位置不在可利用对象的 credential 字段上。</li>
+</ol>
+<h2 id="九、Dirty-Cred-防护">九、Dirty Cred 防护</h2>
+<p>Dirty Cred 之所以能成功，最核心的是：内核的内存隔离是基于<strong>类型</strong>而不是基于<strong>权限</strong>来做的。</p>
+<p>防护方法其实很简单：将 privileged credentials 与其他 unprivileged credentials 隔离开。</p>
+<p>如何做：使用 <code>vzalloc/kvfree</code> 函数来在 virtual memory 中创建与释放 privileged credentials 内存。这样就能使得 privileged 和 unprivileged 对象所在的 memory cache 是隔离开的。</p>
+<p>之所以使用 virtual memory 来存放 privileged credentials，是因为</p>
+<ol>
+<li>如果是使用两个不同的 kmalloc’ed memory cache，那有可能通过 Linux 内核重用机制来把 privileged credentials 所在内存页与 unprivileged 所在页合并，造成隔离失效。</li>
+<li>虚拟内存区域是内核<strong>动态分配</strong>、<strong>虚拟连续</strong>的内存，驻留在 VMALLOC_START 至 VMALLOC_END 中的内存区域。这就使得虚拟内存区域中的内存永远不会与直接映射的内存区域重叠。</li>
+</ol>
+<blockquote>
+<p>这里顺带提一句 kmalloc 和 vmalloc 所分配内存的性质：</p>
+<ol>
+<li>都是分配的内核内存</li>
+<li>kmalloc 保证分配的内存在<strong>物理地址空间上连续</strong>；vmalloc 保证<strong>虚拟地址空间上连续</strong>（需要配置页表）</li>
+<li>kmalloc 能分配的大小有限，vmalloc 能分配的大小相对较大</li>
+<li>vmalloc 因为要设置页表，自然会慢一点</li>
+</ol>
+</blockquote>
+<p>要被隔离的 credential 结构体为：</p>
+<ol>
+<li>UID 为 <strong>GLOBAL_ROOT_UID</strong> 的 struct cred（privileged credentials）</li>
+<li>打开方式中带有<strong>可写</strong>的 struct file（unprivileged credentials）</li>
+</ol>
+<blockquote>
+<p>之所以要把这两个隔离，个人猜测是这两种类型的结构（GLOBAL_ROOT_UID or writable file）创建的次数相对其他结构（非特权级 UID 或者 只读文件结构）较少。</p>
+</blockquote>
+<p>由于这种隔离是在 credential 创建时所确定的，那如果某个非特权 cred 结构体被原地提权（例如通过 <code>setuid/cap_setuid</code>），那就会造成这种内存隔离形同虚设。鉴于此，可以尝试在 <code>alter_cred_subscribers</code> 函数被执行时，在虚拟内存区域新创建一个特权 cred, 而非在原先 cred 上进行修改。但这种防护方法很依赖 Linux 未来的开发发展，倘若以后 Linux 新开发了一种原地修改 cred 的方式，那么这种防护就无效了，因此这个防护被留待 Future work。</p>
+<p>Dirty Cred 防护的性能评估：</p>
+<p><img src="/2022/10/dirty-cred/image-20221007111610551.png" alt="image-20221007111610551"></p>
+<p>从中可得知绝大部分的性能开销都非常的小（&lt; 3%），不会影响系统的正常使用。但其中 10k File Create 的性能开销达到了 7%，这是因为 vmalloc 的执行速度会比 kmalloc 低很多，因为需要重新进行内存映射等等；而 10k File Delete 的性能开销相对较小一点， 因为 Linux 内核使用 RCU 机制来异步进行文件删除，以提高内核执行速度。</p>
+<blockquote>
+<p>RCU (Read-copy update) 是 Linux内核中的一种<strong>数据同步机制</strong>。</p>
+</blockquote>
+<p>上图评估结果中还出现了“轻微的性能改善”，这个纯粹是实验所产生的噪声，不是真的改善（虽然这个实验重复了多次基准测试）。</p>
+<h2 id="十、参考链接">十、参考链接</h2>
+<ul>
+<li><a href="https://github.com/Markakd/DirtyCred" target="_blank" rel="noopener">Markakd/DirtyCred - github</a></li>
+<li><a href="https://zplin.me/papers/DirtyCred.pdf" target="_blank" rel="noopener">DirtyCred: Escalating Privilege in Linux Kernel - ACM CCS 2022</a></li>
+<li><a href="https://www.blackhat.com/us-22/briefings/schedule/#cautious-a-new-exploitation-method-no-pipe-but-as-nasty-as-dirty-pipe-27169" target="_blank" rel="noopener">Cautious: A New Exploitation Method! No Pipe but as Nasty as Dirty Pipe - Blackhat USA 2022</a></li>
+<li><a href="https://hammertux.github.io/slab-allocator" target="_blank" rel="noopener">The Slab Allocator in the Linux kernel - hammertux</a></li>
+<li><a href="https://www.kernel.org/doc/html/latest/filesystems/fuse.html" target="_blank" rel="noopener">FUSE - The Linux Kernel documentation</a></li>
+<li><a href="https://www.cnblogs.com/sky-heaven/p/11507094.html" target="_blank" rel="noopener">Linux kernel workqueue机制分析【转】 - cnblogs</a></li>
+<li><a href="https://blog.csdn.net/YMY_mine/article/details/81636671" target="_blank" rel="noopener">kmalloc()和vmalloc() - CSDN</a></li>
+<li><a href="https://szp2016.github.io/linux/RCU%E6%9C%BA%E5%88%B6/" target="_blank" rel="noopener">Linux RCU机制 - szp2016 github page</a></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/10/dirty-cred/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/linux/" rel="tag">linux</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/11/baoyan-note/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            2022年信息安全专业保研历程
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/08/defcon30quals_smugglers_cove/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Defcon-30-Quals smuggler&#39;s cove 复盘笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

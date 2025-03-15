@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    计算机网络笔记-2 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cnatda-2"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  计算机网络笔记-2
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/05/cnatda-2/" class="article-date">
+  <time datetime="2021-05-24T16:00:00.000Z" itemprop="datePublished">2021-05-25</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">17 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里记录了笔者阅读《计算机网络：自顶向下方法》的一些笔记。笔记有所缩略。</li>
+<li>主要关于
+<ul>
+<li>第四章：网络层：数据平面</li>
+</ul>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="第四章：网络层：数据平面">第四章：网络层：数据平面</h2>
+<h3 id="1-网络层概述">1. 网络层概述</h3>
+<ul>
+<li>
+<p>网络层在协议栈中是最复杂的层次。网络层可以被分解为两个相互作用的部分：<strong>数据平面</strong>和<strong>控制平面</strong>。</p>
+<ul>
+<li>数据平面：网络层中<strong>每台路由器</strong>的功能，该数据平面功能决定到达路由器输入链路之一的数据报如何转发到该路由器的输出链路之一。</li>
+<li>控制平面：<strong>网络范围</strong>的逻辑。该控制平面功能控制数据报沿着从源主机到目标主机的端到端路径中路由器之间的路由方式。</li>
+</ul>
+</li>
+<li>
+<p>网络层的作用：将分组从一台发送主机移动到一台接收主机。有两种重要的网络层功能需要被使用：</p>
+<ul>
+<li>转发。当一个分组到达路由器的输入链路时，该路由器必须将该分组移动到适当的输出链路。<strong>转发是在数据平面中实现的唯一功能</strong>。</li>
+<li>路由选择。网络层必须决定分组所采用的路由或路径。计算这些路径的算法称为<strong>路由选择算法</strong>。</li>
+</ul>
+<p>需要注意的是，<strong>转发</strong>和<strong>路由选择</strong>是两个截然不同的词语。</p>
+<ul>
+<li><strong>转发forwarding</strong>是指将分组从一个输入链路接口移动到适当的输出链路接口的路由器本地动作。时间尺度很短，通常为几纳秒。</li>
+<li><strong>路由选择routing</strong>是指确定分组从源到目的地所采取的端到端路径的网络范围处理过程，时间尺度较长，通常为几秒。</li>
+</ul>
+<p>每个网络路由器中都有一个<strong>转发表forwarding table</strong>。路由器检查到达分组首部的一个或多个字段，进而使用这些首部值在其转发表中索引，并通过这种方法来转发分组。</p>
+<p>转发表的设置有两种方式：</p>
+<ul>
+<li>
+<p>传统的方式。<strong>路由选择算法</strong>决定了插入该路由器转发表中的内容。在一台路由器中的路由选择算法与在其他路由器中的路由选择算法通信，以计算出它的转发表的值。这种通信是通过<strong>根据路由选择协议</strong>交换<strong>包含路由选择信息</strong>的<strong>路由选择报文</strong>。</p>
+<p><img src="/2021/05/cnatda-2/image-20210515175625818.png" alt="image-20210515175625818"></p>
+</li>
+<li>
+<p>SDN方式。远程控制器计算和分发转发表以供每台路由器使用。控制平面路由选择功能与物理的路由器是分开的，路由选择设备只执行转发，而远程控制器计算并分发转发表。以下是**软件定义网络（Software-Defined Networking, SDK）**的一个例子：</p>
+<p><img src="/2021/05/cnatda-2/image-20210515175645704.png" alt="image-20210515175645704"></p>
+</li>
+</ul>
+</li>
+<li>
+<p>网络服务模型</p>
+<ul>
+<li>因特网的网络层提供了单一的服务，称为<strong>尽力而为服务best-effort service</strong>。</li>
+<li>约定术语<strong>分组交换机</strong>是指一台通用分组交换设备，它根据分组首部字段中的值，从输入链路接口到输出链路接口转移分组。
+<ul>
+<li>某些分组交换机称为<strong>链路层交换机</strong>link-layer switch，基于<strong>链路层帧</strong>中的字段值做出转发决定，这些交换机因此称为<strong>链路层设备</strong>。</li>
+<li>其他分组交换机称为<strong>路由器</strong>router，基于<strong>网络层数据报</strong>中的首部字段值做出转发决定。路由器因此是<strong>网络层设备</strong>。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-路由器工作原理">2. 路由器工作原理</h3>
+<h4 id="a-通用路由器体系结构">a. 通用路由器体系结构</h4>
+<p><img src="/2021/05/cnatda-2/image-20210515181508354.png" alt="image-20210515181508354"></p>
+<ul>
+<li>输入端口。
+<ul>
+<li>在路由器中执行终结<strong>入物理链路</strong>的物理层功能（最外侧的方框）</li>
+<li>还要与位于<strong>入链路</strong>远端的数据链路层交互来执行数据链路层功能（较中间的方框）</li>
+<li>在输入口执行查找功能（最内侧的方框）。正是在这里通过查找转发表决定路由器的输出端口，到达的分组通过路由器的交换结构转发到输出端口。</li>
+</ul>
+</li>
+<li>交换结构。交换结构将路由器的输入端口连接到它的输出端口。</li>
+<li>输出端口。输出端口存储从交换结构接收的分组，并通过执行必要的链路层和物理层功能在输出链路上传输这些分组。</li>
+<li>路由选择处理器。执行控制平面功能，例如维护路由选择表与关联链路状态信息，计算转发表等等。</li>
+</ul>
+<h4 id="b-输入-输出端口处理-基于目的地转发">b. 输入/输出端口处理 &amp; 基于目的地转发</h4>
+<p>输入端口的线路段接功能与链路层处理实现了用于各个输入链路的物理层和链路层。转发表从路由选择处理器经过独立总线复制到线路卡。因此转发决策<strong>可以使用在每个输入端口的转发表副本</strong>，在<strong>每个输入端口本地做出</strong>，提高效率。</p>
+<p><img src="/2021/05/cnatda-2/image-20210515185638281.png" alt="image-20210515185638281"></p>
+<p>输出端口处理操作与输入端口类似，包括选择和取出排队中分组进行传输、执行所需的链路层和物理层传输功能。</p>
+<p><img src="/2021/05/cnatda-2/image-20210515190039325.png" alt="image-20210515190039325"></p>
+<p>当路由表中有多个匹配项时，路由器使用<strong>最长前缀匹配规则</strong>，即在该表中寻找最长的匹配项，并向与最长前缀匹配相关联的链路接口转发分组。</p>
+<h4 id="c-交换">c. 交换</h4>
+<p>交换结构位于一台路由器的核心部位，正是通过这种结构，分组才能实际的从一个输入端口交换到一个输出端口。交换可以用许多方式完成：</p>
+<p><img src="/2021/05/cnatda-2/image-20210515190159433.png" alt="image-20210515190159433"></p>
+<h4 id="d-排队">d. 排队</h4>
+<p>当路由器的缓存空间被耗尽，无内存可用于储存到达的分组时将会出现<strong>丢包packet loss</strong>，即<strong>在网络中丢失</strong>或<strong>被路由器丢弃</strong>。排队有两种，一种是输入排队；另一种是输出排队。</p>
+<blockquote>
+<p>以下说明的情况假定</p>
+<ul>
+<li>所有链路速度相同。</li>
+<li>一个分组能够以一条输入链路接收一个分组所用的相同的时间量，从任意一个输入端口传送到给定的输出端口。</li>
+<li>分组按FCFS（先来先服务）方式，从一指定输入队列移动到其要求的输出队列中。只要其<strong>输出端口不同，多个分组可以被并行发送</strong>。</li>
+</ul>
+</blockquote>
+<p><strong>输入排队</strong>：</p>
+<ul>
+<li>
+<p>如果交换结构不能快的使所有到达分组无时延地通过它传送，那么输入端口也将出现分组排队，因为到达地分组必须加入输入端口队列中，以等待通过交换结构传送到输出端口。</p>
+</li>
+<li>
+<p>如果位于两个输入队列前端的两个分组是发往同一输出队列的，则其中的一个分组将被阻塞，且必须在输入队列中等待。因为交换结构一次只能传送一个分组到某指定端口。</p>
+</li>
+<li>
+<p>输入排队交换机中的<strong>线路前部Head-of-the-Line，HOL</strong>阻塞，即在一个输入队列中排队的分组，<strong>因为被位于线路前部的另一个分组所阻塞</strong>，使得<strong>必须等待</strong>通过交换结构发送。</p>
+<p><img src="/2021/05/cnatda-2/image-20210515192933636.png" alt="image-20210515192933636"></p>
+</li>
+</ul>
+<p><strong>输出排队</strong>：</p>
+<ul>
+<li>
+<p>当没有足够的内存来缓存一个入分组时，就必须做出决定：</p>
+<ul>
+<li>要么丢弃到来的分组（<strong>弃尾</strong>策略）</li>
+<li>要么删除一个或多个已排队的分组为新来的分组腾出空间。</li>
+</ul>
+<p>在某些情况下，在缓存填满<strong>之前</strong>便丢弃一个分组（或在其首部加上标记），可以<strong>提前</strong>向发送方提供一个拥塞信号。这些处理分组丢失与标记的策略，统称为<strong>主动队列管理（Active Queue Management, AQM）算法</strong>。其中，刚刚所说明的<strong>随机早期检测（Random Early Detection, RED）算法</strong>是得到最广泛研究和实现的AQM算法之一。</p>
+</li>
+</ul>
+<p>计算路由器缓存大小的经验方法是：缓存数量（B）应该等于平均往返事件（RTT）乘以链路容量（C）。即$B=RTT * C$。该结果基于<strong>相对少量</strong>的TCP流的排队动态性分析得到。</p>
+<blockquote>
+<p>例如一条具有250ms RTT的10Gbps链路需要的缓存量等于 B = 2.5Gb.</p>
+</blockquote>
+<p>最近的实验表明，当有<strong>大量TCP流</strong>流过一条链路时，缓存所需要的数据量是$B=RTT * C / \sqrt{n}$。</p>
+<h4 id="e-分组调度">e. 分组调度</h4>
+<ul>
+<li>
+<p>先进先出。</p>
+</li>
+<li>
+<p>优先权排队</p>
+<ul>
+<li>在优先权排队规则下，到达输出链路的分组被分类放入输出队列中的优先权类。每个优先权类通常都有自己的队列。当选择一个分组传输时，优先权排队规则将从队列为<strong>非空</strong>的<strong>最高优先权类</strong>中传输一个分组。在<strong>同一优先权类</strong>的分组之间的选择通常以FIFO方式完成。</li>
+<li>在<strong>非抢占式优先权排队</strong>规则下，一旦分组开始传输，就不能打断。</li>
+</ul>
+</li>
+<li>
+<p>循环和加权公平排队</p>
+<ul>
+<li>
+<p>在<strong>循环排队规则</strong>下，分组像使用优先权排队那样<strong>被分类</strong>。然而在<strong>类之间不存在严格的服务优先权</strong>，循环调度器在这些类之间<strong>轮流提供服务</strong>。一个所谓的<strong>保持工作队列(work-conserving queueing)规则</strong>在有任何类的分组排队等待传输时，不允许链路保持空闲。当寻找给定类的分组但没有找到时，将立即检查循环序列中的下一个类。</p>
+</li>
+<li>
+<p>一种通用形式的循环排队已经广泛实现在路由器中，即<strong>加权公平排队(Weighted Fair Queuing, WFQ)规则</strong>。不同点在于，每个类在任何时间间隔内可能收到<strong>不同数量</strong>的服务，即第 i 类将确保接收到的服务部分等于 $W_i / W$，其中$W$为所有权重之和。</p>
+<p><img src="/2021/05/cnatda-2/image-20210515201004707.png" alt="image-20210515201004707"></p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-网际协议：IPv4、寻址、IPv6-及其他">3. 网际协议：IPv4、寻址、IPv6 及其他</h3>
+<h4 id="1-IPv4数据报格式">1. IPv4数据报格式</h4>
+<p>网络层分组统称为<strong>数据报</strong>。IPv4数据报格式如下：</p>
+<p><img src="/2021/05/cnatda-2/image-20210515212314203.png" alt="image-20210515212314203"></p>
+<p>其中，关键字段如下：</p>
+<ul>
+<li>
+<p><strong>版本（号）</strong>。这4bit规定了数据报的IP协议版本。通过查看版本号，路由器能够确定如何解释IP数据报的剩余部分。不同的IP版本使用不同的数据报格式。</p>
+</li>
+<li>
+<p><strong>首部长度</strong>。一个IPv4数据报可包含一些可变数量的选项，故需要用这4bit来确定IP数据报中载荷实际开始的地方。大多数IP数据报不包含选项，所以通常具有<strong>20字节</strong>的首部。</p>
+</li>
+<li>
+<p><strong>服务类型</strong>。服务类型(TOS)比特包含在 IPv4首部中，以便使不同类型的IP数据报相互区分开。</p>
+</li>
+<li>
+<p><strong>数据报长度</strong>。IP数据报的总长度（首部+数据）。该字段有16比特的宽度。</p>
+</li>
+<li>
+<p><strong>标识、标志、片偏移</strong>。主要涉及到<strong>IP分片（重点）</strong>。</p>
+</li>
+<li>
+<p><strong>寿命</strong>。即Time-to-Live, TTL。用来确保数据报不会永远在网络中循环。每当一台路由器处理数据报时，该字段的值减1。若TTL字段为0，则该数据报必须丢弃。</p>
+</li>
+<li>
+<p><strong>协议</strong>。该字段通常只会在IP数据报到达最终目的地时才有效，主要指定IP数据报的数据部分应交付给哪个特定的运输层协议。例如 6 表示交付给TCP，17表示交付给UDP。</p>
+</li>
+<li>
+<p><strong>首部校验和</strong>。用于帮助路由器检测收到的IP数据报中的<strong>首部</strong>比特错误。路由器会对每个收到的IP数据报计算其首部校验和，如果检测出差错，一般情况下则丢弃该报文。</p>
+<p>需要注意的是，在每台路由器上都必须重新计算检验和并再次存放到原处，因为TTL字段以及可能的选项字段会改变。</p>
+<p>为什么TCP/IP 在运输层和网络层都执行差错检测？原因如下：</p>
+<ul>
+<li>
+<p>IP层只对IP首部计算了校验和，而TCP/UDP检验和是对整个TCP/UDP报文段进行的。</p>
+</li>
+<li>
+<p>TCP/UDP与IP不一定必须属于同一个协议栈，原则上说TCP能够运行在一个不同的协议上。而IP不一定要传递TCP/UDP的数据。</p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>源和目的IP地址</strong>。当某源生成一个数据报时，它在源IP字段插入它的IP地址，在目的IP字段中插入其最终目的地的地址。</p>
+<blockquote>
+<p>注意：TCP/UDP中插入的是源和目的<strong>端口号</strong>，注意区分。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>选项</strong>。该字段允许IP首部被扩展。</p>
+</li>
+<li>
+<p><strong>数据</strong>。目标传输的数据。</p>
+</li>
+</ul>
+<h4 id="2-IPv4-数据报分片">2. IPv4 数据报分片</h4>
+<p><strong>不是所有链路层协议都能承载相同长度的网络层分组</strong>。而一个链路层帧能承载的最大数据量叫做<strong>最大传送单元(Maximum Transmission Unit, MTU)</strong>。链路层协议的MTU严格限制IP数据报的长度，同时每条链路可能使用不同的链路层协议，有着不同的MTU。</p>
+<p>若收到了一个IP数据报，转发时发现<strong>输出链路的MTU比该IP数据报的长度要小</strong>，则必须将IP数据报中的数据<strong>分片</strong>成两个或更多个较小的IP数据报，并用<strong>单独的链路层帧</strong>来封装这些较小的IP数据报，并最终通过输出链路发送这些帧。其中这些<strong>较小的数据报</strong>被称为<strong>片fragment</strong>。</p>
+<p>由于分片机制的存在， 片到达目的地运输层之前需要重新组装。IPv4将数据报的重新组装工作放到<strong>端系统</strong>完成，而不是网络路由器中。</p>
+<p>当一台目的主机从相同源收到一系列数据报时，它需要确定这些数据报中的某些<strong>是否是一些原来较大的数据报的片</strong>。如果是，则必须进一步确认<strong>何时收到最后一片</strong>，并判断<strong>如何将这些接收到的片拼接在一起</strong>以形成初始的数据报。为了实现这些任务，IPv4将<strong>标识</strong>、<strong>标志</strong>和<strong>片偏移字段</strong>放在IP数据报首部中。使用方式如下所示：</p>
+<ul>
+<li>当生成一个数据报时，发送主机在为该数据报设置源和目的地址的同时贴上标识号。</li>
+<li>发送主机通常会将它发送的每个数据报的标识号加1.</li>
+<li>当某路由器需要对一个数据报分片时，形成的每个数据报具有初始数据报的源地址、目的地址和标识号。</li>
+</ul>
+<p>这样，当目的地从同一个发送主机收到一系列数据报时，它能够检查数据报的标识号以确定哪些数据实际上是同一较大数据报的片。</p>
+<blockquote>
+<p>注意这里的<strong>标识号</strong>，其功能同样与TCP中的<strong>序号</strong>不同，切勿混淆！</p>
+</blockquote>
+<p>为了让目的主机相信它<strong>已经收到初始数据报的最后一片</strong>，<strong>最后一个片的标志比特</strong>被设置为0，而所有其他片的标志比特被设置为1。同时为了让目的主机确定是否丢失一个片，并且按照正确顺序重新组装片，使用<strong>偏移字段</strong>指定该片应放在初始IP数据报中的哪个位置。</p>
+<h4 id="3-IPv4-编址">3. IPv4 编址</h4>
+<ul>
+<li>
+<p>主机与物理链路之间的边界叫做<strong>接口interface</strong>。因为每台主机与路由器都能发送和接收IP数据报，IP要求每台主机和路由器接口拥有自己的IP地址，因此<strong>从技术上讲，一个IP地址与一个接口相关联，而不是与包括该接口的主机或路由器相关联</strong>。</p>
+<p>以下是一个IP编址与接口的例子。其中某一部分的四个接口通过一个<strong>并不包含路由器的网络</strong>互联起来，例如以太网交换机等等，在此处用一朵云来表示：</p>
+<p><img src="/2021/05/cnatda-2/image-20210515222639352.png" alt="image-20210515222639352"></p>
+</li>
+<li>
+<p>互联这3个主机接口与一个路由器接口的网络形成一个<strong>子网</strong>。IP编址为这个子网分配一个地址223.1.1.0/24，其中的<code>/24</code>记法，称为<strong>子网掩码</strong>，表示32比特中的最左侧24比特定义了子网地址。</p>
+<p>一个子网的IP定义并不局限于连接多台主机到一个路由器接口的以太网段。子网的定义如下所示：</p>
+<blockquote>
+<p>为了确认子网，分开主机和路由器的每个接口，产生几个隔离的网络岛，使用接口端接这些隔离的网络的端点。这些隔离的网络中的每一个都叫做一个<strong>子网subnet</strong>。</p>
+</blockquote>
+<p>一个简单的例子：</p>
+<p><img src="/2021/05/cnatda-2/image-20210515225343646.png" alt="image-20210515225343646"></p>
+</li>
+<li>
+<p>因特网的地址分配策略被称为<strong>无类别域间路由选择Classless Interdomain Routing, CIDR</strong>。当使用子网寻址时，32比特的IP地址被划分成两部分，并具有点分十进制数形式<code>a.b.c.d/x</code>，其中x指示了地址的<strong>第一部分中的比特数</strong>。形式为<code>a.b.c.d/x</code>的地址的x的最高比特构成了IP地址的网络部分，并且经常被称为该地址的<strong>前缀</strong>。</p>
+<blockquote>
+<p>注意：路由表使用<strong>最长前缀匹配</strong>原则。</p>
+</blockquote>
+</li>
+<li>
+<p>在CIDR被采用之前，IP地址的网络部分被限制为长度为8、16、24比特，这是一种称为<strong>分类编址</strong>的编址方案。这是因为<strong>具有8、16和24比特子网地址的子网分别称为A、B和C类网络</strong>。</p>
+</li>
+<li>
+<p><code>255.255.255.255</code>为IP<strong>广播地址</strong>。当一台主机发出一个目的地址为<code>255.255.255.255</code>的数据报时，该报文会交付给同一个网络中的所有主机。路由器也会有选择地向邻近的子网发送该报文。</p>
+</li>
+<li>
+<p><strong>获取主机地址：动态主机配置协议</strong></p>
+<ul>
+<li>
+<p><strong>动态主机配置协议（Dynamic Host Configuration, DHCP）<strong>允许主机自动获取一个IP地址。除了IP地址分配以外，DHCP还允许让主机得知其子网掩码、第一跳路由器地址（即</strong>默认网关</strong>）、本地DNS服务器地址等等。DHCP具有将主机连接进一个网络的网络相关方面的自动能力，故它又常被称为<strong>即插即用协议</strong>或<strong>零配置协议</strong>。</p>
+</li>
+<li>
+<p>DHCP是一个客户-服务器协议。客户通常是新到达的主机，它要获取包括自身使用的IP地址在内的网络配置信息。因此在最简单场合下，每个子网将具有一台DHCP服务器。如果在某子网中没有服务器，则需要一个DHCP中继代理（通常是一台路由器），该代理知道用于该网络的DHCP服务器的地址。</p>
+</li>
+<li>
+<p>DHCP分配地址给新到达客户的流程如下：</p>
+<ul>
+<li>
+<p><strong>DHCP服务器发现</strong>。一台新到达的主机的首要任务是发现一个要与其交互的DHCP服务器，这通过使用<strong>DHCP发现报文</strong>来完成。</p>
+<p>客户使用UDP向端口67发送该发现报文，其中目标IP地址中填入广播地址<code>255.255.255.255</code>；源IP地址中填写本机地址<code>0.0.0.0</code>。</p>
+</li>
+<li>
+<p><strong>DHCP服务器提供</strong>。当DHCP服务器收到一个DHCP发现报文时，用<strong>DHCP提供报文</strong>向客户端做出响应。该报文向该子网的所有结点广播，仍然使用IP广播地址。由于在子网中可能存在多个DHCP服务器，因此该客户或许可以在多个提供的IP地址中进行选择。</p>
+<p>每台服务器提供的报文包含有<strong>收到的发现报文的事务ID</strong>、<strong>向客户端推荐的IP地址</strong>、<strong>网络掩码</strong>以及<strong>IP地址租用期</strong>。</p>
+</li>
+<li>
+<p><strong>DHCP请求</strong>。新到达的客户从一个或多个服务器提供中选择一个，并向选中的服务器提供用<strong>DHCP请求报文</strong>进行响应，回显配置的参数。</p>
+</li>
+<li>
+<p><strong>DHCP ACK</strong>。服务器用<strong>DHCP ACK报文</strong>对DHCP请求报文进行响应，证实所要求的参数。</p>
+</li>
+</ul>
+<p><img src="/2021/05/cnatda-2/image-20210515233546620.png" alt="image-20210515233546620"></p>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="4-网络地址转换">4. 网络地址转换</h4>
+<p>网络地址转换，即 <strong>NAT</strong>，可以使能路由器对于外部世界来说<strong>不像</strong>一台服务器，而是如同一个具有<strong>单一</strong> IP 地址的<strong>单一</strong>设备，使得路由器对外界<strong>隐藏了内部网络细节</strong>。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/05/cnatda-2/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/09/pwnable-tw-2/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Pwnable.tw 部分题解-2
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/05/epoll/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Epoll 小叙</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

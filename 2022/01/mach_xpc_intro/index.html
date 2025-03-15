@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="MacOS, Mach, IPC, XPC,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    MacOSX XPC 入门 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-mach_xpc_intro"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  MacOSX XPC 入门
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/mach_xpc_intro/" class="article-date">
+  <time datetime="2022-01-03T16:00:00.000Z" itemprop="datePublished">2022-01-04</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">4.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">19 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<ul>
+<li>
+<p>XPC 是一种 OS X <strong>进程间通信技术</strong>，通过<strong>权限分离</strong>机制来对<strong>应用沙箱机制</strong>做了一个补充。其中，<strong>权限分离</strong>是根据每个部分所需的系统资源访问<strong>将应用程序分成多个部分</strong>，每个部分可以<strong>使用提前声明的权限（沙箱）</strong>。这种单个组件称为<strong>XPC 服务</strong>。</p>
+<p>将应用程序分成多个部分，还可以提高程序的可靠性，防止程序的部分代码崩溃导致整个程序的退出。</p>
+</li>
+<li>
+<p>每个 XPC 服务都位于自己的沙箱，即 XPC 服务有<strong>自己的容器</strong>和<strong>一组权限</strong>。包含在应用程序中 XPC 服务只能由应用程序自己访问。当应用程序启动时，系统会自动将它找到的每个 XPC 服务注册到应用程序可见的命名空间中。之后应用程序便可以与 XPC 服务通信并执行请求。</p>
+</li>
+<li>
+<p>XPC 服务的特点：<strong>权限分离</strong> + <strong>错误隔离</strong></p>
+</li>
+<li>
+<p>XPC 服务有 launchd 所管理，当 XPC 服务被意外终止（或者崩溃）后，该服务将会被 launchd 重启。</p>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="二、XPC-Service-使用入门">二、XPC Service 使用入门</h2>
+<blockquote>
+<p>由于网上的例子中 Object-C 的例子较多，而 C 语言的 XPC 例子较少，因此这里也用 Object-C 学习 XPC。</p>
+<p>虽然还没学 Object-C 还不大会…</p>
+</blockquote>
+<h3 id="1-创建项目">1. 创建项目</h3>
+<p>打开 XCode，新建项目，选择 XPC Service。</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220103163708457.png" alt="image-20220103163708457"></p>
+<p>之后输入 Product Name 和 Organization Identifier，最后的 Bundle Identifier 将会生成一个<strong>反向 DNS 名称格式</strong>的字符串。这个 Bundle ID 有大用，<strong>最好设置成应用程序的 subdomain（子域名）</strong>，不过这里先忽略。</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220103163952631.png" alt="image-20220103163952631"></p>
+<p>之后，XCode 将会存放一个 XPC 的示例代码，功能类似于 echo server。</p>
+<p>接下来我们将慢慢研究这个示例代码，并顺带学习一下 Objective-c。</p>
+<blockquote>
+<p>要是对 Objective-C 不太熟就对着这个看 <a href="https://www.runoob.com/ios/ios-objective-c.html" target="_blank" rel="noopener">Objective-C 基础知识 - 菜鸟教程</a></p>
+</blockquote>
+<h3 id="2-Service-简单示例">2. Service 简单示例</h3>
+<h4 id="a-protocol">a. protocol</h4>
+<p>在使用 XPC 前，必须先声明一个<strong>接口(interface)</strong>。接口主要有协议(Protocol)组成，描述了应该在远程进程中调用哪些方法。</p>
+<p>以下是 XCode 自生成的 protocol 声明。这里声明了一个名为 <code>XPCDemoProtocol</code> 的协议，同时还定义了一个 <code>upperCaseString</code> 的接口函数：</p>
+<blockquote>
+<p>protocol 个人感觉有点类似于 C++ 中的<strong>虚类</strong>，不实现任何函数，只是简单的<strong>定义</strong>函数接口。</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; XPCDemoProtocol.h</span><br><span class="line"></span><br><span class="line">#import &lt;Foundation&#x2F;Foundation.h&gt;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; The protocol that this service will vend as its API. This header file will also need to be visible to the process hosting the service.</span><br><span class="line">@protocol XPCDemoProtocol</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Replace the API of this protocol with an API appropriate to the service you are vending.</span><br><span class="line">- (void)upperCaseString:(NSString *)aString withReply:(void (^)(NSString *))reply;</span><br><span class="line">    </span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>protocol 主要用于限制<strong>调用程序</strong>和 <strong>XPC 服务</strong>之间的编程接口。所有<strong>需要在调用程序中调用的方法</strong>必须在 protocol 中指定。需要注意的是：XPC 通信是异步的，因此 protocol 中的方法的返回值都只能是 void，如果需要返回数据则使用<strong>返回块</strong>，即正如上面代码中 <code>upperCaseString</code> 函数的第二个参数，类似于 callback。（<a href="https://www.runoob.com/ios/ios-objective-c.html" target="_blank" rel="noopener">什么是块？</a>）</p>
+<h4 id="b-interface">b. interface</h4>
+<p>在<strong>声明</strong>完 protocol 后，我们需要<strong>实现一个描述它的接口</strong>。因此这里的代码声明了 <code>XPCDemo</code> 类，继承自该 protocol：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F;  XPCDemo.h</span><br><span class="line"></span><br><span class="line">#import &lt;Foundation&#x2F;Foundation.h&gt;</span><br><span class="line">#import &quot;XPCDemoProtocol.h&quot;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; This object implements the protocol which we have defined. It provides the actual behavior for the service. It is &#39;exported&#39; by the service to make it available to the process hosting the service over an NSXPCConnection.</span><br><span class="line">@interface XPCDemo : NSObject &lt;XPCDemoProtocol&gt;</span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>并实现类功能：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F;  XPCDemo.m</span><br><span class="line"></span><br><span class="line">#import &quot;XPCDemo.h&quot;</span><br><span class="line"></span><br><span class="line">@implementation XPCDemo</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; This implements the example protocol. Replace the body of this class with the implementation of this service&#39;s protocol.</span><br><span class="line">- (void)upperCaseString:(NSString *)aString withReply:(void (^)(NSString *))reply &#123;</span><br><span class="line">    NSString *response &#x3D; [aString uppercaseString];</span><br><span class="line">    reply(response);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>上面的代码主要做了两件事情：</p>
+<ol>
+<li>定义一个 protocol，即远程进程可以调用的函数接口</li>
+<li>创建一个继承自该 protocol 的类，并实现这些函数接口。</li>
+</ol>
+<p>这里的 <code>upperCaseString</code> 函数只做了一件事情：<strong>将传入的字符串全部转换为大写，并调用 callback 将结果返回</strong>。</p>
+<h4 id="c-NSXPCListener">c. NSXPCListener</h4>
+<p>看上去还挺好理解，那就继续看看 main 文件。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">int main(int argc, const char *argv[])</span><br><span class="line">&#123;</span><br><span class="line">    &#x2F;&#x2F; Create the delegate for the service.</span><br><span class="line">    ServiceDelegate *delegate &#x3D; [ServiceDelegate new];</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Set up the one NSXPCListener for this service. It will handle all incoming connections.</span><br><span class="line">    NSXPCListener *listener &#x3D; [NSXPCListener serviceListener];</span><br><span class="line">    listener.delegate &#x3D; delegate;</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Resuming the serviceListener starts this service. This method does not return.</span><br><span class="line">    [listener resume];</span><br><span class="line">    return 0;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>main 函数中创建了一个 NSXPCListener 类，并设置 listener 的<strong>委托</strong>，之后执行 resume 函数。</p>
+<p>看上去有点不明觉厉，找了下 <code>NSXPCListener</code> 的类声明：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; Each NSXPCListener instance has a private serial queue. This queue is used when sending the delegate messages.</span><br><span class="line">API_AVAILABLE(macos(10.8), ios(6.0), watchos(2.0), tvos(9.0))</span><br><span class="line">@interface NSXPCListener : NSObject</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; If your listener is an XPCService (that is, in the XPCServices folder of an application or framework), then use this method to get the shared, singleton NSXPCListener object that will await new connections. When the resume method is called on this listener, it will not return. Instead it hands over control to the object and allows it to service the listener as appropriate. This makes it ideal for use in your main() function. For more info on XPCServices, please refer to the developer documentation.</span><br><span class="line">+ (NSXPCListener *)serviceListener;</span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; The delegate for the connection listener. If no delegate is set, all new connections will be rejected. See the protocol for more information on how to implement it.</span><br><span class="line">@property (nullable, weak) id &lt;NSXPCListenerDelegate&gt; delegate;</span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; All listeners start suspended and must be resumed before they will process incoming requests. If called on the serviceListener, this method will never return. Call it as the last step inside your main function in your XPC service after setting up desired initial state and the listener itself. If called on any other NSXPCListener, the connection is resumed and the method returns immediately.</span><br><span class="line">- (void)resume;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Suspend the listener. Suspends must be balanced with resumes before the listener may be invalidated.</span><br><span class="line">- (void)suspend;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Invalidate the listener. No more connections will be created. Once a listener is invalidated it may not be resumed or suspended.</span><br><span class="line">- (void)invalidate;</span><br><span class="line"></span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>可以看到，</p>
+<ul>
+<li>对于 XPCService 而言，<code>serviceListener</code> 属性是 XPCService 用于监听 XPC connection 的监听器。</li>
+<li>当有新 XPC 连接到来时，连接将通过所设置的 delegate 进行处理。</li>
+<li>在 XPC Service 初始执行并完成一系列初始化步骤后，调用 listener 的 resume 方法以开始提供 XPC 服务，该方法将<strong>不会返回</strong>。</li>
+</ul>
+<h4 id="d-NSXPCListenerDelegate">d. NSXPCListenerDelegate</h4>
+<p>main 函数现在理解的差不多了，现在研究一下 <code>NSXPCListenerDelegate</code>，以下是它的协议声明：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">@protocol NSXPCListenerDelegate &lt;NSObject&gt;</span><br><span class="line">@optional</span><br><span class="line">&#x2F;&#x2F; Accept or reject a new connection to the listener. This is a good time to set up properties on the new connection, like its exported object and interfaces. If a value of NO is returned, the connection object will be invalidated after this method returns. Be sure to resume the new connection and return YES when you are finished configuring it and are ready to receive messages. You may delay resuming the connection if you wish, but still return YES from this method if you want the connection to be accepted.</span><br><span class="line">- (BOOL)listener:(NSXPCListener *)listener shouldAcceptNewConnection:(NSXPCConnection *)newConnection;</span><br><span class="line"></span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>该协议中声明了一个可选实现的 <code>listener</code> 接口。这个接口的参数分别为：</p>
+<ul>
+<li><code>listener</code>：<em><em>NSXPCListener</em> 类型</em>*，</li>
+<li><code>newConnection</code>：<em><em>NSXPCConnection</em> 类型</em>*，新传入的连接</li>
+</ul>
+<p>返回值是 <code>BOOL</code> 类型，可选值为 <code>YES</code> 和 <code>NO</code>。</p>
+<blockquote>
+<p>Objective-C 还有两种布尔类型，分别是 <strong>bool (true, false)</strong> 和 <strong>Boolean (TRUE, FALSE)</strong>。</p>
+</blockquote>
+<p>该函数用于为<strong>新连接</strong>设置属性时所执行的函数，类似于<strong>预</strong>处理。该函数可以<strong>选择接收或者拒绝传入的连接</strong>，并且还可以自由选择什么时候<strong>恢复连接</strong>。我们再来看看该函数默认生成所执行的操作：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F;  main.m</span><br><span class="line"></span><br><span class="line">#import &lt;Foundation&#x2F;Foundation.h&gt;</span><br><span class="line">#import &quot;XPCDemo.h&quot;</span><br><span class="line"></span><br><span class="line">@interface ServiceDelegate : NSObject &lt;NSXPCListenerDelegate&gt;</span><br><span class="line">@end</span><br><span class="line"></span><br><span class="line">@implementation ServiceDelegate</span><br><span class="line"></span><br><span class="line">- (BOOL)listener:(NSXPCListener *)listener shouldAcceptNewConnection:(NSXPCConnection *)newConnection &#123;</span><br><span class="line">    &#x2F;&#x2F; This method is where the NSXPCListener configures, accepts, and resumes a new incoming NSXPCConnection.</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Configure the connection.</span><br><span class="line">    &#x2F;&#x2F; First, set the interface that the exported object implements.</span><br><span class="line">    newConnection.exportedInterface &#x3D; [NSXPCInterface interfaceWithProtocol:@protocol(XPCDemoProtocol)];</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Next, set the object that the connection exports. All messages sent on the connection to this service will be sent to the exported object to handle. The connection retains the exported object.</span><br><span class="line">    XPCDemo *exportedObject &#x3D; [XPCDemo new];</span><br><span class="line">    newConnection.exportedObject &#x3D; exportedObject;</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Resuming the connection allows the system to deliver more incoming messages.</span><br><span class="line">    [newConnection resume];</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Returning YES from this method tells the system that you have accepted this connection. If you want to reject the connection for some reason, call -invalidate on the connection and return NO.</span><br><span class="line">    return YES;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>该函数将会为每个<strong>新连接</strong>设置其 <strong>exportedInterface</strong> 与 <strong>exportedObject</strong> ，并恢复该连接，换句话说，该函数会在处理连接之前设置传入连接的两个成员。</p>
+<p>至于这种设置是为了什么，我们需要再看看 NSXPCConnection 类的声明，以下是截取出的部分声明：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;&#x2F; This object is the main configuration mechanism for the communication between two processes. Each NSXPCConnection instance has a private serial queue. This queue is used when sending messages to reply handlers, interruption handlers, and invalidation handlers.</span><br><span class="line">API_AVAILABLE(macos(10.8), ios(6.0), watchos(2.0), tvos(9.0))</span><br><span class="line">@interface NSXPCConnection : NSObject &lt;NSXPCProxyCreating&gt;</span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; The interface that describes messages that are allowed to be received by the exported object on this connection. This value is required if a exported object is set.</span><br><span class="line">@property (nullable, retain) NSXPCInterface *exportedInterface;</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; Set an exported object for the connection. Messages sent to the remoteObjectProxy from the other side of the connection will be dispatched to this object. Messages delivered to exported objects are serialized and sent on a non-main queue. The receiver is responsible for handling the messages on a different queue or thread if it is required.</span><br><span class="line">@property (nullable, retain) id exportedObject;</span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">&#x2F;&#x2F; All connections start suspended. You must resume them before they will start processing received messages or sending messages through the remoteObjectProxy. Note: Calling resume does not immediately launch the XPC service. The service will be started on demand when the first message is sent. However, if the name specified when creating the connection is determined to be invalid, your invalidation handler will be called immediately (and asynchronously) after calling resume.</span><br><span class="line">- (void)resume;</span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">@end</span><br></pre></td></tr></table></figure>
+<p>也就是说该函数实际是为<strong>每个新连接</strong>指定了<strong>处理连接的方法</strong>：</p>
+<ul>
+<li><code>exportedInterface</code>：用于描述<strong>应向连接的另一端提供的方法</strong>。</li>
+<li><code>exportedObject</code>：包含一个本地对象，用于<strong>处理来自连接另一端的方法调用</strong></li>
+</ul>
+<p>当应用程序调用 NSXPCConnection 上代理的方法时，应用程序的 NSXPCCoonnection 将调用存储在 exportedObject 类上的目标方法，即实现远程进程调用。</p>
+<h4 id="e-Info-plist">e. Info.plist</h4>
+<p><code>Info.plist</code> 在 XPC Service 中承担着较为重要的一部分。XPC Service 要求在 Info.plist 中指定一些特殊的<strong>键值对</strong>，以下是其中的一些类型：</p>
+<ul>
+<li>
+<p><strong>CFBundleIdentifier</strong>：指定当前 XPC Service 的反向 DNS 样式的<strong>服务名称字符串</strong>。应用程序将通过这串 BundleID 来访问 XPC 服务。</p>
+<blockquote>
+<p>还记得创建 XPC 服务项目时指定的 Bundle ID 么 :)</p>
+</blockquote>
+</li>
+<li>
+<p><strong>CFBundlePackageType</strong>：一个指定 Bundle Package 类型的字符串，XPC Service 中必须是 <code>XPC!</code></p>
+</li>
+<li>
+<p><strong>XPCService</strong>：一个字典</p>
+<ul>
+<li><code>EnvironmentVariables</code>：字典类型，用于指定 XPC 服务运行时的环境变量。</li>
+<li><code>JoinExistingSession</code>：布尔值，表示 XPC 服务是否与调用方在<strong>同一个安全会话</strong>中运行。</li>
+<li><code>RunLoopType</code>：字符串，用于指定服务的 runloop 类型，默认是 <code>dispatch_main</code>；还有一种是 <code>NSRunLoop</code>。</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-Client-简单示例">3. Client 简单示例</h3>
+<p>现在我们已经可以让 XPC Service 跑起来了，现在需要编写一个程序来使用 XPC Service。XPC Service 默认模板中提供了如下的 client 代码，它将发送一串字符给 XPC service 并将返回的结果输出：</p>
+<ul>
+<li>
+<p>创建 XPC 连接：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">NSXPCConnection *_connectionToService &#x3D; [[NSXPCConnection alloc] initWithServiceName:@&quot;io.kiprey.github.XPCDemo&quot;];</span><br><span class="line">_connectionToService.remoteObjectInterface &#x3D; [NSXPCInterface interfaceWithProtocol:@protocol(XPCDemoProtocol)];</span><br><span class="line">[_connectionToService resume];</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>发送请求</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">[[_connectionToService remoteObjectProxy] upperCaseString:@&quot;hello&quot; withReply:^(NSString *aString) &#123;</span><br><span class="line">    &#x2F;&#x2F; We have received a response. Update our text field, but do it on the main thread.</span><br><span class="line">    NSLog(@&quot;Result string was: %@&quot;, aString);</span><br><span class="line">&#125;];</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在<strong>不需要连接时</strong>再来断开连接</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">[_connectionToService invalidate];</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>正如代码所示，</p>
+<ol>
+<li>
+<p>Client 会使用 XPC Service 中的 Bundle ID 来查找并与 XPC Service 建立连接。</p>
+</li>
+<li>
+<p>之后 Client 指定了 <code>remoteObjectInterface</code> 属性，以规范调用接口的类型。</p>
+</li>
+<li>
+<p>接下来，恢复 XPC 连接，并通过 <code>NSXPCConnection</code> 对象中的 <code>remoteObjectProxy</code> 属性，<strong>间接且透明</strong>的调用 XPC Service 上的接口。当XPC Service 完成服务后，返回的信息会被异步输出至控制台。</p>
+</li>
+<li>
+<p>最后，关闭 XPC 连接。</p>
+</li>
+</ol>
+<h3 id="4-启动-XPC-Service-Client">4. 启动 XPC Service &amp; Client</h3>
+<p>需要特别说明一下如何使用 XPC Service，并让 Client 成功连接上（这个绕了我半天）。</p>
+<h4 id="a-局部-XPC-Service">a. 局部 XPC Service</h4>
+<blockquote>
+<p>即，将 XPC Service 内嵌进 App 中。</p>
+</blockquote>
+<p>首先，建立一个 App：</p>
+<blockquote>
+<p>坑点：<strong>不能是 Command Line Tool</strong> 。</p>
+<p>因为 Command Line Tool 不具有类似 App 的结构，因此无法托管 XPC Service。</p>
+</blockquote>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104171022403.png" alt="image-20220104171022403"></p>
+<p>之后，在接下来这个界面中<strong>选一个 Language 为 Objective-C</strong> 的 Interface，Interface 是 GUI 相关的暂时不用管：</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104171411076.png" alt="image-20220104171411076"></p>
+<p>项目创建后，选择 <code>File -&gt; New -&gt; Target</code>，新建一个 <code>XPC Service</code>。注意到在新建的最后一步中会有一个 <code>Embed in Application</code>选项：</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104171917464.png" alt="image-20220104171917464"></p>
+<p>这样，这个新建的 XPC Service 就会被内置进这个 Application 中：</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104172028284.png" alt="image-20220104172028284"></p>
+<p>之后，为了简单，我们直接将 <code>main.m</code> 中的原始代码：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">#import &lt;Cocoa&#x2F;Cocoa.h&gt;</span><br><span class="line"></span><br><span class="line">int main(int argc, const char * argv[]) &#123;</span><br><span class="line">    </span><br><span class="line">    @autoreleasepool &#123;</span><br><span class="line">        &#x2F;&#x2F; Setup code that might create autoreleased objects goes here.</span><br><span class="line">    &#125;</span><br><span class="line">    return NSApplicationMain(argc, argv);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>替换成如下调用 XPC 服务的代码，简单粗暴：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line">#import &quot;XPCServiceProtocol.h&quot;</span><br><span class="line"></span><br><span class="line">int main(int argc, const char * argv[]) &#123;</span><br><span class="line">    &#x2F;&#x2F; Try connect to XPC Service</span><br><span class="line">    NSXPCConnection* _connectionToService &#x3D; [[NSXPCConnection alloc] initWithServiceName:@&quot;io.github.kiprey.XPCService&quot;];</span><br><span class="line">    _connectionToService.remoteObjectInterface &#x3D; [NSXPCInterface interfaceWithProtocol:@protocol(XPCServiceProtocol)];</span><br><span class="line">    [_connectionToService resume];</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Try using XPC Service interface</span><br><span class="line">    [[_connectionToService remoteObjectProxy] upperCaseString:@&quot;hello&quot; withReply:^(NSString *aString) &#123;</span><br><span class="line">        &#x2F;&#x2F; We have received a response. Update our text field, but do it on the main thread.</span><br><span class="line">        NSLog(@&quot;Result string was: %@&quot;, aString);</span><br><span class="line">    &#125;];</span><br><span class="line">    </span><br><span class="line">    &#x2F;&#x2F; Wait for XPC Service response</span><br><span class="line">    NSLog(@&quot;Sleep 5s...&quot;);</span><br><span class="line">    sleep(5);</span><br><span class="line">    </span><br><span class="line">    [_connectionToService invalidate];</span><br><span class="line">    </span><br><span class="line">    NSLog(@&quot;Bye.&quot;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是：当调用者向 XPC Service 请求服务后，由于<strong>请求是异步执行</strong>的，因此执行到程序末尾后<strong>可能调用者还没有接收到 XPC Service 的返回结果</strong>，此时<strong>调用者需要等待</strong>，<strong>千万不能</strong>立即调用 <code>invalidate</code> 方法。</p>
+<blockquote>
+<p>调用 <code>invalidate</code> 方法将会立即终止连接，不会等到 XPC Service 返回信息后再终止连接。</p>
+</blockquote>
+<p>之后<strong>先编译 XPCService</strong>，再编译 Client。以下是执行结果：</p>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104180112370.png" alt="image-20220104180112370"></p>
+<h4 id="b-全局-XPC-Service">b. 全局 XPC Service</h4>
+<p>上面那种方法简单说明了如何将 XPC Service 内嵌进 App 中并使用，启动和管理也较为方便。</p>
+<p>但要是希望生成的 XPC Service 可以被任意程序调用，那该如何启动？</p>
+<p>首先，编写一个 <code>XPCDemo.plist</code>，这种编写的 plist 称之为 <strong>launchd.plist</strong>。内容如下：</p>
+<figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span></span><br><span class="line"><span class="meta">&lt;!DOCTYPE <span class="meta-keyword">plist</span> <span class="meta-keyword">PUBLIC</span> <span class="meta-string">"-//Apple//DTD PLIST 1.0//EN"</span> <span class="meta-string">"http://www.apple.com/DTDs/PropertyList-1.0.dtd"</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">plist</span> <span class="attr">version</span>=<span class="string">"1.0"</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">dict</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">key</span>&gt;</span>Label<span class="tag">&lt;/<span class="name">key</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">string</span>&gt;</span>io.kiprey.github.XPCDemo<span class="tag">&lt;/<span class="name">string</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">key</span>&gt;</span>Program<span class="tag">&lt;/<span class="name">key</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">string</span>&gt;</span>/Users/kiprey/Desktop/Mach_test/XPCDemo/Build/Products/Debug/XPCDemo.xpc/Contents/MacOS/XPCDemo<span class="tag">&lt;/<span class="name">string</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">key</span>&gt;</span>KeepAlive<span class="tag">&lt;/<span class="name">key</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">true</span>/&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">key</span>&gt;</span>POSIXSpawnType<span class="tag">&lt;/<span class="name">key</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">string</span>&gt;</span>Interactive<span class="tag">&lt;/<span class="name">string</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">key</span>&gt;</span>MachServices<span class="tag">&lt;/<span class="name">key</span>&gt;</span></span><br><span class="line">  <span class="tag">&lt;<span class="name">dict</span>/&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">dict</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">plist</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>其中指定了：</p>
+<ol>
+<li><code>Label</code>：<strong>即其他进程用于索引当前 XPC Service 的标签</strong></li>
+<li><code>Program</code>：待被启动的守护进程的路径</li>
+<li><code>KeepAlive</code>：表示是否需要让 launchd 在该守护进程崩溃后重启</li>
+<li>…</li>
+</ol>
+<blockquote>
+<p>更多关于 lanchd.plist 的细节可以在 <code>man launchd.plist</code> 文档中找到，这里不再赘述。</p>
+</blockquote>
+<p>之后，我们可以<strong>让 launchd 来启动并管理我们的 XPC Service</strong>。</p>
+<p>原先是想将 <code>XPCDemo.plist</code> 文件拷贝进 <code>/System/Library/LaunchDaemons</code> 文件夹下，但是执行 cp 操作时，提示 <code>Read-only file system</code>，即该目标文件夹不允许写入操作。无论是关闭 SIP 还是执行<code>sudo mount -uw /</code> 以修改根路径的挂载权限，都无法写入该文件夹下。其他方式也不想再折腾了，因此放弃将该 plist 文件拷贝进 System Launch Daemons 文件夹的打算。</p>
+<blockquote>
+<p>这种错误可能是因为目标文件夹是 <code>/System</code> 打头的路径。</p>
+<p>但我们仍然可以将 plist 复制进 <code>/Library/LaunchDaemons</code> 文件夹中。</p>
+</blockquote>
+<p>但即便我们不将 plist 文件复制进 Launch Daemons 文件夹下，我们依然可以让 launchd 来启动我们的 XPC Service：</p>
+<ul>
+<li>
+<p>首先，执行 <code>chown</code> 修改刚刚创建的 <code>XPCDemo.plist</code> 文件所有权</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo chown root:wheel XPCDemo.plist</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后执行以下命令，使 launchd 启动目标程序</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo launchctl bootstrap system XPCDemo.plist</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当我们希望 launchd 关闭目标 XPC Service 时，执行以下命令</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo launchctl bootout system XPCDemo.plist</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>当 launchd 开始管理我们的全局 XPC Service 后，如果该 XPC Service 异常崩溃，则 launchd 会每隔 10s 重启一次服务：</p>
+<blockquote>
+<p>图中是之前测试时，XPCDemo 老是一开就挂，因此 Launchd 会每隔 10s 重启一次，并且一直重启下去。</p>
+<p>log 查看命令：<code>log show --predicate 'processID == 0' --last 1h | grep &quot;XPC&quot;</code></p>
+</blockquote>
+<p><img src="/2022/01/mach_xpc_intro/image-20220104202227521.png" alt="image-20220104202227521"></p>
+<p>需要注意的是，单独使用 XCode 的 XPC Service 项目编译出的程序无法直接执行，因此不能挂在 launchd 下面跑，必须参照 <a href="https://developer.apple.com/documentation/xcode/signing-a-daemon-with-a-restricted-entitlement" target="_blank" rel="noopener">Signing a Daemon with a Restricted Entitlement</a> 将 XPC Service 以<strong>类 app 形式</strong>编译出一个可执行文件来。</p>
+<h3 id="5-NSXPC-架构">5. NSXPC 架构</h3>
+<p>查看下面这张图，我们可以看到上面 <code>[ServiceDelegate listener]</code> 函数所做的就是设置 NSXPC Service 这方的 <code>Exported Object</code>。</p>
+<p><img src="/2022/01/mach_xpc_intro/NSXPC_intro_2x.png" alt="img"></p>
+<p>而这张图说明了整个 XPC 通信的过程：</p>
+<p><img src="/2022/01/mach_xpc_intro/NSXPC_connection_2x.png" alt="img"></p>
+<h2 id="三、C-Stype-XPC-Service">三、C-Stype XPC Service</h2>
+<p>当我们可以理解 Objective-C 的 XPC Service 后，C 风格的 XPC Service 也就更容易理解。</p>
+<p>具体细节就不再赘述了，这里贴出两个 C-Stype XPC 的相关资料：</p>
+<ul>
+<li><a href="https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html#//apple_ref/doc/uid/10000172i-SW6-SW28" target="_blank" rel="noopener">Using the C XPC Services API - Apple Documentation Archive</a></li>
+<li><code>man xpc</code></li>
+</ul>
+<h2 id="四、参考">四、参考</h2>
+<ul>
+<li><a href="https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingXPCServices.html#//apple_ref/doc/uid/10000172i-SW6-SW1" target="_blank" rel="noopener">Creating XPC Services - Apple Documentation Archive</a></li>
+<li><a href="https://www.runoob.com/ios/ios-objective-c.html" target="_blank" rel="noopener">Objective-C 入门 - 菜鸟教程</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Blocks_(C_language_extension)" target="_blank" rel="noopener">Blocks (C language extension) - Wikipedia</a></li>
+<li><a href="https://objccn.io/issue-14-4/" target="_blank" rel="noopener">XPC - ObjC 中国</a></li>
+<li><a href="https://developer.apple.com/forums/thread/656817" target="_blank" rel="noopener">How to use XPC in command line app - Apple Development Forums</a></li>
+<li><a href="https://developer.apple.com/documentation/xcode/signing-a-daemon-with-a-restricted-entitlement" target="_blank" rel="noopener">Signing a Daemon with a Restricted Entitlement - Apple Development Documentation</a></li>
+<li><a href="https://support.apple.com/zh-cn/guide/terminal/apdc6c1077b-5d5d-4d35-9c19-60f2397b2369/mac" target="_blank" rel="noopener">在 Mac 上的“终端”中使用 launchd 管理脚本 -  Apple Development Documentation</a></li>
+<li>MacOS Manual Page</li>
+<li><a href="http://technologeeks.com/docs/launchd.pdf" target="_blank" rel="noopener">Launchd.pdf - Jonathan Levin</a></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/01/mach_xpc_intro/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ipc/" rel="tag">ipc</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mac/" rel="tag">mac</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/xpc/" rel="tag">xpc</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/01/35c3ctf_pillow/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            35c3ctf pillow Writeup
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/12/mach_ipc_intro/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">MacOSX Mach IPC 入门</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

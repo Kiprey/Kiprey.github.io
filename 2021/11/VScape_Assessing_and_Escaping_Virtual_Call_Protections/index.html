@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="virtual call,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《VScape - Assessing and Escaping Virtual Call Protections》 论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-VScape_Assessing_and_Escaping_Virtual_Call_Protections"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《VScape - Assessing and Escaping Virtual Call Protections》 论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/" class="article-date">
+  <time datetime="2021-11-29T16:00:00.000Z" itemprop="datePublished">2021-11-30</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">13 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这篇论文介绍了一种面向伪对象编程（COOP）的<strong>加强攻击手法</strong>，称为 <strong>COOPlus</strong>。对于那些不破坏 C++ ABI 的虚拟调用保护来说，有相当一部分的 虚拟调用保护手段易受 COOPlus 的攻击。</p>
+<p><strong>符合以下三个条件的虚拟函数调用容易受到 COOPlus 的攻击：</strong></p>
+<ul>
+<li><strong>不破坏虚函数调用的 ABI</strong></li>
+<li><strong>不保证 C++ 对象 vtable 指针的完整性（即可以被修改）</strong></li>
+<li><strong>允许在虚拟函数调用点上调用不同的函数</strong></li>
+</ul>
+<p>COOPlus 本质上是<strong>代码重用</strong>攻击，它在目标虚拟函数调用点上调用<strong>符合类型但不符合上下文</strong>的虚拟函数。该调用可通过 C++ 语义感知的 <strong>控制流完整性 CFI</strong> 检测，但由于调用上下文不同，因此可能会造成进一步的利用。</p>
+<p>除了 COOPlus 以外，该论文还提出了一种解决方案 <strong>VScape</strong>，用来评估针对虚拟调用攻击保护的有效性。</p>
+<p>论文 + 幻灯片 - <a href="https://www.usenix.org/conference/usenixsecurity21/presentation/chen-kaixiang" target="_blank" rel="noopener">USENIX security 21</a></p>
+<a id="more"></a>
+<h2 id="二、虚拟调用保护">二、虚拟调用保护</h2>
+<p>在进一步学习 COOPlus 之前，我们需要了解一下现有的虚拟调用保护手法。</p>
+<p>由于大部分 vtable 劫持攻击都涉及到<strong>纂改 vptr</strong>，因此一种简单的方式是<strong>确保 vptr 完整性</strong>，例如<strong>通用数据流完整性技术 DFI</strong>。但通常精度不高，且运行时开销较大，不太实用。</p>
+<p>另一种方式是<strong>破坏掉了 C++ 的 ABI</strong>，例如有些保护方法将 vptr 放入单独的 元数据表中，并利用硬件功能（例如英特尔内存保护扩展插件）来确保元数据表的完整性，防止 vptr 被纂改。由于 ABI 被破坏，因此此类的保护方式会导致较为严重的兼容问题，实用性也不大。</p>
+<p>第三种保护方式是，<strong>检查每个虚拟调用目标的有效性</strong>。这个保护方式在之前阅读的论文 《SHARD: Fine-Grained Kernel Specialization with Context-Aware Hardening》中也用到过，通过检查 vptr 指向位置的有效性，来确认调用的虚函数是否是正确的。</p>
+<p>对于 CFI 技术来说，其解决方案均以安全性和实用性为目标。其中对于粗粒度（即不考虑C++语义或类型信息）的CFI方式来说，无法防止虚拟函数调用攻击；而细粒度 CFI 解决方案将会考虑更多的信息来提供更强的防御。</p>
+<h2 id="三、-COOP-攻击">三、 COOP 攻击</h2>
+<p>在说明 COOPlus 攻击之前，我们必须先说明一下 COOP 攻击，以了解 COOPlus 攻击所提出的改进点。这篇论文中对 COOP 攻击描述的不多，因此我找了一下提出 COOP 的论文，大概的看了一下。</p>
+<p>COOP，即面向伪对象的编程。这个攻击方式在 2015 年被首次提出，直至现在其论文引用量多达三百余次。</p>
+<p>COOP 攻击受限于篇幅，将在另一篇文章中记录。</p>
+<h2 id="四、COOPlus-攻击">四、COOPlus 攻击</h2>
+<p>COOPlus 攻击的目的是为了<strong>绕过 C++语法感知的 CFI 解决方案</strong>，因此其他漏洞缓解措施（例如 ASLR、DEP等等）以及其他漏洞利用手法等暂时不做考虑。</p>
+<p>与 COOP 攻击不同，COOPlus 调用的是<strong>类型兼容的虚拟函数</strong>来绕过更强的防御。</p>
+<p>COOPlus 攻击的条件是：</p>
+<ul>
+<li><strong>不保证 vptr 完整性</strong></li>
+<li><strong>不破坏 C++ ABI</strong></li>
+<li><strong>存在一个低危漏洞，例如一字节越界写 off-by-one</strong></li>
+</ul>
+<p>该攻击的原理如下图所示：</p>
+<blockquote>
+<p>一图胜过千言万语。</p>
+</blockquote>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211130230054100.png" alt="image-20211130230054100"></p>
+<p>通俗的说，主要攻击过程概括如下：</p>
+<p>假设有三个类，分别是<strong>基类 Base 类</strong>，<strong>Base 派生类 S1</strong>，<strong>另一个 Base 派生类 S2</strong>。其中 S1、S2 是否也是派生关系并不重要。只要<strong>确保 S1 类和 S2 类都是从基类 Base 类中派生出来</strong>的即可。</p>
+<ul>
+<li>
+<p>寻找一个<strong>派生类 S1 调用 Base 基类虚函数</strong>的函数调用进行劫持</p>
+</li>
+<li>
+<p>利用给定的漏洞（例如一字节越界写）来修改<strong>派生类 S1</strong> 的 vptr 为 <strong>另一个 Base 类的派生类 S2 （简称 counterfeit 类） 的 vptr</strong>。</p>
+<blockquote>
+<p>即 <strong>S1 类和 S2 类都是从基类 Base 类中派生出</strong>。</p>
+<p>而对于虚函数调用来说，由于 vcall 肯定是<strong>通过基类指针</strong>进行调用，而 <strong>S1 和 S2 都是基类的派生类</strong>，因此在 C++ 语义敏感层面将通过检查。因为<strong>从基类 ptr 调用派生类虚函数是非常正常的事情</strong>，除非保护手法非常的细粒度，否则就无法检测出这类利用方式。</p>
+<p>个人猜测正是因为这点使得 COOPlus 可以绕过相当一部分的<strong>C++ 语义敏感</strong>的保护手法。</p>
+</blockquote>
+</li>
+<li>
+<p>接下来，由于 victim 类的 vptr 被修改为 counterfeit 类（伪造类），因此 victim 类的所有虚函数调用最终都将调用到 counterfeit 类的虚函数。</p>
+<p>如上图所示，当被篡改 vptr 后的 victim 类对象调用虚函数 <code>func1</code> 时，它将不再调用 <code>S1::func1</code>，而是调用 <code>S2::func2</code>。</p>
+<p>由于 S2 和 S1 的类布局不同，因此可能会存在一些 S1 所没有的字段（例如图中的 <code>memberM</code>）。</p>
+<p>而 S1 调用了 S2 的 func1，因此将超过 S1 类对象的内存界限进行内存访问，最终造成内存越界操作。</p>
+</li>
+</ul>
+<p>当 victim 类对象的函数操作可以造成内存越界后（内存越界到的对象称为<strong>中继对象 Relay object</strong>），我们便可以利用这种内存越界来精心修改 Relay object 上的字段，例如 length 等等，来进一步<strong>放大漏洞危害</strong>（最初的漏洞是一字节越界写）。</p>
+<p>对于不同的 counterfeit 函数，大致将其分为以下几类可利用的 vfgadget：</p>
+<ul>
+<li>
+<p>Out-of-bound Read</p>
+<ul>
+<li>Ld-Ex-PC：可以从目标内存中读取可控数据并<strong>加载进 PC</strong></li>
+<li>Ld-AW-Const：可以将<strong>常量值</strong>写入目标内存</li>
+<li>Ld-AW-nonCtrl：可以将<strong>非恒定且不可控的值</strong>写入目标内存</li>
+<li>Ld-AW-Ctrl：可以将<strong>可控值</strong>写入目标内存</li>
+</ul>
+<blockquote>
+<p>鉴于这四种 gadget 都分类至 OOB read，因此推测这里的 <strong>目标内存</strong> 应该指的是 victim Object 上的成员变量，或者特定其他堆空间等等。</p>
+</blockquote>
+</li>
+<li>
+<p>Out-of-bound Write</p>
+<ul>
+<li>St-Ptr：可以将<strong>指针值</strong>写入中继对象。若中继对象可被操作，则可以用来绕过 ASLR 等防御手段</li>
+<li>St-nonPtr：将<strong>非指针值</strong>写入中继对象。例如将一个超大值写入至中继对象的 length 字段，造成更大范围的 OOB-RW。</li>
+</ul>
+</li>
+</ul>
+<p>COOPlus 攻击无需用到较为高危的漏洞，只需用到简单的低危漏洞即可放大漏洞影响，实用性较好。由于 victim 基类和 counterfeit 派生类通常都在同一个模块中定义，因此其 vtable 的分布也较为相近。漏洞对 vptr 一字节的改动也有可能产生另一个兼容 vptr，并成功利用 COOPlus。</p>
+<p>但即便如此，若原始漏洞的效果较低，那么其 COOPlus 可用利用原语的条目数量也会降低。例如一字节越界写只能修改 vptr 正负偏移 255 字节左右，范围不够大。</p>
+<h2 id="五、VScape">五、VScape</h2>
+<h3 id="1-简介">1. 简介</h3>
+<p>若给定<strong>一个目标程序</strong>、<strong>一个漏洞</strong>以及<strong>当前使用的虚拟调用保护方式</strong>，判断能否通过发起 COOPlus 来绕过 CFI 保护是比较艰难的，尤其是目标程序很大的时候。</p>
+<p>这是因为若想发起 COOPlus 攻击，则需要找到适当的攻击原语元组 <strong>（vcall, victim class, counterfeit class）</strong>，同时</p>
+<ul>
+<li>虚拟调用所调用的函数必须是<strong>基类虚函数</strong></li>
+<li>counterfeit 类和 victim 类均派生自某个基类，但却有不同的虚函数实现方式</li>
+<li>可以利用漏洞来破坏 victim 类</li>
+</ul>
+<p>除此之外，我们还需要生成适当的输入，使得可以触发目标 vcall，接着触发 counterfeit 函数并最终导致内存越界操作，这整个过程同样也是一项较为艰难的任务。</p>
+<p>因此 该论文提出 VSCape 这样的一个解决方案，用来自动编译候选的原语，并过滤出实用且可达的原语，辅助生成最终的漏洞利用来绕过 vcall 保护。</p>
+<p>这是 VScape 的整体架构，接下来将分别在下面详细说明每个模块：</p>
+<blockquote>
+<p>这个工具虽然在实际中我们可能不会太用到，但是了解一下整体的设计也是一个学习的过程。</p>
+</blockquote>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211130235053830.png" alt="image-20211130235053830"></p>
+<h3 id="2-原语生成">2. 原语生成</h3>
+<h4 id="Info-Collecting">Info Collecting</h4>
+<p>VScape 将使用传入的目标程序源码，在编译期间收集与 vcall 相关的信息：</p>
+<ul>
+<li>虚函数调用点：记录目标程序的<strong>所有虚拟函数调用点</strong>，以及预期虚拟函数静态声明的基本接口类信息。</li>
+<li>类布局：在编译过程中记录下<strong>所有类的布局</strong>，包括类大小，成员变量字段偏移量以及基类等等。</li>
+<li>虚函数信息：记录每个虚函数调用点的<strong>所有符合类型的虚函数</strong>，以及每个虚函数中的<strong>最大字段访问偏移量</strong>，以便于在今后的检查中找到潜在的越界访问。</li>
+</ul>
+<h4 id="Primitive-Searching">Primitive Searching</h4>
+<p>从上一步获取到的信息中，VScape 将继续筛选出可用于攻击的攻击原语元组。</p>
+<ul>
+<li>
+<p>首先，VScape 将构建<strong>类继承（class inheritance hierarchy ，CHI） 树</strong></p>
+</li>
+<li>
+<p>初始化<strong>全局编号</strong>， 该编号用于记录<strong>目标虚拟函数</strong>（注意不是所有虚拟函数）的版本，从0开始</p>
+</li>
+<li>
+<p>在 CHI 树中运用 BFS，给每个类节点编号，以记录目标虚拟函数的版本。</p>
+<p>若子类使用的虚函数是父类版本，则将父类的 ID 分配给子类，否则将全局编号自增1并赋给子类。</p>
+</li>
+</ul>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211201090813355.png" alt="image-20211201090813355"></p>
+<p>这样操作后，VScape 就可以获得对应 vcall 的带版本号的 CHI 树。即最终可以形成可用的攻击原语 <strong>（vcall, victim class, counterfeit class）</strong>。</p>
+<p>但这里存在一个问题，由于 vcall 数量规模非常的大，而且类也很多，因此这样一套搜索可能会消耗非常长的时间，不过这还是取决于具体实现。</p>
+<h4 id="Primitive-Capability-Analysis">Primitive Capability Analysis</h4>
+<p>在有了多组攻击原语后，接下来需要判断这些原语在漏洞利用中所能起到的作用。</p>
+<p>正如上面将 vfgadget 分成多种类型一样，VScape 在这里也将对不同类型的 vfgadget 进行不同的处理。</p>
+<ul>
+<li>
+<p>对于OOB-read，分析读取的值用作加载 PC 还是用作写入目标内存地址。如果是后者则还会通过污染分析来判断待写入的值能否被敌手控制。</p>
+</li>
+<li>
+<p>对于 OOB-write，分析写入的值是否是指针，如果是则进一步查找中继对象的使用方式，来尝试找到绕过 ASLR 的地方。</p>
+</li>
+</ul>
+<h3 id="3-检测原语结构">3. 检测原语结构</h3>
+<p>在获取到大量攻击原语后，需要进一步过滤出可用的原语。</p>
+<h4 id="Vulnerability-Matching">Vulnerability Matching</h4>
+<p>在给定漏洞描述之后，VScape 还会了解目的堆分配器的相关信息，并过滤出那些：</p>
+<blockquote>
+<p>victim object 与 <strong>可触发漏洞的 buf</strong>  分配在同一个堆中的 候选原语。</p>
+</blockquote>
+<p>因为若分配不在同一个堆，则自然这些攻击原语将无法利用。</p>
+<h4 id="Exploitable-Memory-States-Inference">Exploitable Memory States Inference</h4>
+<p>若想触发 vcall 中的特定目的（例如写入数据或读取），则必须在<strong>特定内存状态</strong>下运行，例如类的某些字段必须为某些特殊值，否则将不满足 vcall 的条件判断，进而无法执行到目标位置。</p>
+<p>VScape 将通过污点分析和符号执行来进一步确认。VScape将把 <strong>victim object</strong> 和相邻的<strong>中继对象</strong>标记为符号值，并以符号方式执行那些<strong>会越界访问到中继对象</strong>的伪造函数。</p>
+<blockquote>
+<p>很容易理解为什么要将<strong>中继对象也作为符号值</strong>，这是因为伪造函数可能会<strong>使用到一些越界内存上的值</strong>，而这些内存上存放的是中继对象。</p>
+</blockquote>
+<h3 id="4-约束求解">4. 约束求解</h3>
+<p>在上面 VScape 已经对原语结构进行了简单的过滤，接下来仍然有三个问题需要解决：</p>
+<ul>
+<li>能否使控制流到达目标 vcallsite 上并执行 victim 类的 vcall。</li>
+<li>伪造函数上的 OOB 操作能否成功执行</li>
+<li>满足上述两点的数据约束是什么</li>
+</ul>
+<h4 id="Virtual-Callsite-Reachability-Testing">Virtual Callsite Reachability Testing</h4>
+<p>首先对于第一点，VScape 通过定向 fuzz 技术，使用给定的基准测试数据，<strong>尽可能地得到一个不完整的可达 victim 函数列表</strong>。VScape 将在目标 vcallsite 后插入 callback 以记录调用的 victim function 和 testcase。</p>
+<h4 id="OOB-Instruction-Reachability-Solving">OOB Instruction Reachability Solving</h4>
+<p>对于第二点，VScape 把经过上面第一点处理后的 testcase 作为输入，在目标程序执行至目标 vcallsite 后保存此时的执行上下文，并让符号执行引擎在此时的上下文对<strong>伪函数</strong>进行符号执行操作，以获取<strong>执行伪函数 OOB 操作</strong>的数据依赖。</p>
+<blockquote>
+<p>类似的，中转对象也会被作为符号值一并用于符号执行中。</p>
+</blockquote>
+<h4 id="Exploit-Assembling">Exploit Assembling</h4>
+<p>VScape 无法自动化生成漏洞利用，它必须依赖用户给定的 exploit 模板来构成完整的漏洞利用链。</p>
+<p>用户必须手动：</p>
+<ul>
+<li>在 exploit 中手动操作堆风水</li>
+<li>在 exploit 中，利用 POC 更改 victim object 的 vptr 为特定值</li>
+<li>根据 VScape 提供的信息进行后续的漏洞利用</li>
+</ul>
+<p>以这个漏洞模板为例：</p>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211201095342891.png" alt="image-20211201095342891"></p>
+<p>main 函数中的黑色字体函数调用是必须由人工手动完成，而红色字体的函数调用是 VScape 可以辅助完成的工作。</p>
+<h2 id="六、评估">六、评估</h2>
+<p>VScape 的评估主要基于三个层面：</p>
+<ul>
+<li>在真实世界中的 C++ 程序中，COOPlus 攻击是否实用</li>
+<li>COOPlus 在绕过 vcall 保护机制上效果如何</li>
+<li>VScape 在生成真实完整漏洞利用链的过程中表现如何</li>
+</ul>
+<p>根据 slides 中给定的结论，我们可以看到 COOPlus 攻击在大项目中比较实用。</p>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211201095933789.png" alt="image-20211201095933789"></p>
+<p>而对于那些 vcall 保护机制，COOPlus 可以绕过满足既定攻击条件的保护。</p>
+<blockquote>
+<p>既定攻击条件，即不破坏C++ ABI，不保证 vptr 完整性以及允许在 vcallsite 上调用多个目标。</p>
+</blockquote>
+<p>论文中还给出了对于 PyQt 和 Firefox 的利用评估，这里不再展开。</p>
+<p><img src="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/image-20211201100845912.png" alt="image-20211201100845912"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/virtual-call/" rel="tag">virtual call</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/collafl/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            《CollAFL - Path Sensitive Fuzzing》论文笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/healer/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《HEALER - Relation Learning Guided Kernel Fuzzing》 论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

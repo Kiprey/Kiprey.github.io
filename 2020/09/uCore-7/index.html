@@ -1,0 +1,1970 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab7、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab7 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-7"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab7
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/09/uCore-7/" class="article-date">
+  <time datetime="2020-09-21T09:35:38.000Z" itemprop="datePublished">2020-09-21</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">13k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">51 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 7时写下的一些笔记</li>
+<li>内容涉及信号、管程、死锁和进程通信的一些相关实现。</li>
+</ul>
+<a id="more"></a>
+<h2 id="知识点">知识点</h2>
+<h3 id="1-原子操作（Atomic-Operator）">1. 原子操作（Atomic Operator）</h3>
+<ul>
+<li>
+<p>原子操作是指一次不存在任何中断或失效的操作</p>
+</li>
+<li>
+<p>该操作只有两种情况</p>
+<ul>
+<li>操作<strong>成功执行</strong></li>
+<li>操作<strong>没有执行</strong></li>
+</ul>
+<blockquote>
+<p><strong>不存在</strong>出现<strong>部分执行</strong>的情况</p>
+</blockquote>
+<ul>
+<li>操作系统需要利用同步机制在并发执行的同时，保存一些操作是原子操作。</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-进程的交互关系">2. 进程的交互关系</h3>
+<hr>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">相互感知的程度</th>
+<th style="text-align:center">交互关系</th>
+<th style="text-align:center">进程间的影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">相互不感知（完全不了解其他进程的存在）</td>
+<td style="text-align:center">独立</td>
+<td style="text-align:center">一个进程的操作对其他进程的结果无影响</td>
+</tr>
+<tr>
+<td style="text-align:center">间接感知（双方都与第三方交互，例如数据共享）</td>
+<td style="text-align:center">通过共享进行协作</td>
+<td style="text-align:center">一个进程的结果依赖于共享资源的状态</td>
+</tr>
+<tr>
+<td style="text-align:center">直接感知（双方直接交互，例如通信）</td>
+<td style="text-align:center">通过通信进行协作</td>
+<td style="text-align:center">一个进程的结果依赖于从其他进程获得的信息</td>
+</tr>
+</tbody>
+</table>
+<p>进程之间可能出现三种关系：</p>
+<ul>
+<li>互斥（mutual exclusion）：一个进程占用资源，<strong>其他进程不能使用</strong></li>
+<li>死锁（deadlock）：多个进程占用部分资源，形成<strong>循环等待</strong></li>
+<li>饥饿（starvation）：其他进程可能轮流占用资源，一个进程<strong>一直得不到资源</strong></li>
+</ul>
+<h3 id="3-临界区">3. 临界区</h3>
+<h4 id="a-相关区域的概念">a. 相关区域的概念</h4>
+<ul>
+<li>临界区（critical section）：进程中访问临界资源的一段需要互斥执行的代码。</li>
+<li>进入区（entry section）：检查可否进入临界区的一段代码。如果可以进入，则设置“<strong>正在访问临界区</strong>”标志</li>
+<li>退出区（exit section）: 清除标志</li>
+<li>剩余区（remainder section）: 代码中的其余部分</li>
+</ul>
+<h4 id="b-临界区的访问规则">b. 临界区的访问规则</h4>
+<p>空闲则入、忙则等待、有限等待、让权等待（可选）</p>
+<blockquote>
+<p>让权等待：让不能进入临界区的进程暂时释放CPU资源。</p>
+</blockquote>
+<h4 id="c-临界区的实现方法">c. 临界区的实现方法</h4>
+<h5 id="1-禁用中断">1) 禁用中断</h5>
+<ul>
+<li>
+<p>无中断，无上下文切换，因此无并发</p>
+<ul>
+<li>
+<p>硬件将中断处理延迟到中断被启用之后</p>
+</li>
+<li>
+<p>现代计算机体系结构都提供指令来实现禁用中断。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">local_irq_save(<span class="keyword">unsigned</span> <span class="keyword">long</span> flags);</span><br><span class="line">critical_section</span><br><span class="line">local_irq_restore(<span class="keyword">unsigned</span> <span class="keyword">long</span> flags);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>进入临界区：禁止所有中断，并保存标志</p>
+</li>
+<li>
+<p>离开临界区：使能所有中断，并恢复标志</p>
+</li>
+<li>
+<p>缺点</p>
+<ul>
+<li>
+<p>禁用中断后，<strong>进程无法被停止</strong></p>
+<ul>
+<li>整个系统都会因此停下</li>
+<li>可能导致其他进程处于饥饿状态</li>
+</ul>
+</li>
+<li>
+<p>临界区可能很长，<strong>无法确定响应中断所需的时间</strong></p>
+</li>
+<li>
+<p>仅限于<strong>单处理器</strong></p>
+</li>
+</ul>
+</li>
+</ul>
+<h5 id="2-基于软件的同步解决方法">2) 基于软件的同步解决方法</h5>
+<p><strong>线程可通过共享一些共有变量来同步它们的行为</strong>。</p>
+<ul>
+<li>
+<p>Peterson算法（两线程之间的同步互斥算法）</p>
+<ul>
+<li>
+<p>共享变量</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> turn; <span class="comment">// 表示该谁进入临界区</span></span><br><span class="line"><span class="keyword">bool</span> flag[]; <span class="comment">// 表示进程是否准备好进入临界区</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>进入区代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 设置当前线程想进入临界区</span></span><br><span class="line">flag[i] = <span class="literal">true</span>;</span><br><span class="line"><span class="comment">// 先让另一个进程执行</span></span><br><span class="line">turn = j;</span><br><span class="line"><span class="comment">// 如果另一个进程想进入同时也可进入临界区，则当前进程等待</span></span><br><span class="line"><span class="keyword">while</span>(flag[j] &amp;&amp; turn == j)</span><br><span class="line">    ;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>退出区代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 设置当前线程不想进入临界区</span></span><br><span class="line">flag[i] = <span class="literal">false</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>总结</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 线程Ti的代码</span></span><br><span class="line"><span class="keyword">do</span>&#123;</span><br><span class="line">    <span class="comment">// 设置当前线程想进入临界区</span></span><br><span class="line">    flag[i] = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// 先让另一个进程执行</span></span><br><span class="line">    turn = j;</span><br><span class="line">    <span class="comment">// 如果另一个进程想进入同时也可进入临界区，则当前进程等待</span></span><br><span class="line">    <span class="keyword">while</span>(flag[j] &amp;&amp; turn == j)</span><br><span class="line">        ;<span class="comment">// 忙等待</span></span><br><span class="line"></span><br><span class="line">    CRITICAL SECTION</span><br><span class="line"></span><br><span class="line">    flag[i] = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    REMAINDER SECTION</span><br><span class="line"></span><br><span class="line">&#125;<span class="keyword">while</span>(<span class="literal">true</span>);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>Dekkers算法。逻辑与Peterson类似，为另一种的两线程之间的同步互斥算法。所不同的是<strong>这个算法可以很方便的扩展至多个线程</strong>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 线程Ti的代码</span></span><br><span class="line">flag[<span class="number">0</span>] = flag[<span class="number">1</span>] = <span class="literal">false</span>;</span><br><span class="line">turn = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">do</span>&#123;</span><br><span class="line">    <span class="comment">// 设置当前进程想进入临界区</span></span><br><span class="line">    flag[i] = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// 如果上一个进程想进入临界区，则先让它进</span></span><br><span class="line">    <span class="keyword">while</span>(flag[j] == <span class="literal">true</span>)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="comment">// 如果目前轮到的进程不是当前进程</span></span><br><span class="line">        <span class="keyword">if</span>(turn != i)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 则取消进入临界区的标记</span></span><br><span class="line">            flag[i] = <span class="literal">false</span>;</span><br><span class="line">            <span class="comment">// 并等待轮到当前进程</span></span><br><span class="line">            <span class="keyword">while</span>(turn != i)</span><br><span class="line">                ; <span class="comment">// 忙等待</span></span><br><span class="line">            <span class="comment">// 一旦轮到当前进程，则设置进入临界区的标记</span></span><br><span class="line">            flag[i] = <span class="literal">true</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    CRITICAL SECTION</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 当前进程临界区已经执行完成，轮换至下一个进程</span></span><br><span class="line">    turn = j;</span><br><span class="line">    flag[i] = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    REMAINDER SECTION</span><br><span class="line"></span><br><span class="line">&#125;<span class="keyword">while</span>(<span class="literal">true</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>N线程的软件方法（Eisenberg和McGuire）</p>
+<p><img src="/2020/09/uCore-7/nthreads.png" alt="img"></p>
+</li>
+<li>
+<p>缺点</p>
+<ul>
+<li>复杂：需要两个进程间的共享数据项</li>
+<li>需要忙等待：浪费CPU时间</li>
+</ul>
+</li>
+</ul>
+<h5 id="3-更高级的抽象方法">3) 更高级的抽象方法</h5>
+<ul>
+<li>
+<p>硬件提供一些同步原语：例如中断禁用，原子操作指令等</p>
+</li>
+<li>
+<p>操作系统提供更高级的编程抽象来简化进程同步：例如锁、信号量，或者用硬件原语来构造、</p>
+</li>
+<li>
+<p><strong>锁（lock)</strong></p>
+<ul>
+<li>
+<p>锁是一个抽象的数据结构</p>
+<ul>
+<li>使用一个二进制变量，用于表示锁定/解锁</li>
+<li><strong>Lock::Acquire()</strong> : 锁被释放前一直等待，直到得到锁</li>
+<li><strong>Lock::Release()</strong> : 释放锁，唤醒任何等待的进程</li>
+</ul>
+</li>
+<li>
+<p>使用锁来控制临界区访问</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">lock_next_pid-&gt;Acquire();</span><br><span class="line">next_pid = next_pid++;</span><br><span class="line">lock_next_pid-&gt;Release();</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>原子操作指令</strong></p>
+<ul>
+<li>
+<p>现代CPU体系结构都提供一些特殊的原子操作指令</p>
+</li>
+<li>
+<p>测试和置位（Test-and-Set）指令</p>
+<blockquote>
+<p>从内存中获取值，测试该值是否为1，并设置内存单元值为1</p>
+</blockquote>
+<p>等效于：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">TestAndSet</span><span class="params">(<span class="keyword">bool</span> *target)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> ret = *target;</span><br><span class="line">    *target = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>交换指令（exchange）</p>
+<blockquote>
+<p>交换内存中的两个值</p>
+</blockquote>
+<p>等效于：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">exchange</span><span class="params">(<span class="keyword">bool</span> *a, <span class="keyword">bool</span>* b)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> tmp = *a;</span><br><span class="line">    *a = *b;</span><br><span class="line">    *b = tmp;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>使用TS指令实现自旋锁（spinlock)</p>
+<ul>
+<li>
+<p>自旋忙等待锁</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Lock</span>&#123;</span></span><br><span class="line">    <span class="keyword">int</span> value = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Acquire</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// 如果锁被释放，则读取并设置value为1</span></span><br><span class="line">        <span class="comment">// 如果锁被占用，则一直循环查找</span></span><br><span class="line">        <span class="keyword">while</span>(test-<span class="keyword">and</span>-<span class="built_in">set</span>(value))</span><br><span class="line">            ; <span class="comment">// spin，线程在等待时需要消耗CPU资源</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Release</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        value = <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>无忙等待锁（非自旋锁）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Lock</span>&#123;</span></span><br><span class="line">    <span class="keyword">int</span> value = <span class="number">0</span>;</span><br><span class="line">    WaitQueue q;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Acquire</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// 如果锁被释放，则读取并设置value为1</span></span><br><span class="line">        <span class="comment">// 如果锁被占用，则一直循环查找</span></span><br><span class="line">        <span class="keyword">while</span>(test-<span class="keyword">and</span>-<span class="built_in">set</span>(value))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 当前进程无法获取到锁，进入等待队列</span></span><br><span class="line">            q.push_back(currentThread-&gt;PCB);</span><br><span class="line">            <span class="comment">// 调度至其他线程中运行</span></span><br><span class="line">            schedule();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Release</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        value = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 唤醒等待队列中的线程</span></span><br><span class="line">        PCB&amp; t = q.pop_front();</span><br><span class="line">        wakeup(t);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>原子操作锁的特征</p>
+<ul>
+<li>
+<p>优点</p>
+<ul>
+<li>适用于单处理器或者共享主存的多处理器中任意数量的进程同步</li>
+<li>简单并容易证明</li>
+<li>支持多临界区</li>
+</ul>
+</li>
+<li>
+<p>缺点</p>
+<ul>
+<li>
+<p>忙等待消耗处理器时间</p>
+</li>
+<li>
+<p>可能导致饥饿：进程离开临界区时有多个等待进程的情况</p>
+</li>
+<li>
+<p><strong>死锁</strong>：拥有临界区的低优先级进程，以及请求访问临界区的高优先级进程获得处理器并等待临界区。</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-信号量">4. 信号量</h3>
+<h4 id="a-相关概念">a. 相关概念</h4>
+<ul>
+<li>
+<p>信号量(Semaphore)是操作系统提供的一种协调共享资源访问的方法</p>
+<ul>
+<li>软件同步是平等线程间的一种同步协商机制</li>
+<li>OS是管理者，地位高于进程</li>
+<li>用信号量表示系统资源的数量</li>
+</ul>
+</li>
+<li>
+<p>信号量是一种抽象数据类型</p>
+<ul>
+<li>由一个整数（sem）变量和两个原子操作组成</li>
+<li><strong>P()</strong> ：<code>sem--</code>，如果sem&lt;0，则进入等待，否则继续</li>
+<li><strong>V()</strong> : <code>sem++</code>, 如果sem &lt;= 0, 唤醒一个等待进程</li>
+</ul>
+</li>
+<li>
+<p>信号量是被保护的整数变量</p>
+<ul>
+<li>初始化完成后，只能通过 <strong>P()</strong> 和 <strong>V()</strong> 操作修改</li>
+<li>由操作系统来保证，PV操作是<strong>原子操作</strong></li>
+</ul>
+</li>
+<li>
+<p>P() 可能阻塞，但 V() 不会阻塞</p>
+</li>
+<li>
+<p>通常，假定信号量是“公平的”</p>
+<ul>
+<li>
+<p>即，线程不会被无限期阻塞在P() 操作中</p>
+</li>
+<li>
+<p>假定信号量等待按先进先出排队</p>
+<blockquote>
+<p>自旋锁不能实现先进先出</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>信号量的一种实现方式</p>
+<blockquote>
+<p>与用户自己编写的锁不同，<strong>操作系统保证PV操作是原子操作</strong>。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Semaphore</span>&#123;</span></span><br><span class="line">    <span class="keyword">int</span> sem;</span><br><span class="line">    WaitQueue q;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">P</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// 由于操作系统的保证，修改变量与条件判断之间不可能会出现条件竞争</span></span><br><span class="line">        sem--;</span><br><span class="line">        <span class="keyword">if</span>(sem &lt; <span class="number">0</span>)&#123;</span><br><span class="line">            Add <span class="keyword">this</span> thread t to q;</span><br><span class="line">            block(p);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">V</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        sem++;</span><br><span class="line">        <span class="keyword">if</span>(sem &lt;= <span class="number">0</span>)&#123;</span><br><span class="line">            Remove a thread t from q;</span><br><span class="line">            wakeup(t);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="b-信号量的分类">b. 信号量的分类</h4>
+<ul>
+<li>
+<p>信号量可分为两种信号量</p>
+<ul>
+<li><strong>二进制信号量</strong>，资源数目为0/1</li>
+<li><strong>资源信号量</strong>：资源数目为任何非负值</li>
+</ul>
+<blockquote>
+<p>两者等价，基于某一个可以实现另一个</p>
+</blockquote>
+</li>
+<li>
+<p>信号量的使用</p>
+<ul>
+<li>互斥访问：临界区的互斥访问控制</li>
+<li>条件同步：线程间的事件等待</li>
+</ul>
+</li>
+<li>
+<p>用信号量实现临界区的互斥访问</p>
+<ul>
+<li>每类资源设置一个信号量，其初值为1</li>
+<li>必须成对使用P()和V()操作
+<ul>
+<li>P()操作保证互斥访问临界资源</li>
+<li>V()操作在使用后释放临界资源</li>
+<li>PV操作<strong>不能次序颠倒，重复或遗漏q</strong></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>缺点</p>
+<ul>
+<li>读/开发代码较为困难。程序员需要能运用信号量机制</li>
+<li>容易出错。使用的信号量已经被另一个线程占用，或者忘记释放信号量</li>
+<li>无法处理死锁问题</li>
+</ul>
+</li>
+</ul>
+<h5 id="生产者-消费者问题">生产者-消费者问题</h5>
+<ul>
+<li>
+<p>问题描述</p>
+<ul>
+<li>一个或多个的生产者在生成数据后放在一个缓冲区中</li>
+<li>单个消费者从缓冲区取出数据处理</li>
+<li>任何时刻只能有一个生产者或消费者可访问该缓冲区</li>
+</ul>
+</li>
+<li>
+<p>问题分析</p>
+<ul>
+<li>任何时刻只能有一个线程操作缓冲区（互斥访问）</li>
+<li>缓冲区为空时，消费者必须等待生产者（条件同步）</li>
+<li>缓冲区为满时，生产者必须等待消费者（条件同步）</li>
+</ul>
+</li>
+<li>
+<p>用信号量描述每个约束</p>
+<ul>
+<li>二进制信号量mutex</li>
+<li>资源信号量<code>fullBuffers</code></li>
+<li>资源信号量<code>emptyBuffers</code></li>
+</ul>
+</li>
+<li>
+<p>代码解决</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">BoundedBuffer</span>&#123;</span></span><br><span class="line">    mutex = <span class="keyword">new</span> Semaphore(<span class="number">1</span>);</span><br><span class="line">    fullBuffers = <span class="keyword">new</span> Semaphore(<span class="number">0</span>);</span><br><span class="line">    emptyBuffers = <span class="keyword">new</span> Semaphore(n);</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Deposit</span><span class="params">(c)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// 占用当前的空闲缓冲区（如果当前缓冲区已满，则挂起）</span></span><br><span class="line">        emptyBuffers-&gt;P();</span><br><span class="line">        <span class="comment">// 独占当前缓冲区（如果当前缓冲区正在被使用，则挂起）</span></span><br><span class="line">        mutext-&gt;P();</span><br><span class="line">        Add c to the buffer;</span><br><span class="line">        <span class="comment">// 释放当前缓冲区的占用</span></span><br><span class="line">        mutext-&gt;V();</span><br><span class="line">        <span class="comment">// 由于向缓冲区中写入了数据，所以增加满缓冲区的资源数</span></span><br><span class="line">        fullBuffers-&gt;V();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Remove</span><span class="params">(c)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        fullBuffers-&gt;P();</span><br><span class="line">        mutext-&gt;P();</span><br><span class="line">        remove c from the buffer;</span><br><span class="line">        mutext-&gt;V();</span><br><span class="line">        emptyBuffers-&gt;V();</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，<strong>PV操作的顺序一定要对应</strong>，否则可能出现<strong>死锁</strong>情况！</p>
+</li>
+</ul>
+<h3 id="5-管程">5. 管程</h3>
+<h4 id="a-相关概念-2">a. 相关概念</h4>
+<ul>
+<li>管程（Monitor）是一种用于多线程互斥访问共享资源的程序结构
+<ul>
+<li>采用面向对象方法，简化了线程间的同步控制</li>
+<li>任一时刻最多只有一个线程执行管程代码</li>
+<li><strong>正在管程中的线程可临时放弃管程的互斥访问，等待事件出现时恢复</strong></li>
+</ul>
+</li>
+<li>管程的使用
+<ul>
+<li>在对象/模块中，收集相关共享数据</li>
+<li>定义访问共享数据的方法</li>
+</ul>
+</li>
+<li>管程的组成
+<ul>
+<li>一个锁，控制管程代码的互斥访问</li>
+<li>0-n个条件变量，用于管理共享数据的并发访问</li>
+</ul>
+</li>
+<li>引入管程机制的目的：
+<ul>
+<li>把分散在各进程中的临界区集中起来进行管理</li>
+<li>防止进程有意或无意的违法同步操作</li>
+<li>便于用高级语言来书写程序，也便于程序正确性验证。</li>
+</ul>
+</li>
+</ul>
+<h4 id="b-条件变量">b. 条件变量</h4>
+<ul>
+<li>
+<p>条件变量（Condition Variable）是管程内的等待机制</p>
+<ul>
+<li>进入管程的线程因资源被占用而进入等待状态</li>
+<li>每个条件变量表示一种等待原因，对应一个等待队列</li>
+</ul>
+</li>
+<li>
+<p><strong>Wait()</strong> 操作</p>
+<ul>
+<li>将自己阻塞在等待队列中</li>
+<li>唤醒一个等待者或释放管程的互斥访问</li>
+</ul>
+</li>
+<li>
+<p><strong>Signal()</strong> 操作</p>
+<ul>
+<li>将等待队列中的一个线程唤醒</li>
+<li>如果等待队列为空，则等同空操作</li>
+</ul>
+</li>
+<li>
+<p>用<strong>条件变量</strong>来解决生产者-消费者问题</p>
+<blockquote>
+<p>该部分代码请结合“用管程解决生产者-消费者问题”理解</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Condition</span>&#123;</span></span><br><span class="line">    <span class="keyword">int</span> numWaiting = <span class="number">0</span>;</span><br><span class="line">    WaitQueue q;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Wait</span><span class="params">(lock)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        numWaiting++;</span><br><span class="line">        add <span class="keyword">this</span> thread t to q;</span><br><span class="line">        release(lock);  <span class="comment">// 释放原先占有的锁</span></span><br><span class="line">        schedule(); <span class="comment">// need mutex</span></span><br><span class="line">        require(lock); <span class="comment">// 获取原先被释放的锁</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Signal</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="keyword">if</span>(numWaiting &gt; <span class="number">0</span>)</span><br><span class="line">        &#123;</span><br><span class="line">            Release a thread t from q;</span><br><span class="line">            wakeup(t);</span><br><span class="line">            numWaiting--;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>用<strong>管程</strong>解决生产者-消费者问题</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">BoundBuffer</span>&#123;</span></span><br><span class="line">    ...</span><br><span class="line">    Lock lock;</span><br><span class="line">    <span class="keyword">int</span> count = <span class="number">0</span>;</span><br><span class="line">    Condition notFull, notEmpty;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Deposit</span><span class="params">(c)</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock-&gt;Acquire();</span><br><span class="line">        <span class="comment">// 如果写入的数据达到缓冲区的最大尺寸</span></span><br><span class="line">        <span class="keyword">while</span>(count == n)</span><br><span class="line">            <span class="comment">// 则当前线程等待</span></span><br><span class="line">            notFull.Wait(&amp;lock);</span><br><span class="line">        Add c to the buffer;</span><br><span class="line">        count++;</span><br><span class="line">        notEmpty.Signal();</span><br><span class="line">        lock-&gt;Release();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Remove</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock-&gt;Acquire();</span><br><span class="line">        <span class="comment">// 如果当前缓冲区为空，则等待</span></span><br><span class="line">        <span class="keyword">while</span>(count == <span class="number">0</span>)</span><br><span class="line">            notEmpty.Wait(&amp;lock);</span><br><span class="line">        Remove c from buffer;</span><br><span class="line">        count--;</span><br><span class="line">        notFull.Signal();</span><br><span class="line">        lock-&gt;Release();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>条件变量的释放处理方式</p>
+<blockquote>
+<p>当T2线程执行Signal函数后，控制权应保留至T2线程结束，还是立即切换回T1线程呢？这两种不同的情况分别为Hasen管程与Hoare管程。</p>
+</blockquote>
+<ul>
+<li>
+<p>Hasen管程</p>
+<blockquote>
+<p>Hasen管程在某个线程执行Signal函数后，控制权不立即移交至另一个线程，而是先执行当前线程。</p>
+</blockquote>
+<ul>
+<li>
+<p>过程如下</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">T1线程</th>
+<th style="text-align:center">T2线程</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">l.acquire()</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">…</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">x.wait()</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">l.acquire()</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">…</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">x.signal()</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">…</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">l.release()</td>
+</tr>
+<tr>
+<td style="text-align:center">…</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">x.release()</td>
+<td style="text-align:center"></td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>特点：线程切换次数较少，效率较高，主要用于真实OS和Java中。</p>
+<ul>
+<li>条件变量的释放<strong>只是一个提示</strong></li>
+<li>需要重新检查条件</li>
+</ul>
+</li>
+<li>
+<p>代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Deposit</span><span class="params">(c)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    lock-&gt;Acquire();</span><br><span class="line">    <span class="comment">// 注意判断关键字为while</span></span><br><span class="line">    <span class="keyword">while</span>(count == n)</span><br><span class="line">        notFull.Wait(&amp;lock);</span><br><span class="line">    Add c to the buffer;</span><br><span class="line">    count++;</span><br><span class="line">    notEmpty.Signal();</span><br><span class="line">    lock-&gt;Release();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>Hoare管程</p>
+<blockquote>
+<p>Hoare管程在某个线程执行Signal函数后，控制权<strong>立即移交</strong>至另一个线程。</p>
+</blockquote>
+<ul>
+<li>
+<p>过程如下</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">T1线程</th>
+<th style="text-align:center">T2线程</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">l.acquire()</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">…</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">x.wait()</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">l.acquire()</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">…</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">x.signal()</td>
+</tr>
+<tr>
+<td style="text-align:center">…</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">l.release()</td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">…</td>
+</tr>
+<tr>
+<td style="text-align:center"></td>
+<td style="text-align:center">l.release()</td>
+</tr>
+</tbody>
+</table>
+</li>
+<li>
+<p>特点：通常的分析中，T1线程优先执行是更合理的，但需要做多次线程切换，<strong>低效</strong>。主要见于教科书中</p>
+<ul>
+<li>条件变量释放同时表示<strong>放弃管程访问</strong></li>
+<li>释放后条件变量的状态可用</li>
+</ul>
+</li>
+<li>
+<p>代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">Deposit</span><span class="params">(c)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    lock-&gt;Acquire();</span><br><span class="line">    <span class="comment">// 注意判断关键字为if</span></span><br><span class="line">    <span class="keyword">if</span>(count == n)</span><br><span class="line">        notFull.Wait(&amp;lock);</span><br><span class="line">    Add c to the buffer;</span><br><span class="line">    count++;</span><br><span class="line">    notEmpty.Signal();</span><br><span class="line">    lock-&gt;Release();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="6-互斥综合：读者-写者问题">6. 互斥综合：读者-写者问题</h3>
+<h4 id="a-问题描述">a. 问题描述</h4>
+<ul>
+<li>共享数据的两类使用者
+<ul>
+<li>读者：只读取数据，不修改</li>
+<li>写者：读取和修改数据</li>
+</ul>
+</li>
+<li>问题描述：对共享数据的读写
+<ul>
+<li>读-读允许：同一时刻允许多个读者同时读</li>
+<li>读-写互斥：没有写者时读者才能读; 没有读者时写者才能写。</li>
+<li>写-写互斥：没有其他写者时写者才能写</li>
+</ul>
+</li>
+</ul>
+<h4 id="b-用信号量解决问题">b. 用信号量解决问题</h4>
+<blockquote>
+<p>以下实现为<strong>读者优先</strong>。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Reader_Writer</span>&#123;</span></span><br><span class="line">    mutex WriteMutex = <span class="keyword">new</span> mutex(<span class="number">1</span>); <span class="comment">// 控制读写操作的互斥</span></span><br><span class="line">    mutex CountMutex = <span class="keyword">new</span> mutex(<span class="number">1</span>); <span class="comment">// 控制对读者计数的互斥修改</span></span><br><span class="line">    <span class="keyword">int</span> Rcount = <span class="number">0</span>; <span class="comment">// 共享变量，需要互斥修改</span></span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Write</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        P(WriteMutex);</span><br><span class="line">        write;</span><br><span class="line">        V(WriteMutex);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Read</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        P(CountMutex);</span><br><span class="line">        <span class="keyword">if</span>(Rcount == <span class="number">0</span>)</span><br><span class="line">            P(WriteMutex);</span><br><span class="line">        ++Rcount;</span><br><span class="line">        V(CountMutex);</span><br><span class="line"></span><br><span class="line">        read;</span><br><span class="line"></span><br><span class="line">        P(CountMutex);</span><br><span class="line">        --Rcount;</span><br><span class="line">        <span class="keyword">if</span>(Rcount == <span class="number">0</span>)</span><br><span class="line">            V(WriteMutex);</span><br><span class="line">        V(CountMutex);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="c-优先策略">c. 优先策略</h4>
+<ul>
+<li>读者优先策略
+<ul>
+<li>只要有读者正在读状态，后来的读者都能直接进入</li>
+<li>如果读者持续不断的进入，则写者处于饥饿</li>
+</ul>
+</li>
+<li>写者优先策略
+<ul>
+<li>只要有写者就绪，写者应该尽快执行写操作</li>
+<li>如果写者持续不断的就绪，则读者处于饥饿状态</li>
+</ul>
+</li>
+<li>具体使用哪种策略，取决于具体的环境。</li>
+</ul>
+<h4 id="d-用管程解决问题">d. 用管程解决问题</h4>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Database</span>&#123;</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line">    <span class="keyword">int</span> AR = <span class="number">0</span>; <span class="comment">// active readers</span></span><br><span class="line">    <span class="keyword">int</span> AW = <span class="number">0</span>; <span class="comment">// active Writers</span></span><br><span class="line">    <span class="keyword">int</span> WR = <span class="number">0</span>; <span class="comment">// waiting readers</span></span><br><span class="line">    <span class="keyword">int</span> WW = <span class="number">0</span>; <span class="comment">// waiting writers</span></span><br><span class="line">    Lock lock;</span><br><span class="line">    Condition okToRead;</span><br><span class="line">    Condition okToWrite;</span><br><span class="line">    <span class="comment">// 读者开始读</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">StartRead</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock.Acquire();</span><br><span class="line">        <span class="comment">// 如果有写者正在/准备写入数据</span></span><br><span class="line">        <span class="keyword">while</span>(AW+WW &gt; <span class="number">0</span>)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 当前读者开始等待写者完成</span></span><br><span class="line">            WR++;</span><br><span class="line">            okToRead.wait(&amp;lock);</span><br><span class="line">            WR--;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 读者开始读了，激活的读者+1</span></span><br><span class="line">        AR++;</span><br><span class="line">        lock.Release();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 读者结束读</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">DoneRead</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock.Acquire();</span><br><span class="line">        <span class="comment">// 读者读取完成，激活的读者-1</span></span><br><span class="line">        AR--;</span><br><span class="line">        <span class="comment">// 如果当前没有正在读的读者，并且当前有正在等待的写者</span></span><br><span class="line">        <span class="keyword">if</span>(AR == <span class="number">0</span> &amp;&amp; WW &gt; <span class="number">0</span>)</span><br><span class="line">            <span class="comment">// 激活某个写者开始写入数据</span></span><br><span class="line">          okToWrite.signal();</span><br><span class="line">        lock.Release();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 写者准备开始写</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">StartWrite</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock.Acquire();</span><br><span class="line">        <span class="comment">// 如果当前有正在读的读者或正在写的写者</span></span><br><span class="line">        <span class="keyword">while</span>(AW+AR &gt; <span class="number">0</span>)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 当前写者等待</span></span><br><span class="line">            WW++;</span><br><span class="line">            okToWrite.wait(&amp;lock);</span><br><span class="line">            WW--;</span><br><span class="line">        &#125;</span><br><span class="line">        AW++;</span><br><span class="line">        lock.Release();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 写者结束写</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">DOneWrite</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        lock.Acquire();</span><br><span class="line">        <span class="comment">// 当前写者结束写操作</span></span><br><span class="line">        AW--;</span><br><span class="line">        <span class="comment">// 如果存在等待的写者</span></span><br><span class="line">        <span class="keyword">if</span>(WW &gt; <span class="number">0</span>)</span><br><span class="line">            <span class="comment">// 唤醒某个等待的写者</span></span><br><span class="line">            okToWrite.signal();</span><br><span class="line">        <span class="comment">// 如果没有等待的写者，但有等待的读者</span></span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span>(WR &gt; <span class="number">0</span>)</span><br><span class="line">            <span class="comment">// 唤醒所有读者开始等待数据</span></span><br><span class="line">            okToRead.broadcast();</span><br><span class="line">        lock.Release();</span><br><span class="line">    &#125;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Read</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// wait until no readers</span></span><br><span class="line">        StartRead();</span><br><span class="line">        read database;</span><br><span class="line">        <span class="comment">// checkout - wake up waiting writers;</span></span><br><span class="line">        DoneRead();</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">Write</span><span class="params">()</span></span></span><br><span class="line"><span class="function">    </span>&#123;</span><br><span class="line">        <span class="comment">// wait until no readers/writers</span></span><br><span class="line">        StartWrite();</span><br><span class="line">        write database;</span><br><span class="line">        <span class="comment">// checkout - wake up waiting readers/writers;</span></span><br><span class="line">        DoneWrite();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="7-死锁">7. 死锁</h3>
+<h4 id="a-死锁概念">a. 死锁概念</h4>
+<h5 id="1-进程访问资源的流程">1) 进程访问资源的流程</h5>
+<ul>
+<li>资源类型$R_1, R_2, …， R_m$: CPU执行时间，内存空间，I/O设备等。</li>
+<li>每类资源$R_i$有$W_i$个实例</li>
+<li>进程访问资源的流程
+<ul>
+<li>请求/获取：申请空闲资源</li>
+<li>使用/占用：进程占用资源</li>
+<li>释放：资源状态由占用变成空闲。</li>
+</ul>
+</li>
+</ul>
+<h5 id="2-资源分类">2) 资源分类</h5>
+<ul>
+<li>可重用资源（Reusable Resource）
+<ul>
+<li>资源不能被删除且自任何时刻只能有一个进程在使用</li>
+<li>进程释放资源后，其他进程可重用</li>
+<li>可重用资源示例：硬件如处理器、I/O设备等，软件如文件、数据库等</li>
+<li>可能出现死锁：每个进程占用一部分资源并请求其他资源</li>
+</ul>
+</li>
+<li>消费资源 (Consumable resource)
+<ul>
+<li>资源创建和销毁</li>
+<li>消耗资源示例：中断、信号、消息</li>
+<li>可能出现死锁：进程间相互等待接收对方的消息</li>
+</ul>
+</li>
+</ul>
+<h5 id="3-出现死锁的必要条件">3) 出现死锁的必要条件</h5>
+<ul>
+<li>互斥：任何时刻只能有一个进程使用一个资源实例</li>
+<li>持有并等待：进程保持至少一个资源，并正在等待获取其他进程持有的资源</li>
+<li>非抢占：资源只能在进程使用后自愿释放</li>
+<li>循环等待：进程间相互循环等待</li>
+</ul>
+<h4 id="b-死锁处理方法">b. 死锁处理方法</h4>
+<blockquote>
+<p>死锁检测较为复杂，通常由应用程序处理死锁，操作系统会忽略死锁</p>
+</blockquote>
+<h5 id="1-死锁预防">1) 死锁预防</h5>
+<blockquote>
+<p>死锁预防（Deadlock Prevention)  ： 确保系统永远不会进入死锁状态。</p>
+</blockquote>
+<p>预防是采用某种策略，<strong>限制</strong>并发进程对资源的请求，使系统在任何时刻都<strong>不满足死锁的必要条件</strong>。</p>
+<ul>
+<li>
+<p>互斥：把互斥的共享资源封装成可同时访问的</p>
+</li>
+<li>
+<p>持有并等待：进程请求资源时，要求它不持有任何其他资源。仅允许进程在开始执行时，一次请求所有需要的资源，但这种做法的资源利用率低。</p>
+</li>
+<li>
+<p>非抢占：如进程请求不能立即分配的资源，则释放已经占用的资源。只在能够同时获得所有需要资源时，才执行分配操作。</p>
+</li>
+<li>
+<p>循环等待：对资源排序，要求进程按顺序请求资源。</p>
+</li>
+</ul>
+<h5 id="2-死锁避免">2) 死锁避免</h5>
+<blockquote>
+<p>死锁避免（Deadlock Avoidance）：在使用前进行判断，只允许不会出现死锁的进程请求资源。</p>
+</blockquote>
+<p>利用额外的先验信息，在分配资源时判断是否会出现死锁，只在不会出现死锁时分配资源。</p>
+<ul>
+<li>要求进程声明需要资源的<strong>最大数目</strong>。</li>
+<li>限定<strong>提供</strong>与<strong>分配</strong>的资源数量，确保满足进程的<strong>最大</strong>需求。</li>
+<li><strong>动态检查</strong>资源分配状态，确保不会出现环形等待。</li>
+</ul>
+<p>系统资源分配的安全状态</p>
+<ul>
+<li>当进程请求资源时，系统判断分配后是否处于安全状态。</li>
+<li>系统处于安全状态：针对所有已占用进程，存在安全序列</li>
+<li>序列$&lt;P_1, P_2,…,P_N&gt;$是安全的
+<ul>
+<li>$P_i$要求的资源 &lt;= 当前可用资源 + 所有$P_j$持有资源。其中<code>j&lt;i</code>。</li>
+<li>如果$P_i$的资源请求不能马上分配，则$P_i$等待所有$P_j(j &lt; i)$完成</li>
+<li>$P_i$完成后，$P_i+1$可得到所需资源，执行并释放所分配的资源。</li>
+<li>最终整个序列的所有$P_i$都能获得所需资源。</li>
+</ul>
+</li>
+</ul>
+<p><strong>银行家算法</strong>（Banker’s Algorithm）</p>
+<blockquote>
+<p>银行家算法是一个避免死锁产生的算法，以银行借贷分配策略为基础，判断并保证系统处于安全状态。</p>
+</blockquote>
+<ul>
+<li>
+<p>使用的数据结构</p>
+<blockquote>
+<p>n = 线程数量， m = 资源类型数量</p>
+</blockquote>
+<ul>
+<li><strong>Max(总需求量)</strong>：n x m 矩阵，线程$T_i$最多请求类型$R_i$的资源$Max[i, j]$个实例</li>
+<li><strong>Available(剩余空闲量)</strong>：长度为m的向量，当前有$Available[i]$个类型$R_j$的资源实例可用</li>
+<li><strong>Allocation(已分配量)</strong>：n x m 矩阵，线程$T_i$当前分配了$Allocation[i, j]$个$R_j$的实例</li>
+<li><strong>Need(未来需要量)</strong>： n x m矩阵，线程$T_i$未来需要$Need[i,j]$个$R_j$资源实例。</li>
+</ul>
+<blockquote>
+<p>$Need[i, j] = Max[i, j] - Allocation[i, j]$</p>
+</blockquote>
+</li>
+<li>
+<p><strong>安全状态判断</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Work和Finish分别是长度为m和n的向量初始化</span></span><br><span class="line">Work[m], Finish[n];</span><br><span class="line"></span><br><span class="line">Work = Available; <span class="comment">// 当前资源剩余空闲量</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; n; i++)</span><br><span class="line">  Finish[i] = <span class="literal">false</span>; <span class="comment">// 线程i没结束</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// ...每个线程开始运行并分配资源</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 在一段时间后</span></span><br><span class="line"><span class="comment">// 寻找Need比Work小，同时还未结束的线程Ti</span></span><br><span class="line"><span class="keyword">while</span>(Finish[i] == <span class="literal">false</span> &amp;&amp; Need[i] &lt;= Work)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 线程i的资源需求量小于当前剩余空闲资源量，所以该线程可以正常结束，并回收该线程的所有资源</span></span><br><span class="line">    Work += Allocation[i];</span><br><span class="line">    Finish[i] = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 如果所有线程Ti都满足Finish[i] == true,则系统处于安全状态。</span></span><br><span class="line"><span class="keyword">if</span>(Finish == <span class="literal">true</span>)</span><br><span class="line">    Safe;</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    <span class="comment">// 反之，系统处于不安全状态。</span></span><br><span class="line">    NoSafe;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>银行家算法具体设计</p>
+<ul>
+<li>
+<p>初始化：$Request_i$：线程$T_i$的资源请求向量， $Request_i[j]$：线程$T_i$请求资源$R_j$的实例</p>
+</li>
+<li>
+<p>循环：</p>
+<ol>
+<li>
+<p>如果$Request_i &lt;= Need[i]$，则转到步骤2。否则拒绝资源申请，因为线程已经超过了其最大资源要求。</p>
+</li>
+<li>
+<p>如果$Request_i &lt;= Available$，转到步骤3。否则，$T_i$必须等待，因为资源不可用。</p>
+</li>
+<li>
+<p>通过安全状态判断来确定是否分配资源给$T_i$</p>
+<ul>
+<li>
+<p>生成一个需要判断状态是否安全的资源分配环境</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">Available = Available - Request_i;</span><br><span class="line">Allocation[i] = Allocation[i] + Request_i;</span><br><span class="line">Need[i] = Need[i] - Request_i;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>并调用上文的<strong>安全状态判断</strong></p>
+<ul>
+<li>如果返回结果是<strong>安全</strong>，则将资源分配给$T_i$</li>
+<li>如果返回结果是<strong>不安全</strong>，系统会拒绝$T_i$的资源请求</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+</li>
+</ul>
+</li>
+</ul>
+<h5 id="3-死锁检测和恢复">3) 死锁检测和恢复</h5>
+<blockquote>
+<p>死锁检测和恢复（Deadlock Detection &amp; Recovery） : 在检测到运行系统进入死锁状态后进行恢复。</p>
+</blockquote>
+<ul>
+<li>
+<p>特点</p>
+<ul>
+<li>允许系统进入死锁状态</li>
+<li>维护系统的资源分配图</li>
+<li>定期调用死锁检测算法来搜索图中是否存在死锁</li>
+<li>出现死锁时，用死锁恢复机制进行恢复。</li>
+</ul>
+</li>
+</ul>
+<h6 id="i-死锁检测">i. 死锁检测</h6>
+<ul>
+<li>
+<p>数据结构</p>
+<ul>
+<li><strong>Available(剩余空闲量)</strong>：长度为m的向量，每种类型可用资源的数量</li>
+<li><strong>Allocation(已分配量)</strong>：n x m 矩阵，当前分配给各个进程每种类型资源的数量，进程$P_i$拥有资源$R_i$的$Allocation[i, j]$个实例。</li>
+</ul>
+</li>
+<li>
+<p>死锁检测算法</p>
+<blockquote>
+<p>该算法与银行家算法类似。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Work和Finish分别是长度为m和n的向量初始化</span></span><br><span class="line">Work[m], Finish[n];</span><br><span class="line"></span><br><span class="line">Work = Available; <span class="comment">// 当前资源剩余空闲量</span></span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; n; i++)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 如果当前遍历到的线程占用资源，则设置Finish为false</span></span><br><span class="line">    <span class="comment">// 反之，如果当前线程不占用资源，则要么是线程已结束，要么是我们不关心的线程</span></span><br><span class="line">    <span class="keyword">if</span>(Allocation[i] &gt; <span class="number">0</span>)</span><br><span class="line">      Finish[i] = <span class="literal">false</span>; <span class="comment">// 线程i没结束</span></span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">      Finish[i] = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ...每个线程开始运行并分配资源</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 在一段时间后</span></span><br><span class="line"><span class="comment">// 寻找Request比Work小，同时还未结束的线程Ti</span></span><br><span class="line"><span class="keyword">while</span>(Finish[i] == <span class="literal">false</span> &amp;&amp; Request[i] &lt;= Work)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 线程i的资源需求量小于当前剩余空闲资源量，所以该线程可以正常结束，并回收该线程的所有资源</span></span><br><span class="line">    Work += Allocation[i];</span><br><span class="line">    Finish[i] = <span class="literal">true</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 如果所有线程Ti都满足Finish[i] == true,则系统处于正常状态</span></span><br><span class="line"><span class="keyword">if</span>(Finish == <span class="literal">true</span>)</span><br><span class="line">    NoDeadlock;</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    <span class="comment">// 反之，系统处于死锁状态。</span></span><br><span class="line">    Deadlock;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>死锁检测算法的使用</p>
+<ul>
+<li>死锁检测的时间和周期选择依据
+<ul>
+<li>死锁多久可能会发生</li>
+<li>多少进程需要被回滚</li>
+</ul>
+</li>
+<li>资源图可能有多个循环，难以分辨”造成“死锁的关键进程</li>
+</ul>
+</li>
+</ul>
+<h6 id="ii-死锁恢复">ii. 死锁恢复</h6>
+<ul>
+<li><strong>进程终止</strong>
+<ul>
+<li>终止所有的死锁线程</li>
+<li>一次只终止一个进程直到死锁消除</li>
+<li>终止进程的顺序应该是
+<ul>
+<li>进程的优先级</li>
+<li>进程已运行时间以及还需运行时间</li>
+<li>进程已占用资源</li>
+<li>进程完成需要的资源</li>
+<li>进程完成需要的资源</li>
+<li>终止进程数目</li>
+<li>进程是交互式还是批处理</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>资源抢占</strong>
+<ul>
+<li>选择被抢占进程：最小成本目标</li>
+<li>进程回退：返回到一些安全状态，重启进程到安全状态</li>
+<li>可能会出现饥饿：同一个进程可能一直被选作被抢占者</li>
+</ul>
+</li>
+</ul>
+<h3 id="8-进程通信">8. 进程通信</h3>
+<h4 id="a-基本概念">a. 基本概念</h4>
+<ul>
+<li>
+<p>进程通信（IPC, Inter-Process Communication）是进程进行通信和同步的机制</p>
+</li>
+<li>
+<p>IPC提供2个基本操作：发送操作send和接收操作receive</p>
+</li>
+<li>
+<p>进程通信流程</p>
+<ul>
+<li>在通信进程间建立通信链路</li>
+<li>通过send/receive交换信息</li>
+</ul>
+</li>
+<li>
+<p>进程链路特征</p>
+<ul>
+<li>物理（如：共享内存，硬件总线）</li>
+<li>逻辑（如：逻辑属性）</li>
+</ul>
+</li>
+</ul>
+<h5 id="1-直接通信">1) 直接通信</h5>
+<ul>
+<li>进程必须正确的命名对方
+<ul>
+<li>send(P, message) - 发送信息到进程P</li>
+<li>receive(P, message) - 从进程Q接收信息</li>
+</ul>
+</li>
+<li>通信链路的属性
+<ul>
+<li>自动建立链路</li>
+<li>一条链路恰好对应一对通信进程</li>
+<li>每对进程之间只有一个链接存在</li>
+<li>链接可以是单向，但通常是双向。</li>
+</ul>
+</li>
+</ul>
+<h5 id="2-间接通信">2) 间接通信</h5>
+<ul>
+<li>通过操作系统维护的消息队列实现进程间的消息接收和发送
+<ul>
+<li>每个消息队列都有一个唯一的标识</li>
+<li>只有共享了相同消息队列的进程，才能够通信。</li>
+</ul>
+</li>
+<li>通信链路的属性
+<ul>
+<li>只有共享了相同消息队列的进程，才建立了连接。</li>
+<li>连接可以是单向或双向的。</li>
+<li>消息队列可以与多个进程相关联。</li>
+</ul>
+</li>
+<li>通信流程
+<ul>
+<li>创建一个新的消息队列</li>
+<li>通过消息队列发送或接收消息</li>
+<li>销毁消息队列</li>
+</ul>
+</li>
+<li>基本通信操作
+<ul>
+<li>send(A, message) - 发送消息到队列A</li>
+<li>receive(A, message) - 从队列A接收消息</li>
+</ul>
+</li>
+</ul>
+<h5 id="3-阻塞与非阻塞通信">3) 阻塞与非阻塞通信</h5>
+<ul>
+<li>进程通信可划分为阻塞（同步）和非阻塞（异步）</li>
+<li>阻塞通信
+<ul>
+<li>阻塞发送：发送者在发送消息后进入等待，直到接收者成功收到</li>
+<li>阻塞接收：接收者在请求接收数据后进入等待，直到成功收到一个消息</li>
+</ul>
+</li>
+<li>非阻塞通信
+<ul>
+<li>非阻塞发送：发送者在消息发送后，可立即进行其他操作</li>
+<li>非阻塞接收：没有消息发送时，接收者在请求接收消息后，接收不到任何消息</li>
+</ul>
+</li>
+</ul>
+<h5 id="4-通信链路缓冲">4) 通信链路缓冲</h5>
+<blockquote>
+<p>进程发送的消息在链路上可能有3种缓冲方式</p>
+</blockquote>
+<ul>
+<li>0容量：发送方必须等待接收方</li>
+<li>有限容量：通信链路缓冲队列满时，发送方必须等待</li>
+<li>无限容量：发送方不需要等待</li>
+</ul>
+<h4 id="b-信号">b. 信号</h4>
+<ul>
+<li>信号（signal) ：进程间的软件中断通知和处理机制，例如<code>SIGKILL</code>, <code>SIGSTOP</code>, <code>SIGCONT</code>等</li>
+<li>信号的接收处理
+<ul>
+<li>捕获（catch）： 执行进程指定的信号处理函数被调用</li>
+<li>忽略（Ignore）：执行操作系统指定的缺省处理，例如进程终止、进程挂起等</li>
+<li>屏蔽（Mask）：禁止进程接收和处理信号（可能是暂时的）</li>
+</ul>
+</li>
+<li>不足：传送的信息量小，只有一个信号类型</li>
+</ul>
+<h4 id="c-管道">c. 管道</h4>
+<ul>
+<li>管道（pipe）是进程间基于内存文件的通信机制
+<ul>
+<li>子进程从父进程继承文件描述符</li>
+<li>缺省文件描述符： 0 stdin, 1 stdout, 2 stderr</li>
+<li>进程不知道另一端
+<ul>
+<li>可能从键盘、文件、程序读取</li>
+<li>可能写入到终端、文件、程序</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>与管道相关的系统调用
+<ul>
+<li>读管道：<code>read(fd, buffer, nbytes)</code>。scanf基于此实现。</li>
+<li>写管道：<code>write(fd, buffer, nbytes)</code>。printf基于此实现。</li>
+<li>创建管道：<code>pipe(fd)</code>
+<ul>
+<li><code>rgfd</code>是两个文件描述符组成的数组</li>
+<li><code>rgfd[0]</code>是读文件描述符</li>
+<li><code>rgfd[1]</code>是写文件描述符</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="d-消息队列">d. 消息队列</h4>
+<ul>
+<li>消息队列是由操作系统维护的以字节序列为基本单位的间接通信机制
+<ul>
+<li>每个消息(message)是一个字节序列</li>
+<li>相同标识的消息组成按先进先出顺序组成一个消息队列（message queues)</li>
+</ul>
+</li>
+<li>消息队列的系统调用
+<ul>
+<li><code>msgget(key, flag)</code> : 获取消息队列标识</li>
+<li><code>msgsnd(QID, buf, size, flag)</code> : 发送消息</li>
+<li><code>msgrcv(QID, buf, size, type, flag)</code> : 接收消息</li>
+<li><code>msgctl(...)</code>: 消息队列控制</li>
+</ul>
+</li>
+</ul>
+<h4 id="e-共享内存">e. 共享内存</h4>
+<ul>
+<li>
+<p>共享内存是把同一个物理内存区域同时映射到多个进程的内存地址空间的通信机制。</p>
+</li>
+<li>
+<p>进程间共享</p>
+<ul>
+<li>每个进程都有私有内存地址空间</li>
+<li>每个进程的内存地址空间需明确设置共享内存段</li>
+</ul>
+</li>
+<li>
+<p>线程间共享：同一个进程中的线程总是共享相同的内存地址空间</p>
+</li>
+<li>
+<p>优点：快速、方便地共享数据</p>
+</li>
+<li>
+<p>缺点：必须使用额外的同步机制来协调数据访问。</p>
+</li>
+<li>
+<p>共享内存的系统调用</p>
+<ul>
+<li><code>shmget(key, size, flags)</code> : 创建共享段</li>
+<li><code>shmat(shmid, *shmaddr, flags)</code> ：把共享段映射到进程地址空间</li>
+<li><code>shmdt(*shmaddr)</code> : 取消共享段到进程地址空间的映射</li>
+<li><code>shmctl(...)</code> ： 共享段控制</li>
+<li>需要信号量等机制协调共享内存的访问冲突。</li>
+</ul>
+</li>
+</ul>
+<h2 id="练习解答">练习解答</h2>
+<h3 id="练习0">练习0</h3>
+<blockquote>
+<p>填写已有实验。</p>
+</blockquote>
+<p>搜索一下<code>Lab7</code>关键词，只需要将原先lab6<code>kern/trap/trap.c</code>中</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> IRQ_OFFSET + IRQ_TIMER:</span><br><span class="line">        ticks++;</span><br><span class="line">        assert(current != <span class="literal">NULL</span>);</span><br><span class="line">        sched_class_proc_tick(current);</span><br><span class="line">        <span class="keyword">break</span>;</span><br></pre></td></tr></table></figure>
+<p>替换为以下代码即可。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> IRQ_OFFSET + IRQ_TIMER:</span><br><span class="line">        ticks ++;</span><br><span class="line">        assert(current != <span class="literal">NULL</span>);</span><br><span class="line">        run_timer_list(); <span class="comment">// 注意这里</span></span><br><span class="line">        <span class="keyword">break</span>;</span><br></pre></td></tr></table></figure>
+<h4 id="定时器timer">定时器timer</h4>
+<ul>
+<li>
+<p><code>timer_t</code>结构用于存储一个定时器所需要的相关数据，包括<strong>倒计时时间</strong>以及<strong>所绑定的进程</strong>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> expires;       <span class="comment">//the expire time</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span>   <span class="comment">//the proc wait in this timer. If the expire time is end, then this proc will be scheduled</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> timer_link;    <span class="comment">//the timer list</span></span><br><span class="line">&#125; <span class="keyword">timer_t</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>add_timer</code>用于将某个<code>timer</code>添加进timer列表中。</p>
+<p>处于性能考虑，每个新添加的timer都会按照其<code>expires</code>属性的大小排列，同时减去上一个timer的<code>expires</code>属性。一个例子：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">两个尚未添加进列表中的timer:</span><br><span class="line">  timer1-&gt;expires = <span class="number">20</span>;</span><br><span class="line">  timer2-&gt;expires = <span class="number">38</span>;</span><br><span class="line">将这两个timer添加进列表后:（注意timer2的expires）</span><br><span class="line">  +------------+       +----------------------+       +--------------------------+</span><br><span class="line">  | timer_list | &lt;---&gt; | timer1-&gt;expires = <span class="number">20</span> | &lt;---&gt; | timer2-&gt;expires = <span class="number">18</span> !!! |</span><br><span class="line">  +------------+       +----------------------+       +--------------------------+</span><br></pre></td></tr></table></figure>
+<p>这样，在更新timer_list中的所有timer的expires时，只需递减链首的<strong>第一个timer的expire</strong>，即可<strong>间接达到所有timer的expires减一的目的。</strong></p>
+<p>该函数源代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// add timer to timer_list</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">add_timer</span><span class="params">(<span class="keyword">timer_t</span> *timer)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        assert(timer-&gt;expires &gt; <span class="number">0</span> &amp;&amp; timer-&gt;proc != <span class="literal">NULL</span>);</span><br><span class="line">        assert(list_empty(&amp;(timer-&gt;timer_link)));</span><br><span class="line">        <span class="keyword">list_entry_t</span> *le = list_next(&amp;timer_list);</span><br><span class="line">        <span class="comment">// 减去每个遍历到的timer的expires</span></span><br><span class="line">        <span class="keyword">while</span> (le != &amp;timer_list) &#123;</span><br><span class="line">            <span class="keyword">timer_t</span> *next = le2timer(le, timer_link);</span><br><span class="line">            <span class="keyword">if</span> (timer-&gt;expires &lt; next-&gt;expires) &#123;</span><br><span class="line">                next-&gt;expires -= timer-&gt;expires;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            timer-&gt;expires -= next-&gt;expires;</span><br><span class="line">            le = list_next(le);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 将当前timer添加至列表中</span></span><br><span class="line">        list_add_before(le, &amp;(timer-&gt;timer_link));</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>run_timer_list</code>函数用于更新定时器的时间，并更新当前进程的运行时间片。如果当前定时器的剩余时间结束，则唤醒某个处于<code>WT_INTERRUPTED</code>等待状态的进程。有一点在上个函数中提到过：<strong>递减timer_list中每个timer的expires时，只递减链头第一个timer的expires</strong>。该函数的源代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// call scheduler to update tick related info, and check the timer is  expired? If expired, then wakup proc</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">run_timer_list</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">list_entry_t</span> *le = list_next(&amp;timer_list);</span><br><span class="line">        <span class="keyword">if</span> (le != &amp;timer_list) &#123;</span><br><span class="line">            <span class="keyword">timer_t</span> *timer = le2timer(le, timer_link);</span><br><span class="line">            assert(timer-&gt;expires != <span class="number">0</span>);</span><br><span class="line">            <span class="comment">// 只递减链头timer的expires</span></span><br><span class="line">            timer-&gt;expires --;</span><br><span class="line">            <span class="keyword">while</span> (timer-&gt;expires == <span class="number">0</span>) &#123;</span><br><span class="line">                le = list_next(le);</span><br><span class="line">                <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span> = <span class="title">timer</span>-&gt;<span class="title">proc</span>;</span></span><br><span class="line">                <span class="keyword">if</span> (proc-&gt;wait_state != <span class="number">0</span>) &#123;</span><br><span class="line">                    assert(proc-&gt;wait_state &amp; WT_INTERRUPTED);</span><br><span class="line">                &#125;</span><br><span class="line">                <span class="keyword">else</span> &#123;</span><br><span class="line">                    warn(<span class="string">"process %d's wait_state == 0.\n"</span>, proc-&gt;pid);</span><br><span class="line">                &#125;</span><br><span class="line">                wakeup_proc(proc);</span><br><span class="line">                del_timer(timer);</span><br><span class="line">                <span class="keyword">if</span> (le == &amp;timer_list) &#123;</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">                timer = le2timer(le, timer_link);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        sched_class_proc_tick(current);</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将timer从timer_list中删除的操作比较简单：设置好<strong>当前待移除timer的下一个timer-&gt;expires</strong>，并<strong>将当前timer从链表中移除</strong>即可。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// del timer from timer_list</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">del_timer</span><span class="params">(<span class="keyword">timer_t</span> *timer)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span> (!list_empty(&amp;(timer-&gt;timer_link))) &#123;</span><br><span class="line">            <span class="keyword">if</span> (timer-&gt;expires != <span class="number">0</span>) &#123;</span><br><span class="line">                <span class="keyword">list_entry_t</span> *le = list_next(&amp;(timer-&gt;timer_link));</span><br><span class="line">                <span class="keyword">if</span> (le != &amp;timer_list) &#123;</span><br><span class="line">                    <span class="keyword">timer_t</span> *next = le2timer(le, timer_link);</span><br><span class="line">                    next-&gt;expires += timer-&gt;expires;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            list_del_init(&amp;(timer-&gt;timer_link));</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>一个简单的例子，<code>do_sleep</code>函数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">do_sleep</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">int</span> time)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (time == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    <span class="comment">// 设置定时器</span></span><br><span class="line">    <span class="keyword">timer_t</span> __timer, *timer = timer_init(&amp;__timer, current, time);</span><br><span class="line">    current-&gt;state = PROC_SLEEPING;</span><br><span class="line">    current-&gt;wait_state = WT_TIMER;</span><br><span class="line">    <span class="comment">// 启用定时器</span></span><br><span class="line">    add_timer(timer);</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    <span class="comment">// 当前进程放弃CPU资源</span></span><br><span class="line">    schedule();</span><br><span class="line">    <span class="comment">// 时间到点了，删除当前timer</span></span><br><span class="line">    del_timer(timer);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>定时器的用处：定时器可以帮助操作系统在<strong>经过一段特定时间</strong>后执行一些特殊操作，例如唤醒执行线程。可以说，<strong>正是有了定时器，操作系统才有了时间这个概念</strong>。</p>
+</li>
+</ul>
+<h3 id="练习1">练习1</h3>
+<blockquote>
+<p>理解内核级信号量的实现和基于内核级信号量的哲学家就餐问题</p>
+</blockquote>
+<ul>
+<li>
+<p>哲学家就餐问题</p>
+<ul>
+<li>
+<p>uCore中的哲学家就餐主要代码较为简单：每个哲学家拿起叉子，进食，然后放下叉子。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> state_sema[N]; <span class="comment">/* 记录每个人状态的数组 */</span></span><br><span class="line"><span class="comment">/* 信号量是一个特殊的整型变量 */</span></span><br><span class="line"><span class="keyword">semaphore_t</span> mutex; <span class="comment">/* 临界区互斥 */</span></span><br><span class="line"><span class="keyword">semaphore_t</span> s[N]; <span class="comment">/* 每个哲学家一个信号量 */</span></span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">philosopher_proc_sema</span>[<span class="title">N</span>];</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">philosopher_using_semaphore</span><span class="params">(<span class="keyword">void</span> * arg)</span> <span class="comment">/* i：哲学家号码，从0到N-1 */</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">int</span> i, iter=<span class="number">0</span>;</span><br><span class="line">    i=(<span class="keyword">int</span>)arg;</span><br><span class="line">    cprintf(<span class="string">"I am No.%d philosopher_sema\n"</span>,i);</span><br><span class="line">    <span class="keyword">while</span>(iter++&lt;TIMES)</span><br><span class="line">    &#123; <span class="comment">/* 无限循环 */</span></span><br><span class="line">        cprintf(<span class="string">"Iter %d, No.%d philosopher_sema is thinking\n"</span>,iter,i); <span class="comment">/* 哲学家正在思考 */</span></span><br><span class="line">        do_sleep(SLEEP_TIME);</span><br><span class="line">        phi_take_forks_sema(i);</span><br><span class="line">        <span class="comment">/* 需要两只叉子，或者阻塞 */</span></span><br><span class="line">        cprintf(<span class="string">"Iter %d, No.%d philosopher_sema is eating\n"</span>,iter,i); <span class="comment">/* 进餐 */</span></span><br><span class="line">        do_sleep(SLEEP_TIME);</span><br><span class="line">        phi_put_forks_sema(i);</span><br><span class="line">        <span class="comment">/* 把两把叉子同时放回桌子 */</span></span><br><span class="line">    &#125;</span><br><span class="line">    cprintf(<span class="string">"No.%d philosopher_sema quit\n"</span>,i);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>拿起 / 放下叉子时，由于需要修改当前哲学家的状态，同时该状态是<strong>全局共享变量</strong>，所以需要获取锁来防止条件竞争。</p>
+<p>将叉子放回桌上时，如果当前哲学家左右两边的两位哲学家处于<strong>饥饿状态</strong>，即准备进餐但没有刀叉时，如果条件符合，则唤醒这两位哲学家并让其继续进餐。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_take_forks_sema</span><span class="params">(<span class="keyword">int</span> i)</span> <span class="comment">/* i：哲学家号码从0到N-1 */</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        down(&amp;mutex); <span class="comment">/* 进入临界区 */</span></span><br><span class="line">        state_sema[i]=HUNGRY; <span class="comment">/* 记录下哲学家i饥饿的事实 */</span></span><br><span class="line">        phi_test_sema(i); <span class="comment">/* 试图得到两只叉子 */</span></span><br><span class="line">        up(&amp;mutex); <span class="comment">/* 离开临界区 */</span></span><br><span class="line">        down(&amp;s[i]); <span class="comment">/* 如果得不到叉子就阻塞 */</span></span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_put_forks_sema</span><span class="params">(<span class="keyword">int</span> i)</span> <span class="comment">/* i：哲学家号码从0到N-1 */</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">        down(&amp;mutex); <span class="comment">/* 进入临界区 */</span></span><br><span class="line">        state_sema[i]=THINKING; <span class="comment">/* 哲学家进餐结束 */</span></span><br><span class="line">        phi_test_sema(LEFT); <span class="comment">/* 看一下左邻居现在是否能进餐 */</span></span><br><span class="line">        phi_test_sema(RIGHT); <span class="comment">/* 看一下右邻居现在是否能进餐 */</span></span><br><span class="line">        up(&amp;mutex); <span class="comment">/* 离开临界区 */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>phi_test_sema</code>函数用于设置哲学家的进食状态。如果当前哲学家满足进食条件，则更新哲学家状态，执行哲学家锁所对应的V操作，以<strong>唤醒</strong>等待叉子的哲学家所对应的线程。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_test_sema</span><span class="params">(i)</span> <span class="comment">/* i：哲学家号码从0到N-1 */</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(state_sema[i]==HUNGRY&amp;&amp;state_sema[LEFT]!=EATING</span><br><span class="line">            &amp;&amp;state_sema[RIGHT]!=EATING)</span><br><span class="line">    &#123;</span><br><span class="line">        state_sema[i]=EATING;</span><br><span class="line">        up(&amp;s[i]);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>请给出内核级信号量的设计描述，并说明其大致执行流程</p>
+<ul>
+<li>
+<p>内核中的信号量结构体如下，与操作系统理论课所实现的相差不大</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">int</span> value;</span><br><span class="line">    <span class="keyword">wait_queue_t</span> wait_queue;</span><br><span class="line">&#125; <span class="keyword">semaphore_t</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>进入临界区时，uCore会执行<code>down</code>函数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">down(&amp;mutex); <span class="comment">/* 进入临界区 */</span></span><br></pre></td></tr></table></figure>
+<p>与之相对的，退出临界区时会执行<code>up</code>函数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">up(&amp;mutex); <span class="comment">/* 离开临界区 */</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><code>down</code>函数和<code>up</code>函数分别是<code>_down</code>和<code>_up</code>的wrapper。它们除了传入信号量以外，还会传入一个等待状态<code>wait_state</code>。</p>
+</blockquote>
+</li>
+<li>
+<p><code>_down</code>函数会递减当前信号量的<code>value</code>值。如果<code>value</code>在递减前为0，则将其加入至等待队列<code>wait_queue</code>中，并使当前线程<strong>立即放弃CPU资源</strong>，调度至其他线程。<strong>注意其中的原子操作</strong>。该函数的源码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> __noinline <span class="keyword">uint32_t</span> __down(<span class="keyword">semaphore_t</span> *sem, <span class="keyword">uint32_t</span> wait_state) &#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    <span class="keyword">if</span> (sem-&gt;value &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// value值递减</span></span><br><span class="line">        sem-&gt;value --;</span><br><span class="line">        local_intr_restore(intr_flag);</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果在上一步中，值已经为0了，则将当前进程添加进等待队列中</span></span><br><span class="line">    <span class="keyword">wait_t</span> __wait, *wait = &amp;__wait;</span><br><span class="line">    wait_current_set(&amp;(sem-&gt;wait_queue), wait, wait_state);</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    <span class="comment">// 进程调度</span></span><br><span class="line">    schedule();</span><br><span class="line">    <span class="comment">// 从等待队列中删除当前进程</span></span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    wait_current_del(&amp;(sem-&gt;wait_queue), wait);</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (wait-&gt;wakeup_flags != wait_state) &#123;</span><br><span class="line">        <span class="keyword">return</span> wait-&gt;wakeup_flags;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>_up</code>函数实现的功能稍微简单一点：如果没有等待线程则<code>value++</code>，否则唤醒第一条等待线程。</p>
+<blockquote>
+<p>注意：<code>_up</code>函数如果选择唤醒第一条等待线程的话，则<code>value</code>不加一</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> __noinline <span class="keyword">void</span> __up(<span class="keyword">semaphore_t</span> *sem, <span class="keyword">uint32_t</span> wait_state) &#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">wait_t</span> *wait;</span><br><span class="line">        <span class="comment">// 如果当前等待队列中没有线程等待，则value照常+1</span></span><br><span class="line">        <span class="keyword">if</span> ((wait = wait_queue_first(&amp;(sem-&gt;wait_queue))) == <span class="literal">NULL</span>) &#123;</span><br><span class="line">            sem-&gt;value ++;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 否则如果当前等待队列中存在线程正在等待，则唤醒该线程并开始执行对应代码</span></span><br><span class="line">        <span class="keyword">else</span> &#123;</span><br><span class="line">            assert(wait-&gt;proc-&gt;wait_state == wait_state);</span><br><span class="line">            wakeup_wait(&amp;(sem-&gt;wait_queue), wait, wait_state, <span class="number">1</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>请给出给用户态进程/线程提供信号量机制的设计方案，并比较说明给内核级提供信号量机制的异同</p>
+<ul>
+<li>
+<p>内核为用户态进程/线程提供信号量机制时，需要设计多个应用程序接口，而用户态线程只能通过这些内核提供的接口来使用内核服务。借鉴于Linux提供的标准接口，内核提供的这些接口可分别为：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*Initialize semaphore object SEM to VALUE.  If PSHARED then share it</span></span><br><span class="line"><span class="comment">   with other processes.  */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_init</span> <span class="params">(<span class="keyword">sem_t</span> *__sem, <span class="keyword">int</span> __pshared, <span class="keyword">unsigned</span> <span class="keyword">int</span> __value)</span></span>;</span><br><span class="line"><span class="comment">/* Free resources associated with semaphore object SEM.  */</span></span><br><span class="line"><span class="comment">// 将信号量所使用的资源全部释放</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_destroy</span> <span class="params">(<span class="keyword">sem_t</span> *__sem)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Open a named semaphore NAME with open flags OFLAG.  */</span></span><br><span class="line"><span class="comment">// 开启一个新信号量，并使用给定的flag来指定其标志</span></span><br><span class="line"><span class="function"><span class="keyword">sem_t</span> *<span class="title">sem_open</span> <span class="params">(<span class="keyword">const</span> <span class="keyword">char</span> *__name, <span class="keyword">int</span> __oflag, ...)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Close descriptor for named semaphore SEM.  */</span></span><br><span class="line"><span class="comment">// 将当前信号量所使用的描述符关闭</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_close</span> <span class="params">(<span class="keyword">sem_t</span> *__sem)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Remove named semaphore NAME.  */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_unlink</span> <span class="params">(<span class="keyword">const</span> <span class="keyword">char</span> *__name)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Wait for SEM being posted.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">   This function is a cancellation point and therefore not marked with</span></span><br><span class="line"><span class="comment">   __THROW.  */</span></span><br><span class="line"><span class="comment">// 一个P操作，如果sem value &gt; 0，则sem value--；否则阻塞直到sem value &gt; 0</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_wait</span> <span class="params">(<span class="keyword">sem_t</span> *__sem)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Test whether SEM is posted.  */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_trywait</span> <span class="params">(<span class="keyword">sem_t</span> *__sem)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Post SEM.  */</span></span><br><span class="line"><span class="comment">// 一个V操作，把指定的信号量 sem 的值加 1，唤醒正在等待该信号量的任意线程。</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_post</span> <span class="params">(<span class="keyword">sem_t</span> *__sem)</span></span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Get current value of SEM and store it in *SVAL.  */</span></span><br><span class="line"><span class="comment">// 获取当前信号量的值</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sem_getvalue</span> <span class="params">(<span class="keyword">sem_t</span> *__restrict __sem, <span class="keyword">int</span> *__restrict __sval)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>相同点</p>
+<ul>
+<li>其核心的实现逻辑是一样的</li>
+</ul>
+</li>
+<li>
+<p>不同点</p>
+<ul>
+<li>内核态的信号量机制可以直接调用内核的服务，而用户态的则需要通过内核提供的接口来访问内核态服务，这其中涉及到了用户态转内核态的相关机制。</li>
+<li>内核态的信号量存储于内核栈中；但用户态的信号量存储于用户栈中。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="练习2">练习2</h3>
+<blockquote>
+<p>总体任务：完成内核级条件变量和基于内核级条件变量的哲学家就餐问题</p>
+</blockquote>
+<blockquote>
+<ol>
+<li>基于信号量实现完成条件变量实现，给出内核级条件变量的设计描述，并说明其大致执行流程。</li>
+</ol>
+</blockquote>
+<ul>
+<li>
+<p>管程由一个锁和多个条件变量组成，以下是管程和条件变量的结构体代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">monitor</span> <span class="title">monitor_t</span>;</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">condvar</span>&#123;</span></span><br><span class="line">    <span class="keyword">semaphore_t</span> sem;        <span class="comment">// 条件变量所对应的信号量</span></span><br><span class="line">    <span class="keyword">int</span> count;              <span class="comment">// 等待当前条件变量的等待进程总数</span></span><br><span class="line">    <span class="keyword">monitor_t</span> * owner;      <span class="comment">// 当前条件变量的父管程</span></span><br><span class="line">&#125; <span class="keyword">condvar_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">monitor</span>&#123;</span></span><br><span class="line">    <span class="keyword">semaphore_t</span> mutex;      <span class="comment">// 管程锁，每次只能有一个进程执行管程代码。该值初始化为1</span></span><br><span class="line">    <span class="keyword">semaphore_t</span> next;       <span class="comment">// the next semaphore is used to down the signaling proc itself, and the other OR wakeuped waiting proc should wake up the sleeped signaling proc.</span></span><br><span class="line">    <span class="keyword">int</span> next_count;         <span class="comment">// the number of of sleeped signaling proc</span></span><br><span class="line">    <span class="keyword">condvar_t</span> *cv;          <span class="comment">// 当前管程中存放所有条件变量的数组</span></span><br><span class="line">&#125; <span class="keyword">monitor_t</span>;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注意：<code>monitor</code>结构中<code>next</code>信号量的功能请在下文结合<code>cond_signal</code>说明来理解。</p>
+</blockquote>
+</li>
+<li>
+<p>初始化管程时，函数<code>monitor_init</code>会初始化传入管程的相关成员变量，并为该管程设置多个条件变量并初始化。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Initialize monitor.</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">monitor_init</span> <span class="params">(<span class="keyword">monitor_t</span> * mtp, <span class="keyword">size_t</span> num_cv)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    assert(num_cv&gt;<span class="number">0</span>);</span><br><span class="line">    mtp-&gt;next_count = <span class="number">0</span>;</span><br><span class="line">    mtp-&gt;cv = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="comment">// 初始化管程锁为1</span></span><br><span class="line">    sem_init(&amp;(mtp-&gt;mutex), <span class="number">1</span>); <span class="comment">//unlocked</span></span><br><span class="line">    sem_init(&amp;(mtp-&gt;next), <span class="number">0</span>);<span class="comment">// 注意这里的0</span></span><br><span class="line">    <span class="comment">// 分配当前管程内的条件变量</span></span><br><span class="line">    mtp-&gt;cv =(<span class="keyword">condvar_t</span> *) kmalloc(<span class="keyword">sizeof</span>(<span class="keyword">condvar_t</span>)*num_cv);</span><br><span class="line">    assert(mtp-&gt;cv!=<span class="literal">NULL</span>);</span><br><span class="line">    <span class="comment">// 初始化管程内条件变量的各个属性</span></span><br><span class="line">    <span class="keyword">for</span>(i=<span class="number">0</span>; i&lt;num_cv; i++)&#123;</span><br><span class="line">        mtp-&gt;cv[i].count=<span class="number">0</span>;</span><br><span class="line">        sem_init(&amp;(mtp-&gt;cv[i].sem),<span class="number">0</span>);</span><br><span class="line">        mtp-&gt;cv[i].owner=mtp;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当某个线程准备离开临界区、准备释放对应的条件变量时，线程会执行函数<code>cond_signal</code>。该函数同样是这次要实现的函数之一。</p>
+<ul>
+<li>
+<p>如果<strong>不存在线程</strong>正在等待带释放的条件变量，则不执行任何操作</p>
+</li>
+<li>
+<p>否则，对传入条件变量内置的信号执行V操作。注意：这一步可能会唤醒某个等待线程。</p>
+</li>
+<li>
+<p><strong>关键的一步！</strong> 函数内部接下来会执行<code>down(&amp;(cvp-&gt;owner-&gt;next))</code>操作。由于<code>monitor::next</code>在初始化时就设置为<strong>0</strong>，所以当执行到该条代码时，无论如何，<strong>当前正在执行<code>cond_signal</code>函数的线程一定会被挂起</strong>。这也正是管程中<code>next</code>信号量的用途。</p>
+<blockquote>
+<p>为什么要做这一步呢？原因是<strong>保证管程代码的互斥访问</strong>。</p>
+<p>一个简单的例子：线程1因等待条件变量a而挂起，过了一段时间，线程2释放条件变量a，此时线程1被唤醒，并等待调度。注意！<strong>此时在管程代码中，存在两个活跃线程</strong>（这里的活跃指的是正在运行/就绪线程），而这<strong>违背了管程的互斥性</strong>。因此，线程2在释放条件变量a后应当<strong>立即挂起</strong>以保证管程代码互斥。而<code>next</code>信号量便是帮助线程2立即挂起的一个信号。</p>
+</blockquote>
+</li>
+</ul>
+<p>以下是该函数的实现代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Unlock one of threads waiting on the condition variable.</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">cond_signal</span> <span class="params">(<span class="keyword">condvar_t</span> *cvp)</span> </span>&#123;</span><br><span class="line">   <span class="comment">//LAB7 EXERCISE1: YOUR CODE</span></span><br><span class="line">   cprintf(<span class="string">"cond_signal begin: cvp %x, cvp-&gt;count %d, cvp-&gt;owner-&gt;next_count %d\n"</span>, cvp, cvp-&gt;count, cvp-&gt;owner-&gt;next_count);  </span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">   *      cond_signal(cv) &#123;</span></span><br><span class="line"><span class="comment">   *          if(cv.count&gt;0) &#123;</span></span><br><span class="line"><span class="comment">   *             mt.next_count ++;</span></span><br><span class="line"><span class="comment">   *             signal(cv.sem);</span></span><br><span class="line"><span class="comment">   *             wait(mt.next);</span></span><br><span class="line"><span class="comment">   *             mt.next_count--;</span></span><br><span class="line"><span class="comment"> *          &#125;</span></span><br><span class="line"><span class="comment">   *       &#125;</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line">    <span class="keyword">if</span>(cvp-&gt;count&gt;<span class="number">0</span>) &#123;</span><br><span class="line">        cvp-&gt;owner-&gt;next_count ++;</span><br><span class="line">        up(&amp;(cvp-&gt;sem));</span><br><span class="line">        down(&amp;(cvp-&gt;owner-&gt;next));</span><br><span class="line">        cvp-&gt;owner-&gt;next_count --;</span><br><span class="line">   &#125;</span><br><span class="line">   cprintf(<span class="string">"cond_signal end: cvp %x, cvp-&gt;count %d, cvp-&gt;owner-&gt;next_count %d\n"</span>, cvp, cvp-&gt;count, cvp-&gt;owner-&gt;next_count);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当某个线程需要等待锁时，则会执行<code>cond_wait</code>函数。而该函数是我们这次要实现的函数之一。</p>
+<ul>
+<li>
+<p>当某个线程因为等待条件变量而<strong>准备</strong>将<strong>自身挂起</strong>前，此时条件变量中的<code>count</code>变量应自增1。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cvp-&gt;count++;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后当前进程应该释放<strong>所等待的条件变量所属的管程互斥锁</strong>，以便于让其他线程执行管程代码。</p>
+<p>但如果存在一个已经在管程中、但因为执行<code>cond_signal</code>而挂起的线程，则优先继续执行该线程。</p>
+<blockquote>
+<p>有关“因为执行<code>cond_signal</code>而挂起的线程”的详细信息，请阅读上方<code>cond_signal</code>函数的介绍来了解。</p>
+</blockquote>
+<p>如果程序选择执行<code>up(&amp;(cvp-&gt;owner-&gt;next))</code>，请注意：<strong>此时mutex没有被释放</strong>。因为当前线程将被挂起，原先存在于管程中的线程被唤醒，此时管程中仍然只有一个活跃线程，不需要让新的线程进入管程。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>(cvp-&gt;owner-&gt;next_count &gt; <span class="number">0</span>)</span><br><span class="line">    up(&amp;(cvp-&gt;owner-&gt;next));</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    up(&amp;(cvp-&gt;owner-&gt;mutex));</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>释放管程后，尝试获取该条件变量。如果获取失败，则当前线程将在<code>down</code>函数的内部被挂起。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">down(&amp;(cvp-&gt;sem));</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>若当前线程成功获取条件变量，则当前等待条件变量的线程数减一。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">cvp-&gt;count--;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<blockquote>
+<p>这样就结束了吗？想想看为什么当线程成功获取条件变量时，<strong>不重新申请管程的互斥锁</strong>。</p>
+<p>以下是一个简单的流程：线程1执行wait被挂起，释放管程的mutex，之后线程2获取mutex并进入管程，然后执行了signal唤醒线程1，同时挂起自身。在这个过程中，管程中自始自终都只存在一个活跃线程（原先的线程1执行，线程2未进入，到线程1挂起，线程2进入，再到线程1被唤醒，线程2挂起）。而此时mutex在线程1被唤醒前就已被线程2所获取，<strong>新线程无法进入管程</strong>，因此被唤醒的线程1不需要再次获取mutex。由于管程锁已被获取（<strong>不管是哪个线程获取</strong>）、管程中只有一个活跃线程，因此我们可以<strong>近似将管程锁视为是当前线程获取的</strong>。</p>
+</blockquote>
+<p>以下是最终代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Suspend calling thread on a condition variable waiting for condition Atomically unlocks</span></span><br><span class="line"><span class="comment">// mutex and suspends calling thread on conditional variable after waking up locks mutex. Notice: mp is mutex semaphore for monitor's procedures</span></span><br><span class="line"><span class="keyword">void</span></span><br><span class="line">cond_wait (<span class="keyword">condvar_t</span> *cvp) &#123;</span><br><span class="line">    <span class="comment">//LAB7 EXERCISE1: YOUR CODE</span></span><br><span class="line">    cprintf(<span class="string">"cond_wait begin:  cvp %x, cvp-&gt;count %d, cvp-&gt;owner-&gt;next_count %d\n"</span>, cvp, cvp-&gt;count, cvp-&gt;owner-&gt;next_count);</span><br><span class="line">   <span class="comment">/*</span></span><br><span class="line"><span class="comment">    *         cv.count ++;</span></span><br><span class="line"><span class="comment">    *         if(mt.next_count&gt;0)</span></span><br><span class="line"><span class="comment">    *            signal(mt.next)</span></span><br><span class="line"><span class="comment">    *         else</span></span><br><span class="line"><span class="comment">    *            signal(mt.mutex);</span></span><br><span class="line"><span class="comment">    *         wait(cv.sem);</span></span><br><span class="line"><span class="comment">    *         cv.count --;</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">    cvp-&gt;count++;</span><br><span class="line">    <span class="keyword">if</span>(cvp-&gt;owner-&gt;next_count &gt; <span class="number">0</span>)</span><br><span class="line">        up(&amp;(cvp-&gt;owner-&gt;next));</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        up(&amp;(cvp-&gt;owner-&gt;mutex));</span><br><span class="line">    down(&amp;(cvp-&gt;sem));</span><br><span class="line">    cvp-&gt;count--;</span><br><span class="line"></span><br><span class="line">    cprintf(<span class="string">"cond_wait end:  cvp %x, cvp-&gt;count %d, cvp-&gt;owner-&gt;next_count %d\n"</span>, cvp, cvp-&gt;count, cvp-&gt;owner-&gt;next_count);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>管程中函数的入口出口设计</p>
+<ul>
+<li>
+<p>为了让整个管程正常运行，还需在管程中的每个函数的入口和出口增加相关操作，即：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">monitorFunc</span><span class="params">()</span> </span>&#123;</span><br><span class="line">     down(&amp;(mtp-&gt;mutex));</span><br><span class="line"><span class="comment">//--------into routine in monitor--------------</span></span><br><span class="line">      <span class="comment">// ...</span></span><br><span class="line"><span class="comment">//--------leave routine in monitor--------------</span></span><br><span class="line">      <span class="keyword">if</span>(mtp-&gt;next_count&gt;<span class="number">0</span>)</span><br><span class="line">         up(&amp;(mtp-&gt;next));</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">         up(&amp;(mtp-&gt;mutex));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这样做的好处有两个</p>
+<ul>
+<li>只有一个进程在执行管程中的函数。</li>
+<li>避免由于执行了<code>cond_signal</code>函数而睡眠的进程无法被唤醒。</li>
+</ul>
+</li>
+<li>
+<p>针对 <strong>“避免由于执行了<code>cond_signal</code>函数而睡眠的进程无法被唤醒“</strong> 这个优点简单说一下</p>
+<ul>
+<li>管程中<code>wait</code>和<code>signal</code>函数的调用存在时间顺序。例如：当线程1先调用<code>signal</code>唤醒线程2并将自身线程挂起后，线程2在开始执行时将无法唤醒原先的在<code>signal</code>中挂起的线程1。</li>
+<li>也就是说，<strong>只要存在线程在管程中执行了<code>signal</code>，那么至少存在一个线程在管程中被挂起</strong>。</li>
+<li>此时，就只能在临界区外唤醒挂起的线程1，而这一步在代码中也得到了实现。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<ol start="2">
+<li>用管程机制实现哲学家就餐问题的解决方案（基于条件变量）</li>
+</ol>
+</blockquote>
+<ul>
+<li>
+<p>这题涉及到了两个函数，分别是<code>phi_take_forks_condvar</code>和<code>phi_put_forks_condvar</code>。与信号量所实现的哲学家就餐问题类似，大体逻辑是一致的。</p>
+</li>
+<li>
+<p>首先，哲学家需要尝试获取刀叉，如果刀叉没有获取到，则等待刀叉。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_take_forks_condvar</span><span class="params">(<span class="keyword">int</span> i)</span> </span>&#123;</span><br><span class="line">     down(&amp;(mtp-&gt;mutex));</span><br><span class="line"><span class="comment">//--------into routine in monitor--------------</span></span><br><span class="line">     <span class="comment">// LAB7 EXERCISE1: YOUR CODE</span></span><br><span class="line">     <span class="comment">// I am hungry</span></span><br><span class="line">     state_condvar[i]=HUNGRY; <span class="comment">/* 记录下哲学家i饥饿的事实 */</span></span><br><span class="line">     <span class="comment">// try to get fork</span></span><br><span class="line">     phi_test_condvar(i);</span><br><span class="line">     <span class="keyword">if</span> (state_condvar[i] != EATING) &#123;</span><br><span class="line">          cprintf(<span class="string">"phi_take_forks_condvar: %d didn't get fork and will wait\n"</span>,i);</span><br><span class="line">          cond_wait(&amp;mtp-&gt;cv[i]);</span><br><span class="line">      &#125;</span><br><span class="line"><span class="comment">//--------leave routine in monitor--------------</span></span><br><span class="line">      <span class="keyword">if</span>(mtp-&gt;next_count&gt;<span class="number">0</span>)</span><br><span class="line">         up(&amp;(mtp-&gt;next));</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">         up(&amp;(mtp-&gt;mutex));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后，当哲学家放下刀叉时，如果左右两边的哲学家都满足条件可以进餐，则设置对应的条件变量。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_put_forks_condvar</span><span class="params">(<span class="keyword">int</span> i)</span> </span>&#123;</span><br><span class="line">     down(&amp;(mtp-&gt;mutex));</span><br><span class="line"><span class="comment">//--------into routine in monitor--------------</span></span><br><span class="line">     <span class="comment">// LAB7 EXERCISE1: YOUR CODE</span></span><br><span class="line">     <span class="comment">// I ate over</span></span><br><span class="line">     state_condvar[i]=THINKING; <span class="comment">/* 哲学家进餐结束 */</span></span><br><span class="line">     <span class="comment">// test left and right neighbors</span></span><br><span class="line">     phi_test_condvar(LEFT); <span class="comment">/* 看一下左邻居现在是否能进餐 */</span></span><br><span class="line">     phi_test_condvar(RIGHT); <span class="comment">/* 看一下右邻居现在是否能进餐 */</span></span><br><span class="line"><span class="comment">//--------leave routine in monitor--------------</span></span><br><span class="line">     <span class="keyword">if</span>(mtp-&gt;next_count&gt;<span class="number">0</span>)</span><br><span class="line">        up(&amp;(mtp-&gt;next));</span><br><span class="line">     <span class="keyword">else</span></span><br><span class="line">        up(&amp;(mtp-&gt;mutex));</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下是哲学家尝试进餐的代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">phi_test_condvar</span> <span class="params">(i)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(state_condvar[i]==HUNGRY&amp;&amp;state_condvar[LEFT]!=EATING</span><br><span class="line">            &amp;&amp;state_condvar[RIGHT]!=EATING) &#123;</span><br><span class="line">        cprintf(<span class="string">"phi_test_condvar: state_condvar[%d] will eating\n"</span>,i);</span><br><span class="line">        state_condvar[i] = EATING ;</span><br><span class="line">        cprintf(<span class="string">"phi_test_condvar: signal self_cv[%d] \n"</span>,i);</span><br><span class="line">        cond_signal(&amp;mtp-&gt;cv[i]) ;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="扩展练习">扩展练习</h3>
+<h4 id="Challenge-1">Challenge 1</h4>
+<blockquote>
+<p>在ucore中实现简化的死锁和重入探测机制.</p>
+</blockquote>
+<blockquote>
+<p>在ucore下实现一种探测机制，能够在多进程/线程运行同步互斥问题时，动态判断当前系统是否出现了死锁产生的必要条件，是否产生了多个进程进入临界区的情况。 如果发现，让系统进入monitor状态，打印出你的探测信息。</p>
+</blockquote>
+<p>死锁的相关资料可查阅上文中的<a href="#7-%E6%AD%BB%E9%94%81">死锁</a>来了解。</p>
+<blockquote>
+<p>具体实现暂鸽。</p>
+</blockquote>
+<h4 id="Challenge-2">Challenge 2</h4>
+<blockquote>
+<p>在ucore下实现下Linux的RCU同步互斥机制。</p>
+</blockquote>
+<p>RCU(Read-Copy Update) 机制适用于读者-写者模型，但更适用于<strong>读者多而写者少</strong>的情况，因为其行为方式如下：</p>
+<ul>
+<li>
+<p><strong>随时可以拿到读锁，在有些设计中甚至不需要锁</strong>，即对临界区的读操作随时都可以得到满足，不能被阻塞。因此读者几乎没有什么同步开销。</p>
+</li>
+<li>
+<p>某一时刻只能有一个人拿到写锁，<strong>多个写锁需要互斥</strong>，写的动作包括 拷贝–修改–宽限窗口到期后删除原值。写者在访问它时首先<strong>拷贝</strong>一个副本，然后对副本进行修改，最后使用一个回调（callback）机制在适当的时机把指向原来数据的指针重新指向新的被修改的数据。这个时机就是所有引用该数据的CPU都退出对共享数据的操作。</p>
+<blockquote>
+<p>RCU保护的是指针，这一点尤其重要。因为指针赋值是一条单指令，也就是说是一个原子操作。更改指针指向时没必要考虑它的同步，只需要考虑cache的影响.。</p>
+</blockquote>
+</li>
+<li>
+<p>临界区的原始值为m1，如果存在线程拿到写锁修改了临界区为m2,则在写锁修改临界区<strong>之后</strong>，如果某个线程拿到了读锁，则获取的临界区的值应该为m2；写锁修改临界区<strong>之前</strong>，读锁获取的值应为m1。这样的操作通过原子操作来保证。</p>
+</li>
+<li>
+<p>RCU读操作随时都会得到满足，但写锁之后的写操作所耗费的系统资源就相对比较多了，因为需要延迟数据结构的释放与复制被修改的数据结构，并且只有在宽限期之后才会彻底删除原资源。</p>
+<blockquote>
+<p>当一个线程执行删除某个结点的动作后，该结点并不会马上被删除，而是等待所有读取线程全部读取完成后才进行销毁操作，而这样做的原因是这些线程有可能读到了要删除的元素。</p>
+<p>从删除结点到销毁节点这之间的过程，称为<strong>宽限期</strong>（Grace Period）</p>
+</blockquote>
+</li>
+</ul>
+<blockquote>
+<p>具体实现暂鸽QwQ</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/09/uCore-7/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/09/uCore-8/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab8
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/09/uCore-6/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab6</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

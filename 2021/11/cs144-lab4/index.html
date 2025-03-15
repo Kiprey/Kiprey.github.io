@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记, 计算机网络, CS144,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CS144计算机网络 Lab4 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cs144-lab4"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CS144计算机网络 Lab4
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/cs144-lab4/" class="article-date">
+  <time datetime="2021-11-08T16:00:00.000Z" itemprop="datePublished">2021-11-09</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">11 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了笔者学习 CS144 计算机网络 Lab4 的一些笔记 - TCP 总实现 TCPConnection</p>
+<p>CS144 Lab4 实验指导书 - <a href="https://cs144.github.io/assignments/lab4.pdf" target="_blank" rel="noopener">Lab Checkpoint 4: the summit (TCP in full)</a></p>
+<p>个人 CS144 实验项目地址 - <a href="https://github.com/Kiprey/sponge" target="_blank" rel="noopener">github</a></p>
+<a id="more"></a>
+<h2 id="二、环境配置">二、环境配置</h2>
+<p>当前我们的实验代码位于 <code>master</code> 分支，而在完成 Lab 之前需要合并一些依赖代码，因此执行以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git merge origin/lab4-startercode</span><br></pre></td></tr></table></figure>
+<p>之后重新 make 编译即可。</p>
+<h2 id="三、TCPConnection-简述">三、TCPConnection 简述</h2>
+<p>TCPConnection 需要将 TCPSender 和 TCPReceiver 结合，实现成一个 TCP 终端，同时收发数据。</p>
+<p>TCPConnection 有几个规则需要遵守：</p>
+<p>对于<strong>接收数据段</strong>而言：</p>
+<ul>
+<li>
+<p>如果接收到的数据包设置了 RST 标志，则将输入输出字节流全部设置为 错误 状态，并永久关闭 TCP 连接。</p>
+</li>
+<li>
+<p>如果没有收到 RST 标志，则将该数据包传达给 TCPReceiver 来处理，它将对数据包中的 seqno、SYN、payload、FIN 进行处理。</p>
+</li>
+<li>
+<p>如果接收到的数据包中设置了 ACK 标志，则向<strong>当前 TCPConnection</strong> 中<strong>它自己的 TCPSender</strong> 告知远程终端的 ackno 和 window_size。</p>
+<blockquote>
+<p>这一步相当重要，因为数据包在网络中以乱序形式发送，因此远程发送给本地的 ackno 存在滞后性。</p>
+<p>将远程的 ackno 和 window size 附加至发送数据中可以降低这种滞后性，提高 TCP 效率。</p>
+</blockquote>
+</li>
+<li>
+<p>如果接收到的 TCP 数据包包含了一个<strong>有效 seqno</strong>，则 TCPConnection 必须至少返回一个 TCP 包作为回复，以告知远程终端 此时的 ackno 和 window size。</p>
+</li>
+<li>
+<p>如果接收到的 TCP 数据包<strong>包含的 seqno 是无效</strong>的，则 TCPConnection 也需要回复一个类似的无效数据包。这是因为远程终端可能会发送无效数据包以确认当前连接是否有效，同时查看此时接收方的 ackno 和 window size。这被称为 TCP 的 <code>keep-alive</code>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (_receiver.ackno().has_value() &amp;&amp; seg.length_in_sequence_space() == <span class="number">0</span> &amp;&amp; seg.header().seqno == _receiver.ackno().value() - <span class="number">1</span>) &#123;</span><br><span class="line">  _sender.send_empty_segment();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>对于<strong>发送数据段</strong>来说：</p>
+<ul>
+<li>当 TCPSender 将一个 TCPSegment 数据包添加到待发送队列中时，TCPConnection 需要从中取出并将其发送。</li>
+<li>在发送当前数据包之前，TCPConnection 会获取当前<strong>它自己的 TCPReceiver</strong> 的 ackno 和 window size，将其放置进待发送 TCPSegment 中，并设置其 ACK 标志。</li>
+</ul>
+<p>TCPConnection 需要检测时间的流逝。它存在一个 tick 函数，该函数将会被操作系统持续调用。当 TCPConnection 的 tick 函数被调用后，它需要</p>
+<ul>
+<li>告知 TCPSender 时间的流逝，这可能会让 TCPSender 重新发送被丢弃的数据包</li>
+<li>如果连续重传次数超过 <code>TCPConfig::MAX RETX ATTEMPTS</code>，则发送一个 RST 包。</li>
+<li>在条件适合的情况下关闭 TCP 连接（当处于 TCP 的 TIME_WAIT 状态时）。</li>
+</ul>
+<p>TCP 连接的关闭稍微麻烦一些，主要有以下几种情况需要考虑：</p>
+<ul>
+<li>
+<p><strong>接收方收到 RST 标志或者发送方发送 RST 标志</strong>后，设置当前 TCPConnection 的输入输出字节流的状态为错误状态，并<strong>立即</strong>停止退出。这种属于暴力退出（unclear shutdown），可能会导致<strong>尚未传输完成的数据丢失</strong>（例如仍然在网络中运输的数据包在<strong>接收方收到RST标志后</strong>被丢弃）。</p>
+</li>
+<li>
+<p>若想让双方都在数据流收发完整后退出（clear shutdonw），则情况略微麻烦一点。先上张四次挥手的图：</p>
+<p><img src="/2021/11/cs144-lab4/image-20210515092825158.png" alt="img"></p>
+<p>简单讲下挥手的流程：</p>
+<ul>
+<li>
+<p>当<strong>客户端</strong>的数据全部发送完成，则将会发送 FIN 包以告知服务器 <strong>客户端数据全部发送完成</strong>（发送完成，不等于<strong>被接收完成</strong>）。但请注意，此时的服务器仍然可以发送数据至客户端。</p>
+</li>
+<li>
+<p>当服务器对 客户端的 FIN 进行 ack 后，则说明<strong>服务器确认接收客户端的全部数据</strong>。</p>
+</li>
+<li>
+<p>服务器继续发送数据，直到服务器的数据已经全部发送完成，则向客户端发送 FIN 包以告知<strong>服务端数据全部发送完成</strong>。</p>
+</li>
+<li>
+<p>当客户端对服务端的 FIN <strong>发送</strong> ack 后，则说明<strong>客户端确认接收服务端的全部数据</strong>。注意，此时客户端可以确认：</p>
+<ul>
+<li><strong>服务端</strong>成功接收<strong>客户端</strong>全部数据</li>
+<li><strong>客户端</strong>成功接收<strong>服务端</strong>的全部数据</li>
+</ul>
+<p>此时客户端可以百分百相信，<strong>此时断开连接对客户端是没有任何危害的</strong>。</p>
+<p>但是！当服务器没接收到 客户端的 ACK 时，</p>
+<ul>
+<li>服务器可以确认它成功接收客户端全部数据</li>
+<li>服务器<strong>不知道客户端是否成功接收服务端的全部数据</strong></li>
+</ul>
+<p>也就是说，服务器一定要获得到客户端的 ACK 才能关闭。</p>
+<p>若服务器在超时时间内没获得到客户端的 FIN ACK，则会重发 FIN 包。但假如此时客户端已经断连，那么服务器将<strong>永远无法获取到客户端的 FIN ACK</strong>。因此即便客户端已经完成了它的所有任务，它仍然需要等待服务器端一小段时间，以便于处理服务端的 FIN 包。</p>
+<p>当服务器获取到了客户端的 FIN_ACK 后，它就直接关闭连接。而客户端也会在超时后静默关闭。此时双方均成功获取对方的全部数据，没有造成任何危害。</p>
+<blockquote>
+<p>这里有个很重要的点是，<strong>TCP 不会对 ACK 包来进行 ACK</strong>。例如服务端不会对客户端发来的 FIN_ACK 回复一个 FIN_ACK_ACK。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="四、TCP-状态图">四、TCP 状态图</h2>
+<p>这里放两张TCP 双方的状态图，做完这些实验再去看它们就相当轻松了：</p>
+<p><img src="/2021/11/cs144-lab4/20180328001537836.jpg" alt="这里写图片描述"></p>
+<p><img src="/2021/11/cs144-lab4/20180328001111303.jpg" alt="这里写图片描述"></p>
+<h2 id="五、调试">五、调试</h2>
+<p>测试样例的调试我就不多说了，因为这部分已经在之前说了，直接用 gdb 起一个会话然后单步调试就好，比较简单。这里记录一下 CS144 模拟网卡的调试方式。</p>
+<p>首先是启动一个 wireshark 会话抓包，这里有两种方式，一种是终端抓包：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo tshark -Pw /tmp/debug.raw -i tun144</span><br></pre></td></tr></table></figure>
+<p>效果是这样的：</p>
+<p><img src="/2021/11/cs144-lab4/image-20211115175444352.png" alt="image-20211115175444352"></p>
+<p>而且抓到的数据包存放于 /tmp/debug.raw 中，也便于后期分析。</p>
+<p>不过对我个人而言还是更喜欢图形界面，因此键入以下命令:</p>
+<blockquote>
+<p>注意一定要用 sudo ！不然找不到网卡。</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo wireshark</span><br></pre></td></tr></table></figure>
+<p>然后在 tun144 和 145 中随意选一个，没区别。这里我选了 tun144。</p>
+<blockquote>
+<p>tun144 和 145 是 CS144 模拟出的两个虚拟网卡。这两张网卡可以互通。</p>
+</blockquote>
+<p><img src="/2021/11/cs144-lab4/image-20211115175613525.png" alt="image-20211115175613525"></p>
+<p>之后分别在<strong>两个</strong>终端下键入命令以相互连接</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 在 tun144 网段下启动 server 监听，其地址为 169.254.144.9:9090</span></span><br><span class="line">./apps/tcp_ipv4 -l 169.254.144.9 9090</span><br></pre></td></tr></table></figure>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 在 tun145 网段下启动 client，其地址为 169.254.145.9，向 169.254.144.9:9090 发起连接</span></span><br><span class="line">./apps/tcp_ipv4 -d tun145 -a 169.254.145.9 169.254.144.9 9090</span><br></pre></td></tr></table></figure>
+<p>之后便可以在 wireshark 中捕获其数据包来往：</p>
+<p><img src="/2021/11/cs144-lab4/image-20211115180315678.png" alt="image-20211115180315678"></p>
+<p>这是捕获到的错误 TCP 数据包的来往。可以发现在三次握手的时候，Server  貌似没有对 Client 返回的 ACK 进行处理，而是一直重发 SYN+ACK，最后导致重发次数过多被 Server 端挂断连接。</p>
+<p>找到了问题便可以通过 gdb 来进行调试。不过在用 gdb 调试时，记得给 <code>./apps/tcp_ipv4</code> 设置个大一点的 <code>-t</code> 数据包超时时间参数，以避免发送方重复发送数据，扰乱捕获数据包的观察。</p>
+<p>这个错误折腾了我一个晚上，最后发现貌似是我本机的 Tun/Tap 机制出现了问题，导致 Client 发给 Server 的数据包的 <strong>源 IP 地址不一致</strong>（看捕获到的第一行数据包 <code>169.254.144.1 -&gt; 169.254.144.9</code> 和第三行数据包 <code>169.254.145.9 -&gt; 169.254.144.9</code>）：</p>
+<blockquote>
+<p>Client 发送的 IP 包头为  <code>169.254.145.9 -&gt; 169.254.144.9</code>。</p>
+</blockquote>
+<p><img src="/2021/11/cs144-lab4/image-20211115175444352.png" alt="image-20211115175444352"></p>
+<p>这会导致 Server 接收到 第三行 ACK 数据包时，认为该数据包不来自 Client，因此将其丢弃，一直等待 ACK 包。</p>
+<p>一种临时解决方法是，在<code>libsponge/tcp_helpers/tcp_over_ip.cc</code>中的 <code>TCPOverIPv4Adapter::unwrap_tcp_in_ip</code> 函数中，注释掉一个 check：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">optional&lt;TCPSegment&gt; <span class="title">TCPOverIPv4Adapter::unwrap_tcp_in_ip</span><span class="params">(<span class="keyword">const</span> InternetDatagram &amp;ip_dgram)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// is the IPv4 datagram for us?</span></span><br><span class="line">    <span class="comment">// Note: it's valid to bind to address "0" (INADDR_ANY) and reply from actual address contacted</span></span><br><span class="line">    <span class="keyword">if</span> (<span class="keyword">not</span> listening() <span class="keyword">and</span> (ip_dgram.header().dst != config().source.ipv4_numeric())) &#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;&#125;;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! <span class="doctag">NOTE:</span> 注释该 check</span></span><br><span class="line">    <span class="comment">// is the IPv4 datagram from our peer?</span></span><br><span class="line">    <span class="comment">// if (not listening() and (ip_dgram.header().src != config().destination.ipv4_numeric())) &#123;</span></span><br><span class="line">    <span class="comment">//     return &#123;&#125;;</span></span><br><span class="line">    <span class="comment">// &#125;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// does the IPv4 datagram claim that its payload is a TCP segment?</span></span><br><span class="line">    <span class="keyword">if</span> (ip_dgram.header().proto != IPv4Header::PROTO_TCP) &#123;</span><br><span class="line">        <span class="keyword">return</span> &#123;&#125;;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这真是太折腾了…</p>
+<h2 id="六、具体实现">六、具体实现</h2>
+<p>该实验相当相当的费劲，原因时大量的测试样例会涉及到大量的边界检测，以及最后还会有真实网络连接下的数据包交互。TCPSender 和 TCPReceiver 必须足够鲁棒，才能降低 TCPConnection 的实现难度。</p>
+<p>TCPConnection 必须实时根据当前的 TCP 状态来处理传入的数据包，过滤无用数据包，其实现<strong>必须假设输入的 TCPSegment 不可信任</strong>，然后利用大量的 check 来把它慢慢验证为是一个可信的 TCPSegment。</p>
+<blockquote>
+<p>注意：一定要防止整数溢出攻击！</p>
+</blockquote>
+<p>这部分实现的相关解释，我以注释的形式写入代码中，结合代码阅读方便理解。整体实现完成其实也没多少代码，因为大部分的操作都可以推迟到具体的 TCPSender、TCPReceiver 来处理（包括里面的异常处理）。</p>
+<blockquote>
+<p>因此这个实验非常吃前面实验实现的基础代码，非常非常的吃。</p>
+<p>而且前面的实验可能也存在一些问题没有被测试样例给检测出来，这次将全部检测出（因为是TCP实验中最后的部分了）。</p>
+</blockquote>
+<p>代码位于：</p>
+<ul>
+<li><a href="https://github.com/Kiprey/sponge/blob/master/libsponge/tcp_connection.hh" target="_blank" rel="noopener">tcp_connection.hh</a></li>
+<li><a href="https://github.com/Kiprey/sponge/blob/master/libsponge/tcp_connection.cc" target="_blank" rel="noopener">tcp_connection.cc</a></li>
+</ul>
+<p>测试结果：</p>
+<p><img src="/2021/11/cs144-lab4/image-20211116090253846.png" alt="image-20211116090253846"></p>
+<p>benchmark:</p>
+<p><img src="/2021/11/cs144-lab4/image-20211116090556892.png" alt="image-20211116090556892"></p>
+<p>webget 与真实服务器通信：</p>
+<p><img src="/2021/11/cs144-lab4/image-20211116105134413.png" alt="image-20211116105134413"></p>
+<h2 id="七、CS144-模拟网络传输逻辑">七、CS144 模拟网络传输逻辑</h2>
+<p>CS144 中用来模拟两机网络交互的那部分代码很有意思，这里简单的研究了一下 <code>tcp_ipv4.cc</code> 中的完整逻辑。</p>
+<p>首先，项目根路径中的 <code>tun.sh</code> 会使用 <code>ip tuntap</code> 技术创建虚拟 Tun/Tap 网络设备。这类接口仅能工作在内核中。不同于普通的网络接口，没有物理硬件。这样做的目的应该是为了模拟真实网络环境下的网络环境。</p>
+<blockquote>
+<p>这里是 tun/tap 的详细描述 - <a href="https://zhuanlan.zhihu.com/p/260405786" target="_blank" rel="noopener">虚拟设备之TUN和TAP - 知乎</a></p>
+</blockquote>
+<p>当 Tun/Tap 网络设备建立好后，tcp_ipv4.cc 中会建立一个 <code>TCPOverIPv4OverTunFdAdapter</code>。<code>TunFd</code>指的是连接进 Tun 设备上的 socket，而<code>TCPOverIPv4OverTunFdAdapter</code>是一个 IP 层面的封装接口。当调用 adapter 向其写入 TCP 报文段时，它会自动 wrap 上 IP 段并传输进网络设备中；读取也是亦然，会自动解除 IP 段并返回其内部封装的 TCP报文段。</p>
+<p>接下来，无论对于 Server 还是 Client，在三次握手之后，都会建立一个新的线程，来专门执行 <code>LossyTCPOverIPv4SpongeSocket</code> 中的 eventloop。而子线程会另起一个 eventloop 以及另外开辟两个缓冲区，用于存放用户写入的数据与即将输出至屏幕的数据。当用户通过 stdin 输入数据时， <strong>eventloop  中所注册的 poll 事件</strong>被检测到，则数据将会被写入进本地输入缓冲区中。当 <code>TCPOverIPv4OverTunFdAdapter</code> 可写时，它会将本地输入缓冲区中的数据全部写入至 <code>TCPOverIPv4OverTunFdAdapter</code> ，并最终传输至远程。</p>
+<p>而 webget 与真实服务器通信的原理，也是通过将 IP 报文写入 tun 虚拟网络设备，将其注入进 OS 协议栈中，模拟实际的发包情况。</p>
+<p>以下是 <code>tun.sh</code> 中创建 tun 网络设备的相关命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># start_tun 144</span></span><br><span class="line"><span class="built_in">local</span> TUNNUM=144 TUNDEV=tun144</span><br><span class="line">ip tuntap add mode tun user Kiprey name tun144</span><br><span class="line">ip addr add 169.254.144.1/24 dev tun144</span><br><span class="line">ip link <span class="built_in">set</span> dev tun144 up</span><br><span class="line">ip route change 169.254.144.0/24 dev tun144 rto_min 10ms</span><br><span class="line">iptables -t nat -A PREROUTING -s 169.254.144.0/24 -j CONNMARK --<span class="built_in">set</span>-mark 144</span><br><span class="line">iptables -t nat -A POSTROUTING -j MASQUERADE -m connmark --mark 144</span><br></pre></td></tr></table></figure>
+<p>这是一个相当有意思的代码，有空可以读读理解理解。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/cs144-lab4/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CS144/" rel="tag">CS144</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/cs144-lab5/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CS144计算机网络 Lab5
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/cs144-lab3/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CS144计算机网络 Lab3</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="fuzz, 论文笔记,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《IMF：Inferred Model-based Fuzzer》论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-IMF"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《IMF：Inferred Model-based Fuzzer》论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/IMF/" class="article-date">
+  <time datetime="2022-01-19T16:00:00.000Z" itemprop="datePublished">2022-01-20</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">23 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<ul>
+<li>
+<p>内核 API 函数之间的调用大多是相互依赖的，即一些 API 的调用需要依赖其他 API 调用所产生的上下文，因此若给定的调用上下文无用，则内核 API 将会始终执行失败，无法进入到更深层次的逻辑中。</p>
+</li>
+<li>
+<p>这篇论文提出了一种新的内核 fuzz 方式，它利用内核 API 函数之间的依赖（即 API 调用序列的相似性），来推断出依赖模型，进而利用该模型生成出<strong>随机并且结构性良好的 API 序列</strong>，进行更深层次的 fuzz。</p>
+<p>其中，API 调用的依赖关系包含两种，分别是</p>
+<ol>
+<li>顺序依赖，即 A 函数应该比 B 函数更早被调用。</li>
+<li>数据依赖，函数调用之间存在着数据流传递。</li>
+</ol>
+</li>
+<li>
+<p>Fuzz 的主要目标是 <strong>IOKit Lib</strong>。</p>
+</li>
+<li>
+<p>IMF src - <a href="https://github.com/SoftSec-KAIST/IMF" target="_blank" rel="noopener">github</a></p>
+</li>
+</ul>
+<blockquote>
+<p>需要注意的是，这篇论文是 17 年的论文，实验时所使用的 MacOS 版本为 10.12.3，而本人的机器版本为 MacOS 12.0.1，因此在复现实验是会存在一些困难。</p>
+</blockquote>
+<a id="more"></a>
+<h2 id="二、架构">二、架构</h2>
+<p>该论文所提出的 IMF 架构图如下所示：</p>
+<p><img src="/2022/01/IMF/image-20220118102357121.png" alt="image-20220118102357121"></p>
+<p>其中， IMF 共有三部分组成，分别是</p>
+<ul>
+<li>Logger：用于记录指定应用程序的 API 调用日志。调用日志中包括了调用函数名，调用传入的参数值等等数据。</li>
+<li>Inferrer：从 Logger 生成的 API log 中推断出<strong>顺序依赖和数据依赖</strong>。初始时 Inferrer 会在 Logger 生成的 L 条 log 中，筛选出最大前缀长度的 N (N &lt; L) 个日志；之后这 N 个日志将用于推断依赖关系，生成 API 依赖模型。</li>
+<li>Fuzzer：使用推断出的 API 依赖模型动态生成出 testcase 并用于测试。</li>
+</ul>
+<h2 id="三、例子">三、例子</h2>
+<p>论文中给了一个 fuzz 过程的示例。通过这个示例我们可以简单了解一下整个 IMF 的处理过程。</p>
+<h3 id="1-初始">1. 初始</h3>
+<p>初始时，给定一系列配置文件和 <strong>API 函数原型注释文件</strong>，其中后者存放着目标 IOKit API 的函数名称、参数类型与个数等等的信息，通常以 JSON 格式保存。</p>
+<p>API 函数原型注释文件，主要用于生成 API hook 以及为 API 依赖关系推断。</p>
+<h3 id="2-安装-API-hook">2. 安装 API hook</h3>
+<ul>
+<li>
+<p>开始时，IMF 为目标程序 2048 Game <strong>安装 API hook</strong>，这样当目标程序调用 IOKit Lib 时，这些函数调用将会被 hook 并被记录下来。</p>
+</li>
+<li>
+<p>之后模拟鼠标输入或键盘输入，为目标程序提供输入，这样目标程序就会调用 IOKit 并留下 API Log。</p>
+</li>
+<li>
+<p>尝试循环执行目标程序 L=1000 次并记录下 L 个日志。</p>
+</li>
+</ul>
+<blockquote>
+<p>需要注意的是，本人实际复现实验时，可能是受限于 MacOS 版本问题，hook 2048 Game 无法记录下任何 IOKit Log（但是 VSCode 可以，但是日志数量较少）。</p>
+<p>因此本人在实验时，所选定的目标程序为 <code>/usr/sbin/ioreg</code>。</p>
+</blockquote>
+<p>每一次的日志中都会记录下调用 API 时的 <strong>1) 输入参数的类型与值；2) 返回值的类型与值</strong>。</p>
+<h3 id="3-过滤-API-log">3. 过滤 API log</h3>
+<p>直到目前，API hook 已经记录下了 L=1000 个日志，那么接下来就需要对其进行筛选，从中筛出 log 的子集。</p>
+<p>这里的例子中，从 L=1000 个日志里，筛选出了 N=2 个<strong>最长公共前缀</strong>的日志。</p>
+<blockquote>
+<p>需要注意的是，由于 GUI 事件的非确定性，对于同一个 GUI 程序的相同输入，hook <strong>可能不会生成相同的 API 调用序列</strong>。</p>
+<p>但如果使用的目标程序是非 GUI 程序，则生成的 API log 大体相同。</p>
+</blockquote>
+<h3 id="4-依赖推断">4. 依赖推断</h3>
+<h4 id="a-顺序依赖">a. 顺序依赖</h4>
+<p>首先， IMF 假设，应该保留 log 中的 API 调用顺序。但这样可能在模型中包含不必要的顺序依赖关系，导致调用之间的顺序依赖过于近似。不过在实际 fuzz 时会适当放宽这个假设。</p>
+<p>此时能获取到的调用顺序如下，其中 $A&lt;B$ 表示函数 A 的调用点在函数 B 的调用点之<strong>前</strong>：</p>
+<p>$$IOServiceMatching &lt; IOServiceGetMatchingService &lt; IOServiceOpen &lt; IOConnectCallMethod$$</p>
+<h4 id="b-数据依赖">b. 数据依赖</h4>
+<p>接下来，IMF 将会从 N=2 的 log 子集中，</p>
+<ol>
+<li>检测并识别出<strong>常量类型的参数值</strong>。先上张图，其中<strong>绿色</strong>字体表示常量，常量值将被排除在数据流分析之外：</li>
+</ol>
+<blockquote>
+<p>注意，由于先前已经给定了一个 API 函数原型注释文件，因此对于 handler 类型（即诸如<code>io_service_t</code> 和 <code>io_connect_t</code> 的参数，将不会被识别为常量。</p>
+</blockquote>
+<p><img src="/2022/01/IMF/image-20220118114142794.png" alt="image-20220118114142794"></p>
+<ol start="2">
+<li>
+<p>检测数据依赖。若前一个函数调用的返回值，作为了后一个函数调用的参数值，那么可以说这两个函数调用之间存在数据依赖关系，即图中黑色虚线所标识的那样。</p>
+<p>该论文实现了多种启发式数据依赖的检测方式，这里只是简单介绍了一种。</p>
+</li>
+</ol>
+<h4 id="c-模型生成">c. 模型生成</h4>
+<p>该图是根据上图所生成的一个 API Model，模型使用 AST 来表示：</p>
+<p><img src="/2022/01/IMF/image-20220118120407950.png" alt="image-20220118120407950"></p>
+<p>在这个模型中，我们可以很明显的看到每个函数调用都遵循了先前所推断出的顺序依赖，以及函数之间的值依赖关系。</p>
+<p>对于指针 outStructCnt 与 API 的关系，IMF 也可以根据先前所给定的 API 函数注释文件来获取到两者之间的内部关系，从而产生诸如第九行这样的代码。</p>
+<p>之后 IMF 便可以根据模型来进行变异与生成。</p>
+<h2 id="四、具体实现">四、具体实现</h2>
+<h3 id="1-Logger">1. Logger</h3>
+<h4 id="a-论文细节">a. 论文细节</h4>
+<p>Logger 需要处理两个问题：</p>
+<ul>
+<li>目标程序的输入从何而来？</li>
+<li>记录 log 时需要记录多少数据？</li>
+</ul>
+<p>首先对于第一个问题：由于论文中使用的目标程序大多是 GUI 程序，而 GUI 程序的输入大多是鼠标事件和键盘事件，因此可以使用 PyUserInput 来为目标程序模拟输入事件。</p>
+<p>对于第二个问题：记录 log 时，需要保存多少级间接指针的数据？若级别太多，则会占用大量的磁盘空间，加大分析难度。因此在该论文的实验中，只保存了一级间接指针的数据。</p>
+<h4 id="b-技术细节">b. 技术细节</h4>
+<p>在论文所提供的代码中， <a href="http://const.py" target="_blank" rel="noopener">const.py</a> 文件里已经事先记录了目标 IOKit API 的函数原型定义。一个简单的示例如下所示：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># const.py</span></span><br><span class="line">API_DEFS = [</span><br><span class="line">    [</span><br><span class="line">        <span class="comment"># kern_return_t IOConnectGetService(io_connect_t connect, io_service_t *service);</span></span><br><span class="line">        (<span class="string">'kern_return_t'</span>, <span class="string">'IOConnectGetService'</span>), </span><br><span class="line">        [</span><br><span class="line">            <span class="comment"># 第一个参数</span></span><br><span class="line">            (<span class="string">'io_connect_t'</span>, <span class="string">'connect'</span>, &#123;&#125;), </span><br><span class="line">            <span class="comment"># 第二个参数。指针参数的第三个字段，即字典中存在一对键值对 IO，用于说明在该函数中，数据是流向指针所指向的内存，还是从该内存中流出；这将用于进一步的数据流分析。</span></span><br><span class="line">            (<span class="string">'io_service_t *'</span>, <span class="string">'service'</span>, &#123;<span class="string">'IO'</span>:<span class="string">'O'</span>&#125;) </span><br><span class="line">        ]</span><br><span class="line">    ],</span><br><span class="line">    ......</span><br><span class="line">]</span><br></pre></td></tr></table></figure>
+<p>之后，<a href="http://hook.py" target="_blank" rel="noopener">hook.py</a> 文件将根据给定的 IOKit API 函数原型，结合 C 语言 hook 代码的模板，生成诸如以下 C 代码的 hook.c 文件：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdint.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;time.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;IOKit/IOKitLib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;fcntl.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/file.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;CoreFoundation/CoreFoundation.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> LOG_PATH</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> LOG_PATH <span class="meta-string">"/tmp/log"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">const</span> <span class="keyword">char</span>* log_path = LOG_PATH;</span><br><span class="line"><span class="comment">// 生成 JSON 格式</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">log_CFTypeRef</span><span class="params">(FILE *f,CFTypeRef target)</span></span>&#123;</span><br><span class="line">  CFTypeID ty = CFGetTypeID(target);</span><br><span class="line">  <span class="keyword">if</span> (ty == CFStringGetTypeID())&#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"'%s'"</span>,CFStringGetCStringPtr(target,kCFStringEncodingUTF8));</span><br><span class="line">  &#125;<span class="keyword">else</span> <span class="keyword">if</span> (ty == CFDictionaryGetTypeID())&#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"&#123;"</span>);</span><br><span class="line">    <span class="keyword">size_t</span> size = CFDictionaryGetCount(target);</span><br><span class="line">    CFTypeRef *keys = (CFTypeRef *) <span class="built_in">malloc</span>( size * <span class="keyword">sizeof</span>(CFTypeRef) );</span><br><span class="line">    CFTypeRef *vals = (CFTypeRef *) <span class="built_in">malloc</span>( size * <span class="keyword">sizeof</span>(CFTypeRef) );</span><br><span class="line">    CFDictionaryGetKeysAndValues(target,keys,vals);</span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">size_t</span> i=<span class="number">0</span>;i&lt;size; i++)&#123;</span><br><span class="line">      log_CFTypeRef(f,keys[i]);</span><br><span class="line">      <span class="built_in">fprintf</span>(f,<span class="string">":"</span>);</span><br><span class="line">      log_CFTypeRef(f,vals[<span class="number">0</span>]);</span><br><span class="line">      <span class="built_in">fprintf</span>(f,<span class="string">","</span>);</span><br><span class="line">    </span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"&#125;"</span>);</span><br><span class="line">    <span class="built_in">free</span>(keys);</span><br><span class="line">    <span class="built_in">free</span>(vals);</span><br><span class="line">  &#125;<span class="keyword">else</span> <span class="keyword">if</span> (ty == CFNumberGetTypeID())&#123;</span><br><span class="line">    <span class="keyword">uint64_t</span> n;</span><br><span class="line">    CFNumberGetValue(target,CFNumberGetType(target),&amp;n);</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"%d"</span>,n);</span><br><span class="line">  &#125;<span class="keyword">else</span> <span class="keyword">if</span> (ty == CFBooleanGetTypeID())&#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"%s"</span>,CFBooleanGetValue(target)?<span class="string">"True"</span>:<span class="string">"False"</span>);</span><br><span class="line">  &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">    <span class="built_in">fprintf</span>(f,<span class="string">"log_CFTypeRef ERROR"</span>);</span><br><span class="line">    <span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// IOCatalogueReset 函数 hook 后的处理操作</span></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">fake_IOCatalogueReset</span><span class="params">(<span class="keyword">mach_port_t</span> masterPort,<span class="keyword">uint32_t</span> flag)</span></span>&#123;</span><br><span class="line">  FILE *fp = fopen(log_path,<span class="string">"a"</span>);</span><br><span class="line">  flock(fileno(fp),LOCK_EX);</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"IN ['IOCatalogueReset',"</span>);</span><br><span class="line">  <span class="keyword">if</span>(<span class="number">1</span>) <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'masterPort','value': 0x%x,'size' : 0x%lx,'cnt':0x%x, 'data':["</span>,masterPort, <span class="keyword">sizeof</span>(<span class="keyword">mach_port_t</span>),<span class="number">1</span>);</span><br><span class="line">  <span class="keyword">else</span> <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'masterPort','value': 0x%x, 'size' : 0x%lx,'cnt':'undefined', 'data':["</span>,masterPort,<span class="keyword">sizeof</span>(<span class="keyword">mach_port_t</span>));</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"]&#125;,"</span>);</span><br><span class="line">  <span class="keyword">if</span>(<span class="number">1</span>) <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'flag','value': 0x%x,'size' : 0x%lx,'cnt':0x%x, 'data':["</span>,flag, <span class="keyword">sizeof</span>(<span class="keyword">uint32_t</span>),<span class="number">1</span>);</span><br><span class="line">  <span class="keyword">else</span> <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'flag','value': 0x%x, 'size' : 0x%lx,'cnt':'undefined', 'data':["</span>,flag,<span class="keyword">sizeof</span>(<span class="keyword">uint32_t</span>));</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"]&#125;,"</span>);</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"]\n"</span>);</span><br><span class="line">  <span class="keyword">kern_return_t</span> ret = IOCatalogueReset(masterPort,flag);</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"OUT ['IOCatalogueReset',"</span>);</span><br><span class="line">  <span class="keyword">if</span>(<span class="number">1</span>) <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'ret','value': 0x%x,'size' : 0x%lx,'cnt':0x%x, 'data':["</span>,ret, <span class="keyword">sizeof</span>(<span class="keyword">kern_return_t</span>),<span class="number">1</span>);</span><br><span class="line">  <span class="keyword">else</span> <span class="built_in">fprintf</span>(fp,<span class="string">"&#123;'name':'ret','value': 0x%x, 'size' : 0x%lx,'cnt':'undefined', 'data':["</span>,ret,<span class="keyword">sizeof</span>(<span class="keyword">kern_return_t</span>));</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"]&#125;,"</span>);</span><br><span class="line">  <span class="built_in">fprintf</span>(fp,<span class="string">"]\n"</span>);</span><br><span class="line">  fclose(fp);</span><br><span class="line">  <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">interposer</span> &#123;</span></span><br><span class="line">    <span class="keyword">void</span>* replacement;</span><br><span class="line">    <span class="keyword">void</span>* original;</span><br><span class="line">&#125; <span class="keyword">interpose_t</span>;</span><br><span class="line">__attribute__((used)) <span class="keyword">static</span> <span class="keyword">const</span> <span class="keyword">interpose_t</span> interposers[]</span><br><span class="line">  __attribute__((section(<span class="string">"__DATA, __interpose"</span>))) = &#123;</span><br><span class="line">    &#123; </span><br><span class="line">        .replacement = (<span class="keyword">void</span>*) fake_IOCatalogueReset, </span><br><span class="line">        .original    = (<span class="keyword">void</span>*) IOCatalogueReset</span><br><span class="line">    &#125;,</span><br><span class="line">    [...]</span><br><span class="line">  &#125;;</span><br></pre></td></tr></table></figure>
+<p><a href="http://hook.py" target="_blank" rel="noopener">hook.py</a> 将会批量生成 <code>fake_IOXXXX</code> 函数，并填充相应的数据结构至 interposers 数组中。</p>
+<p>当 <code>hook.py hook.c</code> 命令执行完毕，生成出 hook.c 文件后， 执行以下代码将生成待注入的 dylib：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">clang  -Wall -dynamiclib -framework IOKit -framework CoreFoundation -arch x86_64 hook.c -o hook.dylib</span><br></pre></td></tr></table></figure>
+<p>之后执行以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">DYLD_INSERT_LIBRARIES=<span class="variable">$&#123;PWD&#125;</span>/hook.dylib [program path] [program args]</span><br></pre></td></tr></table></figure>
+<p>这样，目标程序在使用 IOKit lib 时，对应的 IOKit 函数将会被所注入的动态链接库 hook.dylib 动态 hook，并在 /tmp/log 中记录下日志：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># kern_return_t IORegistryEntryGetLocationInPlane(</span></span><br><span class="line"><span class="comment"># io_registry_entry_t entry,</span></span><br><span class="line"><span class="comment">#   const io_name_t   plane,</span></span><br><span class="line"><span class="comment"># io_name_t           location );</span></span><br><span class="line"></span><br><span class="line">IN </span><br><span class="line">[</span><br><span class="line">  <span class="string">'IORegistryEntryGetLocationInPlane'</span>,</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="string">'name'</span>:<span class="string">'entry'</span>,   <span class="comment"># 参数1 变量名</span></span><br><span class="line">    <span class="string">'value'</span>: <span class="number">0x2607</span>,  <span class="comment"># 参数1 调用时传入的值</span></span><br><span class="line">    <span class="string">'size'</span> : <span class="number">0x4</span>,     <span class="comment"># 参数1 所占用的内存大小，即 sizeof(type)</span></span><br><span class="line">        <span class="string">'cnt'</span>:<span class="number">0x1</span>,    <span class="comment"># 参数1 若是指针，则指针所指向的值的个数</span></span><br><span class="line">        <span class="string">'ori'</span>:<span class="string">'IOServiceGetMatchingService(</span></span><br><span class="line"><span class="string">          0,IOServiceMatching(</span></span><br><span class="line"><span class="string">            "IOUserServer(com.apple.driverkit.AppleUserHIDDrivers-0x100000419)"))'</span>, </span><br><span class="line">        <span class="string">'data'</span>:[]     <span class="comment"># 参数1 若是指针，则指针所指向的数组的所有值</span></span><br><span class="line">  &#125;,</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="string">'name'</span>:<span class="string">'plane'</span>,</span><br><span class="line">    <span class="string">'value'</span>: <span class="string">'"IOService"'</span>,</span><br><span class="line">    <span class="string">'size'</span> : <span class="number">0x80</span>,</span><br><span class="line">    <span class="string">'cnt'</span>:<span class="number">0x1</span>, </span><br><span class="line">    <span class="string">'data'</span>:[]</span><br><span class="line">  &#125;,</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="string">'name'</span>:<span class="string">'location'</span>,</span><br><span class="line">    <span class="string">'value'</span>: <span class="string">'"x&amp;"'</span>,</span><br><span class="line">    <span class="string">'size'</span> : <span class="number">0x80</span>,</span><br><span class="line">    <span class="string">'cnt'</span>:<span class="number">0x1</span>, </span><br><span class="line">    <span class="string">'data'</span>:[]</span><br><span class="line">  &#125;,</span><br><span class="line">]</span><br><span class="line"></span><br><span class="line">OUT </span><br><span class="line">[</span><br><span class="line">  <span class="string">'IORegistryEntryGetLocationInPlane'</span>,</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="string">'name'</span>:<span class="string">'ret'</span>,</span><br><span class="line">    <span class="string">'value'</span>: <span class="number">0xe00002f0</span>,</span><br><span class="line">    <span class="string">'size'</span> : <span class="number">0x4</span>,</span><br><span class="line">    <span class="string">'cnt'</span>:<span class="number">0x1</span>, </span><br><span class="line">    <span class="string">'data'</span>:[]</span><br><span class="line">  &#125;,</span><br><span class="line">]</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，对于每一个 IOKit 函数调用，API Hook 都会生成2个条目：</p>
+<ul>
+<li>一个是 <strong>IN 条目</strong>，用于记录传入的参数信息</li>
+<li>另一个是 <strong>OUT 条目</strong>，用于记录函数调用所返回的信息</li>
+</ul>
+<h3 id="2-Inferrer">2. Inferrer</h3>
+<h4 id="a-Log-Filtering">a. Log Filtering</h4>
+<h5 id="1-论文细节">1) 论文细节</h5>
+<p>由于每次执行目标程序时，不同的环境下会产生不同的日志，因此 IMF 将会对生成的日志进行进一步的过滤与处理。</p>
+<p>这里 Log Filtering 的目的是：从给定的日志集中<strong>选取N个具有最长公共前缀的日志</strong>，并收集这 N 个日志中的<strong>公共前缀</strong>，以<strong>构造出一组具有完全相同的顺序和相同数量的 API 调用序列 S</strong>。</p>
+<p>由于调用序列 S 中在不同环境下所记录的 log 不同，一些参数会有着不同的参数值，因此这种不确定性可以用于更好的确定 API 模型。</p>
+<h5 id="2-技术细节">2) 技术细节</h5>
+<p>Filtering 的操作位于 <a href="http://filter.py" target="_blank" rel="noopener">filter.py</a> 中。</p>
+<ul>
+<li>
+<p>初始时，filter 会循环读入每个日志文件，并对每个日志文件中的每个 IN/OUT log 进行哈希。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">loader</span><span class="params">(path)</span>:</span></span><br><span class="line">    ret = []</span><br><span class="line">    <span class="keyword">with</span> open(path, <span class="string">'rb'</span>) <span class="keyword">as</span> f:</span><br><span class="line">        data = f.read().split(<span class="string">'\n'</span>)[:<span class="number">-1</span>]</span><br><span class="line">    idx = <span class="number">0</span></span><br><span class="line">    <span class="keyword">while</span> idx &lt; len(data):</span><br><span class="line">        name = parse_name(data[idx])</span><br><span class="line">        selector = parse_selector(data[idx])</span><br><span class="line">        hval = merge(name, selector)</span><br><span class="line">        ret.append(hval)</span><br><span class="line">        idx += <span class="number">2</span></span><br><span class="line">    <span class="keyword">return</span> path, ret</span><br></pre></td></tr></table></figure>
+<p>这里对 log 条目进行哈希时，使用的是<strong>函数名 + selector</strong> 作为输入源(merge 操作)。其中，selector 只有在函数名为 <code>IOConnectCallXXXXMethod</code> 时才有用到。也就是说，这里的哈希将会对<strong>相同的函数名 CallMethod 但不同的 selector 选择子</strong>区分开来。</p>
+<p>哈希后的结果是<strong>一个数组</strong>，数组中有<strong>多个元组</strong>，每个元组里分别有两个成员，分别是单个 log 文件名，与一个存放着该 log 文件中每个条目哈希的数组：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">[</span><br><span class="line">    'log1.txt', [</span><br><span class="line">        entry1_hash,</span><br><span class="line">        entry2_hash,</span><br><span class="line">        ....</span><br><span class="line">    ],</span><br><span class="line">    ....</span><br><span class="line">]</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>上面步骤所输出的内容，称为一个 <strong>group</strong>。接下来 filter 将会执行 categorize 函数，遍历 groups 中某个 index 所对应的 log entry hash。这样做的目的是为了进行<strong>最长公共子序列</strong>筛选。</p>
+<p>每次筛选后，相同 idx 但不同的 hash 的 log entry 将会被单独拆开并合并至新的 group 中。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">categorize</span><span class="params">(groups, idx)</span>:</span></span><br><span class="line">    ret = []</span><br><span class="line">    <span class="keyword">for</span> group <span class="keyword">in</span> groups:</span><br><span class="line">        tmp = &#123;&#125;</span><br><span class="line">        <span class="keyword">for</span> fn, hvals <span class="keyword">in</span> group:</span><br><span class="line">            hval = get(hvals, idx)</span><br><span class="line">            <span class="keyword">if</span> hval <span class="keyword">not</span> <span class="keyword">in</span> tmp:</span><br><span class="line">                tmp[hval] = []</span><br><span class="line">            tmp[hval].append((fn, hvals))</span><br><span class="line">        <span class="keyword">for</span> hval <span class="keyword">in</span> tmp:</span><br><span class="line">            <span class="keyword">if</span> hval != <span class="literal">None</span> :</span><br><span class="line">                ret.append(tmp[hval])</span><br><span class="line">    <span class="keyword">return</span> ret</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>每次筛选并合并成新的 groups 后，都会尝试执行一次 pick_best 的操作，遍历每个 groups 中的 group，并获取数量大于等于 N 的 group 中的 log entry。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">find_best</span><span class="params">(groups, n)</span>:</span></span><br><span class="line">    before = <span class="literal">None</span></span><br><span class="line">    idx = <span class="number">0</span></span><br><span class="line">    <span class="keyword">while</span> len(groups) != <span class="number">0</span>:</span><br><span class="line">        before = groups</span><br><span class="line">        groups = categorize(groups, idx)</span><br><span class="line">        <span class="keyword">if</span> pick_best(groups, n) == <span class="literal">None</span>:</span><br><span class="line">            <span class="keyword">return</span> pick_best(before, n), idx</span><br><span class="line">        idx += <span class="number">1</span></span><br><span class="line">    utils.error(<span class="string">'find_best error'</span>)</span><br></pre></td></tr></table></figure>
+<p>如果可以获取，则说明筛选还没有详尽，因此 idx++，继续筛选；若无法获取，则回退返回上一次筛选的内容，并从中选择 log entry 大于等于 N 的 group，同时指定当前所分析到的 idx 长度。（注意单个 group 中会有多个 log 文件）</p>
+</li>
+<li>
+<p>这样，根据上面的步骤，filter 便可以筛选并继续保存<strong>序列长度为 idx（注意这 idx 个长度的序列为公共子序列）</strong> 的多个 log 文件。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">save_best</span><span class="params">(path, best_group, idx)</span>:</span></span><br><span class="line">    <span class="keyword">for</span> fn, _ <span class="keyword">in</span> best_group:</span><br><span class="line">        name = fn.split(<span class="string">'/'</span>)[<span class="number">-1</span>]</span><br><span class="line">        <span class="keyword">with</span> open(fn, <span class="string">'rb'</span>) <span class="keyword">as</span> f:</span><br><span class="line">            data = f.read().split(<span class="string">'\n'</span>)[:<span class="number">-1</span>]</span><br><span class="line">        <span class="keyword">with</span> open(os.path.join(path, name), <span class="string">'wb'</span>) <span class="keyword">as</span> f:</span><br><span class="line">            <span class="keyword">for</span> x <span class="keyword">in</span> data[:idx*<span class="number">2</span>]:</span><br><span class="line">                f.write(x+<span class="string">'\n'</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="b-API-Model-Inference">b. API Model Inference</h4>
+<h5 id="1-论文细节-2">1) 论文细节</h5>
+<p>论文中对于 API 的<strong>顺序依赖</strong>并没有进行特殊的处理，乐观的认为 API 函数之间的调用关系，应该会遵循筛选后的调用序列 S 中的某个相同序列。</p>
+<p>而对于 API 的数据依赖，论文中将数据依赖的检测方式分为两步：</p>
+<ol>
+<li>识别出所有的常量</li>
+<li>识别出一对函数之间的数据流关系</li>
+</ol>
+<p>首先是<strong>常量识别</strong>。对于调用序列的某个函数调用，其<strong>常量参数</strong>在其他调用序列（即过滤出的 N 个调用序列）中也一定是相同的。例如下面这个例子，</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 序列1</span></span><br><span class="line">[...]</span><br><span class="line"><span class="comment">/* 第i个调用 */</span> A(变量<span class="number">1</span>, <span class="number">12</span>);</span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line"><span class="comment">// 序列2</span></span><br><span class="line">[...]</span><br><span class="line"><span class="comment">/* 第i个调用 */</span> A(变量<span class="number">2</span>, <span class="number">12</span>);</span><br><span class="line">[...]</span><br></pre></td></tr></table></figure>
+<p>可以看到，对于不同序列中的第 i 个调用，其参数2的值相同，始终为 12，因此可以认为函数 A 的参数2 是一个常量值。</p>
+<p>即，假设 $S^k_{i, j}$为<strong>第$k$个调用序列</strong>中的<strong>第$j$个函数调用</strong>里<strong>第$i$个参数</strong>，若满足 $S^1_{i, j}=S^2_{i, j}=…=S^N_{i, j}$，则说明 $S_{i,j}$ 是一个<strong>常量参数</strong>。</p>
+<p>需要注意的是，在进行常量识别时，<strong>需要忽视掉句柄类型</strong>。因为对于这种类型的变量来说，即便值相同，但它们依然不是常量。</p>
+<p>接下来是<strong>数据流识别</strong>。<strong>IMF 并没有识别参数与参数之间的数据流传递关系</strong>（和 syzkaller 不同），它只是简单的识别函数之间那种 <strong>函数1返回值 -&gt; 函数2参数值</strong> 的数据流关系：</p>
+<ul>
+<li>对于某个指定函数调用点的<strong>输入参数值</strong>，若该调用点前有<strong>任何一个函数的返回值</strong>与输入参数值相同，则说明这之中存在数据流依赖关系。</li>
+<li>如果有多个函数的返回值与输入参数值相同，则始终选择最近的那个函数。</li>
+</ul>
+<p>需要注意的是，为了提高精度，IMF 会取<strong>每个调用序列</strong>中<strong>每个函数</strong>的数据流依赖<strong>交集</strong>。</p>
+<p>而 inferrer 的最终输出是一个 C 语言的代码片段，即 AST 格式。其中，inferrrer 会根据顺序依赖来生成一系列的函数调用语句。对于每个函数调用，其函数参数将会根据类型来进行不同的填充：</p>
+<ul>
+<li>常量参数：使用调用序列里的常量值</li>
+<li>非常量参数
+<ul>
+<li>若与其他函数存在数据依赖，则声明一个变量，将输入参数与存在数据依赖的函数相连接</li>
+<li>若不存在数据依赖，则随机选择一个该输入参数在日志中出现的值</li>
+</ul>
+</li>
+</ul>
+<h5 id="2-技术细节-2">2) 技术细节</h5>
+<p>执行 inferrer 时，初始时，程序会先实例化 ApiFuzz 类，在该类的构造函数中执行 const.load_apis 函数，将先前准备好的 <strong>IOKit API 函数原型定义</strong> 读入内存，并以 <strong>Api 类</strong>的结构保存。单个 Api 类的结构如下所示：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* </span></span><br><span class="line"><span class="comment">以该例子为例</span></span><br><span class="line"><span class="comment">[('kern_return_t', 'IOMasterPort'), </span></span><br><span class="line"><span class="comment">[('mach_port_t', 'bootstrapPort', &#123;&#125;), ('mach_port_t *', 'masterPort', &#123;'IO': 'O'&#125;)]]</span></span><br><span class="line"><span class="comment">*/</span> </span><br><span class="line">IOMasterPort_Api_class = &#123;</span><br><span class="line">    rtype:'kern_return_t',</span><br><span class="line">    rval: Arg_class &#123;</span><br><span class="line">    type: 'kern_return_t',</span><br><span class="line">      name: 'ret',</span><br><span class="line">      opt: &#123;&#125;</span><br><span class="line">    &#125;,</span><br><span class="line">    name:'IOMasterPort',</span><br><span class="line">    args : [</span><br><span class="line">        Arg &#123;</span><br><span class="line">            type: 'mach_port_t',</span><br><span class="line">            name: 'bootstrapPort',</span><br><span class="line">            opt: &#123;&#125;</span><br><span class="line">        &#125;,</span><br><span class="line">    Arg &#123;</span><br><span class="line">            type: 'mach_port_t *',</span><br><span class="line">            name: 'masterPort',</span><br><span class="line">            opt: &#123;'IO': 'O'&#125;</span><br><span class="line">        &#125;</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之后，程序会在 ApiFuzz 类的 make_model 成员函数中，以多进程方式执行 load_apilog 成员，将先前 hook 生成的 API log 读入内存。</p>
+<p>注意到 API log 中每两个条目（即一对 IN/OUT 条目）对应的是一个 IOKit 函数调用的参数输入与函数返回，因此在 load_apilog 函数中，程序同样会以一对条目为单位读入 ApiLog 类中。每一个 ApiLog 的结构如下所示：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  io_registry_entry_t IORegistryGetRootEntry (mach_port_t masterPort)</span></span><br><span class="line"><span class="comment">  IN ['IORegistryGetRootEntry',&#123;'name':'masterPort','value': 0x0,'size' : 0x4,'cnt':0x1, 'data':[]&#125;,]</span></span><br><span class="line"><span class="comment">  OUT ['IORegistryGetRootEntry',&#123;'name':'ret','value': 0x2903,'size' : 0x4,'cnt':0x1, 'data':[]&#125;,]</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line">ApiLog(派生自API) = &#123;</span><br><span class="line">    <span class="comment">// 以下四个是 API 类中的字段</span></span><br><span class="line">    args:   xxxxx,</span><br><span class="line">    name:  'IORegistryGetRootEntry',</span><br><span class="line">    rtype:  xxxxx,</span><br><span class="line">    rval:  xxxxx,</span><br><span class="line">    </span><br><span class="line">    api :   Api(IORegistryGetRootEntry),</span><br><span class="line">    args_dict: &#123;</span><br><span class="line">        'masterPort': Arg(IORegistryGetRootEntry_arg0)</span><br><span class="line">    &#125;,</span><br><span class="line">    hval: None,</span><br><span class="line">    il: &#123;</span><br><span class="line">        'masterPort': ArgLog(派生自 Arg) &#123;</span><br><span class="line">      <span class="comment">// 以下三个是 Arg 类的字段</span></span><br><span class="line">            type: 'mach_port_t',</span><br><span class="line">            name: 'masterPort',</span><br><span class="line">            opt: &#123;&#125;，</span><br><span class="line"></span><br><span class="line">      arg: Arg(内部内容和上面三个字段一样),</span><br><span class="line">      log: &#123;'name':'masterPort','value': 0x0,'size' : 0x4,'cnt':0x1, 'data':[]&#125;</span><br><span class="line">      is_input : True,</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;,</span><br><span class="line">    ol: &#123;&#125;,</span><br><span class="line">    rval_log: ArgLog &#123;</span><br><span class="line">        <span class="comment">// 以下三个是 Arg 类的字段</span></span><br><span class="line">        type: 'io_registry_entry_t',</span><br><span class="line">        name: 'ret',</span><br><span class="line">        opt: &#123;&#125;，</span><br><span class="line"></span><br><span class="line">        arg: Arg(内部内容和上面三个字段一样),</span><br><span class="line">      log: &#123;'name':'ret','value': 0x2903,'size' : 0x4,'cnt':0x1, 'data':[]&#125;</span><br><span class="line">      is_input : False,</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>之后，程序将所有读入的 API log 均存入 ApiFuzz 类中的 apisets 数组，并使用该数组创建 Model 类进行建模。有意思的是，在建模时，只会使用一个 log 文件。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Model</span>:</span></span><br><span class="line">    <span class="function"><span class="keyword">def</span> <span class="title">__init__</span><span class="params">(self, apisets)</span>:</span></span><br><span class="line">        self.mapis = []</span><br><span class="line">        <span class="keyword">for</span> idx <span class="keyword">in</span> range(len(apisets[<span class="number">0</span>])):</span><br><span class="line">            apilog = apisets[<span class="number">0</span>][idx]</span><br><span class="line">            self.mapis.append(Mapi(apilog, idx))</span><br><span class="line">        self.check_const(apisets)</span><br><span class="line">        self.add_dataflow(apisets)</span><br></pre></td></tr></table></figure>
+<p>Model 类在初始化时，会将每个 apilog 都转换成 Mapi 类型的结构。 该结构的布局和 Api 类型有点类似：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">Mapi = &#123;</span><br><span class="line">    api : Api(arglog.api)</span><br><span class="line">    idx : xx,</span><br><span class="line">    il : &#123;</span><br><span class="line">    'masterPort': Marg(派生自 Arg) &#123;</span><br><span class="line">      arg : arglog.arg,</span><br><span class="line">          value : Mval &#123;</span><br><span class="line">                value : xxx,</span><br><span class="line">              const : xxx,</span><br><span class="line">                dataflow = xxx,</span><br><span class="line">              raw : xxx,</span><br><span class="line">              ori : xxx,</span><br><span class="line">              ty : xxx,</span><br><span class="line">              ptr : xxx,</span><br><span class="line">              name : xxx,</span><br><span class="line">            &#125;,</span><br><span class="line">            is_in_flag : 数据流是否是流进</span><br><span class="line">      name : arg的名称</span><br><span class="line">            </span><br><span class="line">            array_flag : 表示该arg是否是一个指向数组的指针</span><br><span class="line">            data : 如果当前arg 是数组，则这里存放数组中的内容</span><br><span class="line">            cnt : 表示当 arg 是数组类型时的长度</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    ol : &#123;</span><br><span class="line">        .....</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>转换完成后，立即执行 check const 操作，尝试分辨出是否是常量值。若参数类型是<strong>指针</strong>类型，则程序会单独对指针所指向数组中的每一个元素进程 check const 操作；若参数是<strong>非指针</strong>类型，则对该参数的数值进行 check const 检查。</p>
+<p>check const 检查操作相当的简单：<strong>如果第 i 个函数调用的第 j 个参数，在筛选出的 api log 中互不相同，则说明这是一个变量值。</strong></p>
+<p>check const 检查完成后，下一步操作是  add dataflow。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">add_dataflow</span><span class="params">(self, apisets)</span>:</span></span><br><span class="line">    <span class="keyword">for</span> apiset <span class="keyword">in</span> apisets:</span><br><span class="line">        before = &#123;&#125;</span><br><span class="line">        <span class="keyword">for</span> idx <span class="keyword">in</span> range(len(apiset)):</span><br><span class="line">            apilog = apiset[idx]</span><br><span class="line">            mapi =self.mapis[idx]</span><br><span class="line">            mapi.add_dataflow(before, apilog)</span><br><span class="line">            update_before(before, apilog, mapi, idx)</span><br></pre></td></tr></table></figure>
+<p>初始时，add dataflow 函数声明了一个 before 字段，该字段表示过去函数调用所生成的 value 值。之后将每个 Mapi 中 Marg 的参数值加入至 Mval 类型中的 raw 数组中，最后调用 get_xxx_df 函数来更新 Mval 类中的 dataflow 字段，指定该 Mval 的数据流来源。</p>
+<p>这样，通过多次遍历 apilog，程序可以对一些 Mval 设置其数据流的单项关系，为接下来代码生成做准备。</p>
+<h3 id="3-Fuzzer">3. Fuzzer</h3>
+<h4 id="a-Fuzz-配置">a. Fuzz 配置</h4>
+<p>fuzz 的配置主要有以下几种：</p>
+<ol>
+<li>T : 超时时间</li>
+<li>I : 迭代次数</li>
+<li>P : 变异概率</li>
+<li>F : 固定位数，用于变异</li>
+<li>R : 随机数种子。</li>
+</ol>
+<p>实际开源的代码模板如下所示，注意到这里并没有关于超时时间的设置，这可能是因为这部分代码没有开源：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">parse_args</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> **argv)</span></span>&#123;</span><br><span class="line">    <span class="keyword">int</span> opt;</span><br><span class="line">    <span class="keyword">while</span> ((opt = getopt(argc, argv, <span class="string">"f:s:b:r:l:"</span>)) != <span class="number">-1</span>)&#123;</span><br><span class="line">        <span class="keyword">switch</span>(opt)&#123;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">'f'</span>:</span><br><span class="line">                log_file = optarg;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">'s'</span>:</span><br><span class="line">                seed = parse_uint(optarg);</span><br><span class="line">                set_seed = <span class="number">1</span>;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">'b'</span>:</span><br><span class="line">                bitlen = parse_uint(optarg);</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">'r'</span>:</span><br><span class="line">                rate = parse_uint(optarg);</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            <span class="keyword">case</span> <span class="string">'l'</span>:</span><br><span class="line">                max_loop = parse_uint(optarg);</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            <span class="keyword">default</span> :</span><br><span class="line">                help();</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span>(log_file == <span class="literal">NULL</span> &amp;&amp; set_seed == <span class="number">0</span>)&#123;</span><br><span class="line">        help();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="b-变异策略">b. 变异策略</h4>
+<p>变异策略较为简略，只有参数值变异：对其进行数据上的变异。</p>
+<p>这些变异代码都是预先写死在 python 文件中，作为代码模板的一部分，以下是简单的代码模板示例：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">uint16_t</span> <span class="title">mut_short</span><span class="params">(<span class="keyword">uint16_t</span> v)</span></span>&#123;</span><br><span class="line">  <span class="keyword">uint16_t</span> r ;</span><br><span class="line">  <span class="keyword">if</span>( MAYBE )&#123;</span><br><span class="line">    r= get_rand();</span><br><span class="line">    <span class="keyword">if</span>(bitlen &lt;<span class="number">16</span>)&#123;</span><br><span class="line">      <span class="keyword">return</span> v ^ (r &amp; ((<span class="number">1</span> &lt;&lt; (<span class="number">16</span>-bitlen))<span class="number">-1</span>) ); </span><br><span class="line">    &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">      <span class="keyword">return</span> v ^ (r &amp; <span class="number">1</span>) ;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> v;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">uint32_t</span> <span class="title">mut_int</span><span class="params">(<span class="keyword">uint32_t</span> v)</span></span>&#123;</span><br><span class="line">  <span class="keyword">uint32_t</span> r =<span class="number">0</span>;</span><br><span class="line">  <span class="keyword">if</span>( MAYBE )&#123;</span><br><span class="line">    r = (r&lt;&lt;<span class="number">16</span>) | (<span class="keyword">uint32_t</span>) get_rand();</span><br><span class="line">    r = (r&lt;&lt;<span class="number">16</span>) | (<span class="keyword">uint32_t</span>) get_rand();</span><br><span class="line">    <span class="keyword">if</span>(bitlen &lt;<span class="number">32</span>)&#123;</span><br><span class="line">      <span class="keyword">return</span> v ^ (r &amp; ((<span class="number">1</span> &lt;&lt; (<span class="number">32</span>-bitlen))<span class="number">-1</span>) ); </span><br><span class="line">    &#125;<span class="keyword">else</span>&#123;</span><br><span class="line">      <span class="keyword">return</span> v ^ (r &amp; <span class="number">1</span>) ;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> v;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="五、评估">五、评估</h2>
+<ul>
+<li>
+<p>IMF 在 macOS 中找到了相当多的 kernel panic 样例。其中大部分是 DoS，有一些可以尝试进行利用。</p>
+</li>
+<li>
+<p>对于不同类型的目标程序，其能起到 fuzz 的效果是不同的。这是因为不同类型的目标程序，所调用的 IOKit 函数侧重点也不相同。</p>
+<p><img src="/2022/01/IMF/image-20220121184714950.png" alt="image-20220121184714950"></p>
+<p>通过该图我们可以看到，Game 类型的目标程序所产生的 Api Log，被 IMF 读入并用于 fuzz macos 所触发的 kernel panic 最多，但该程序类型却并不是触发内核覆盖率最广的类型。这也可以看到 IMF 极度依赖于执行目标程序所收集到的Api Log。</p>
+</li>
+<li>
+<p>IMF 精度会受到 N 的影响。对于不同 N ，fuzz 的精度会产生一些波动：</p>
+<p><img src="/2022/01/IMF/image-20220121185131190.png" alt="image-20220121185131190"></p>
+</li>
+</ul>
+<h2 id="六、不足之处">六、不足之处</h2>
+<ul>
+<li>IMF 的工作建立在那些<strong>参数类型非常明确的 syscall API</strong>，更侧重于以黑盒方式对参数进行变异，而不会了解每个参数的有效内存范围。</li>
+<li>IMF 的前提是了解每个系统调用规范的定义，但这对于驱动程序来说并不适合。因为对于驱动程序来说，其参数多以 <code>void*</code> 传递，IMF 无法根据该无类型指针建立显式数据流依赖关系。</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/01/IMF/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/01/rwctf2022_qws/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            RWCTF2022 Pwn 笔记1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/01/ubuntu_desktop_recover/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Ubuntu 恢复图形界面记录</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

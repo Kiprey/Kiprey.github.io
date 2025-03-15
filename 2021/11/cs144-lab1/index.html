@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记, 计算机网络, CS144,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CS144计算机网络 Lab1 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cs144-lab1"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CS144计算机网络 Lab1
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/cs144-lab1/" class="article-date">
+  <time datetime="2021-11-04T16:00:00.000Z" itemprop="datePublished">2021-11-05</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">8 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了笔者学习 CS144 计算机网络 Lab1 的一些笔记 - 流重组器 StreamReassembler</p>
+<p>CS144 Lab1 实验指导书 - <a href="https://cs144.github.io/assignments/lab1.pdf" target="_blank" rel="noopener">Lab Checkpoint 1: stitching substrings into a byte stream</a></p>
+<p>个人 CS144 实验项目地址 - <a href="https://github.com/Kiprey/sponge" target="_blank" rel="noopener">github</a></p>
+<p>PS: 在做 CS144 前，最好先学一手计网理论，或者读读我之前写的<a href="https://kiprey.github.io/2021/05/cnatda-1/#4-%E9%9D%A2%E5%90%91%E8%BF%9E%E6%8E%A5%E7%9A%84%E8%BF%90%E8%BE%93%EF%BC%9ATCP">笔记</a></p>
+<a id="more"></a>
+<h2 id="二、实验结构">二、实验结构</h2>
+<p>这幅图完整的说明了CS144 这门实验的结构：</p>
+<p><img src="/2021/11/cs144-lab1/image-20211105142904316.png" alt="image-20211105142904316"></p>
+<p>其中， <code>ByteStream</code> 是我们已经在 Lab0 中实现完成的。</p>
+<p>我们将在接下来的实验中分别实现：</p>
+<ul>
+<li>Lab1 <code>StreamReassembler</code>：实现一个流重组器，一个将字节流的字串或者小段按照正确顺序来拼接回连续字节流的模块</li>
+<li>Lab2 <code>TCPReceiver</code>：实现入站字节流的TCP部分。</li>
+<li>Lab3 <code>TCPSender</code>：实现出站字节流的TCP部分。</li>
+<li>Lab4 <code>TCPConnection</code>:   结合之前的工作来创建一个有效的 TCP 实现。最后我们可以使用这个 TCP 实现来和真实世界的服务器进行通信。</li>
+</ul>
+<blockquote>
+<p>该实验引导我们以模块化的方式构建一个 TCP 实现。</p>
+</blockquote>
+<p>流重组器在 TCP 起到了相当重要的作用。迫于网络环境的限制，TCP 发送者会将数据切割成一个个小段的数据分批发送。但这就可能带来一些新的问题：数据在网络中传输时可能丢失、重排、多次重传等等。而TCP接收者就必须通过流重组器，将接收到的<strong>这些重排重传等等的数据包</strong>重新组装成新的连续字节流。</p>
+<h2 id="三、环境配置">三、环境配置</h2>
+<p>当前我们的实验代码位于 <code>master</code> 分支，而在完成 Lab1 之前需要合并一些 Lab1 的依赖代码，因此执行以下命令：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git merge origin/lab1-startercode</span><br></pre></td></tr></table></figure>
+<p>之后重新 make 编译即可。</p>
+<h2 id="四、如何调试">四、如何调试</h2>
+<p>先 cmake &amp;&amp; make 一个 Debug 版本的程序。</p>
+<p>所有的评测程序位于<code>build/tests/</code>中，先一个个手动执行过去。</p>
+<p>若输出了错误信息，则使用 gdb 调试一下。</p>
+<h2 id="五、StreamReassembler-实现">五、StreamReassembler 实现</h2>
+<h3 id="1-要求">1. 要求</h3>
+<p>在我们所实现的流重组器中，有以下几种特性：</p>
+<ul>
+<li>
+<p>接收子字符串。这些子字符串中包含了一串字节，以及该字符串在<strong>总的数据流</strong>中的<strong>第一个字节的索引</strong>。</p>
+<blockquote>
+<p>是不是有TCP那味了 :-)  感兴趣可以看看真实世界中的 TCP 报文段结构 - <a href="https://kiprey.github.io/2021/05/cnatda-1/#a-TCP%E6%8A%A5%E6%96%87%E6%AE%B5%E7%BB%93%E6%9E%84">Kiprey Blog</a></p>
+</blockquote>
+</li>
+<li>
+<p>流的每个字节都有自己唯一的索引，从零开始向上计数。</p>
+</li>
+<li>
+<p>StreamReassembler 中存在一个 ByteStream 用于输出，当重组器知道了流的下一个字节，它就会将其写入至 ByteStream中。</p>
+</li>
+</ul>
+<p>需要注意的是，传入的子串中：</p>
+<ul>
+<li>
+<p>子串之间可能相互重复，存在重叠部分</p>
+<blockquote>
+<p>但假设重叠部分数据完全重复。</p>
+<p>不存在某些 index 下的数据在某个子串中是一种数据，在另一个子串里又是另一种数据。</p>
+</blockquote>
+<blockquote>
+<p>重叠部分的处理最为麻烦。</p>
+</blockquote>
+</li>
+<li>
+<p>可能会传一些已经被装配了的数据</p>
+</li>
+<li>
+<p>如果 ByteStream 已满，则必须暂停装配，将未装配数据暂时保存起来</p>
+</li>
+</ul>
+<p>除了上面的要求以外，容量 Capacity 需要严格限制：</p>
+<p><img src="/2021/11/cs144-lab1/image-20211107124153476.png" alt="image-20211107124153476"></p>
+<p>为了便于说明，将图中的<strong>绿色区域</strong>称为 ByteStream，将图中**存放红色区域的内存范围（即 first unassembled - first unacceptable）**称为 Unassembled_strs。</p>
+<p>CS144 要求将 <strong>ByteStream + Unassembled_strs 的内存占用总和</strong>限制在 <strong>Reassember 中构造函数传入的 capacity 大小</strong>。因此我们在构造 Reassembler 时，需要既将传入的 capacity 参数设置为 <code>ByteStream</code>的缓冲区大小上限，也将其设置为<strong>first unassembled - first unacceptable</strong>的范围大小，以避免极端情况下的内存使用。</p>
+<blockquote>
+<p>注意：<strong>first unassembled - first unacceptable</strong>的范围大小，并不等同于<strong>存放尚未装配子串的结构体内存大小上限</strong>，别混淆了。</p>
+</blockquote>
+<p>Capacity 这个概念很重要，因为它不仅用于限制高内存占用，而且它还会起到流量控制的作用（见 lab2）。</p>
+<h3 id="2-实现思路">2. 实现思路</h3>
+<p>总体上，现阶段的要求还是比较简单的，但是，这里面需要考虑到相当多的情况。</p>
+<p>在具体说明处理情况之前，我们先简单定义几个变量来指示当前状态：</p>
+<ul>
+<li><code>_next_assembled_idx</code>：下一个待装配的字节索引</li>
+<li><code>_unassemble_strs</code>: 一个字节索引到数据子串的 map 映射</li>
+<li><code>_eof_idx</code>: 指示哪个字节索引代表 EOF</li>
+</ul>
+<p>以下是具体需要考虑的情况</p>
+<ol>
+<li>
+<p><code>index &lt;=  _next_assembled_idx &amp;&amp; index + data.size() &gt; _next_assembled_idx</code></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">index    _next_assembled_idx   index+data.size()   </span><br><span class="line">  V               V                   V </span><br><span class="line">--+-----------------------------------+-----------------------------</span><br><span class="line">  |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|</span><br><span class="line">--+-----------------------------------+-----------------------------</span><br></pre></td></tr></table></figure>
+<p>这种情况可以先截断掉</p>
+<ul>
+<li>前面已经装配过的那部分数据</li>
+<li>后面与<strong>已经存入 _unassembled_strs 的数据</strong>重合的那部分数据</li>
+</ul>
+<p>这样截断是为了让每次装配进的数据与存入 _unassembled_strs 的数据不产生重合，简化处理逻辑。</p>
+<p>之后就可以直接装配，无需任何额外处理。</p>
+<p>如果装配不下，即 <code>_output</code> 已满，那么就必须先放入待装配队列 <code>_unassembled_strs</code> 中，等待装配。</p>
+</li>
+<li>
+<p><code>index &gt; _next_assembled_idx</code></p>
+<p>这种情况是需要认真考虑的，因为这种情况可能会与一些已经保存起来的未装配子串重合，导致大量的内存占用以及无用的轮询处理。对于传入数据的始末位置，分别有好几种情况。</p>
+<blockquote>
+<p>为了便于说明，我们将<code>_unassembled_strs</code>中比 index <strong>小且距离最近</strong>的那部分数据，称作 up_data, 其起始位置称为 up_idx。<br>
+down_data 和 down_idx 同上，指的是在 <code>_unassembled_strs</code>中比当前传入 index 大且距离最近的那部分数据与起始位置。</p>
+<p>up 指的是数据前面的那个方向，down 是数据后面的那个方向。</p>
+</blockquote>
+<p>首先是传入数据头部位置的情况：</p>
+<ol>
+<li>
+<p>若 up_idx + up_data.size() &lt;= index, 则说明当前传入 data 没有与已经保存的上一个子串重叠。这种无需处理</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">_next_assembled_idx  up_idx                  index  </span><br><span class="line">          V            V    up_data.size      V </span><br><span class="line">----------+------------+------------------+---+-----------------...</span><br><span class="line">          |            |++++++++++++++++++|   |\\\\\\\\\\\\\\\\\...</span><br><span class="line">----------+------------+------------------+---+-----------------...</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>若 up_idx + up_data.size() &gt; index, 则说明传入数据前半部分重合，需要进行截断，同时在截断后更新当前 index。</p>
+<p>截断前：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">_next_assembled_idx  up_idx       up_idx+up_data.size     </span><br><span class="line">          V            V                  V </span><br><span class="line">----------+------------+-----------+------+-----------------...</span><br><span class="line">          |            |+++++++++++|+&#x2F;+&#x2F;+&#x2F;|\\\\\\\\\\\\\\\\\...</span><br><span class="line">----------+------------+-----------+------+-----------------...</span><br><span class="line">                                   A</span><br><span class="line">                                 index</span><br></pre></td></tr></table></figure>
+<p>截断后：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">_next_assembled_idx  up_idx       up_idx+up_data.size     </span><br><span class="line">          V            V                  V </span><br><span class="line">----------+------------+------------------+-----------------...</span><br><span class="line">          |            |++++++++++++++++++|\\\\\\\\\\\\\\\\\...</span><br><span class="line">----------+------------+------------------+-----------------...</span><br><span class="line">                                          A</span><br><span class="line">                                        new_idx</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p>而对于传入数据尾部位置的情况，情况又有所不同：</p>
+<ol>
+<li>
+<p>若 index + data.size() &lt;= down_idx，则说明当前数据的后半部分没有重合，此时无需进行任何处理。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"> index      index+data.size  down_idx</span><br><span class="line">   V               V            V</span><br><span class="line">---+---------------+------------+------------------...</span><br><span class="line">   |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|            |++++++++++++++++++...</span><br><span class="line">---+---------------+------------+------------------...</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>若 index + data.size() &gt; down_idx，则说明后半部分重合。但后半部分重合又有两种情况</p>
+<ol>
+<li>
+<p><code>index + data.size() &lt; down_idx + down_data.size()</code>，这种就是常规情况的部分重合，截断掉重合部分即可</p>
+<p>截断前：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"> index              index+data.size   </span><br><span class="line">   V                       V  </span><br><span class="line">---+---------------+-------+------------+-----...</span><br><span class="line">   |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|+&#x2F;+&#x2F;+&#x2F;+|++++++++++++|     ...</span><br><span class="line">---+---------------+-------+------------+-----...</span><br><span class="line">                   A                    A</span><br><span class="line">                down_idx       down_idx+down_data.size</span><br></pre></td></tr></table></figure>
+<p>截断后</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"> index       index+data.size   </span><br><span class="line">   V               V  </span><br><span class="line">---+------------------------------------+-----...</span><br><span class="line">   |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|++++++++++++++++++++|     ...</span><br><span class="line">---+------------------------------------+-----...</span><br><span class="line">                   A                    A</span><br><span class="line">                down_idx       down_idx+down_data.size</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>index + data.size() &lt; down_idx + down_data.size()，这种是完全重合：当前传入的 data <strong>完全覆盖</strong>下一个保存的data，此时将下一个 data 丢弃。</p>
+<p>注意，若存在完全覆盖的情况，则需要<strong>重复</strong>检测 index + data.size 的位置与<strong>丢弃下一个data后，新的下一个data</strong>的<strong>末尾</strong>位置。因为可能当前传入的 data 会<strong>同时覆盖好几个</strong>保存的 data。</p>
+<p>处理前：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"> index                          index+data.size   </span><br><span class="line">   V                                    V  </span><br><span class="line">---+-----+--------------------+---------+-----+------...</span><br><span class="line">   |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+&#x2F;+|&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|     |++++++...</span><br><span class="line">---+-----+--------------------+---------+-----+------...</span><br><span class="line">         A                    A                 </span><br><span class="line">      down_idx       down_idx+down_data.size</span><br></pre></td></tr></table></figure>
+<p>处理后：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"> index                          index+data.size   </span><br><span class="line">   V                                    V  </span><br><span class="line">---+------------------------------------+-----+------...</span><br><span class="line">   |&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;&#x2F;|     |++++++...</span><br><span class="line">---+------------------------------------+-----+------...</span><br><span class="line">                                              A</span><br><span class="line">                                          新的 down_idx</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+<p>上面所描述的处理方式可以很好的保证，<strong>_unassembled_strs 中的各个子串之间互不重叠，提高了内存利用效率</strong>。这是一种用时间换空间的方式，因为个人认为，从不可靠网络中获取到的数据是相当宝贵的，与降低处理时间相比，会更加宝贵一点。</p>
+<p>EOF 的实现需要严格按照实验指导书来。当传入的 eof 参数为真时，表示当前传入的数据子串的<strong>最后一个字节将是整个流中的最后一个字节</strong>，这并不意味着这是最后一次调用 reassembler 来传入子串，因此需要额外将这个 eof_idx 保存，并在 reassemble 后判断一下是否到达 EOF 位置。</p>
+<h3 id="3-具体实现">3. 具体实现</h3>
+<p>实现的代码已经上传到github上</p>
+<ul>
+<li><a href="https://github.com/kiprey/sponge/blob/master/libsponge/stream_reassembler.hh" target="_blank" rel="noopener">stream_reassembler.hh</a></li>
+<li><a href="https://github.com/kiprey/sponge/blob/master/libsponge/stream_reassembler.cc" target="_blank" rel="noopener">stream_reassembler.cc</a></li>
+</ul>
+<p>以下是测试结果，总测试时间低于0.5s，还可以。</p>
+<p><img src="/2021/11/cs144-lab1/image-20211107094807715.png" alt="image-20211107094807715"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/cs144-lab1/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CS144/" rel="tag">CS144</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/cs144-lab2/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CS144计算机网络 Lab2
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/cs144-lab0/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CS144计算机网络 Lab0</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

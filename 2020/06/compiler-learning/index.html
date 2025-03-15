@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="Compiler, 编译原理, CS143,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    编译原理 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-compiler-learning"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  编译原理
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/06/compiler-learning/" class="article-date">
+  <time datetime="2020-06-25T08:20:55.000Z" itemprop="datePublished">2020-06-25</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">19 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>个人CS143 Lab源码仓库 - <a href="https://github.com/Kiprey/Skr_Learning/tree/master/week3-4" target="_blank" rel="noopener">github</a></p>
+<h2 id="简介">简介</h2>
+<p>这次学习编译原理所使用的课程是Stanford的CS143编译原理课程，其中配套了Program Assignment Lab</p>
+<a id="more"></a>
+<h2 id="1-lexer-词法分析">1. lexer - 词法分析</h2>
+<ul>
+<li>
+<p>编写相应的词法分析器<code>flex</code>脚本，就可以输出一个对应的C++源码，将之编译即可得到lexer</p>
+</li>
+<li>
+<p><code>flex</code>脚本中，我们主要编写的是正则表达式的匹配规则，匹配对应的字符串，返回一个个的<code>token</code>。</p>
+</li>
+<li>
+<p>lexer通过正则语法，将对应读入的词转换为一个个的<code>token</code></p>
+</li>
+<li>
+<p>在词法分析这个过程中，可以过滤出比较明显的错误，例如</p>
+<ul>
+<li>引号、注释符的闭合</li>
+<li>非源码中可以出现的字符，比如<code>ASCII &lt; 32</code>的各种控制符号以及特殊的转义字符等等</li>
+<li>过长的字符串</li>
+<li>不在规定范围内的转义字符，例如<code>\\</code>转义反斜杠不该出现在字符串双引号之外</li>
+<li>以及其他的通过读取字符就可以找到的各种简单错误</li>
+</ul>
+</li>
+<li>
+<p>一个简单的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* 编写正则表达式 */</span></span><br><span class="line">DIGIT     [<span class="number">0</span><span class="number">-9</span>]</span><br><span class="line">LETTER    [a-zA-Z]</span><br><span class="line">ID        (&#123;LETTER&#125;|&#123;DIGIT&#125;|_)</span><br><span class="line">TYPEID    [A-Z]&#123;ID&#125;*</span><br><span class="line"><span class="comment">/* 匹配到对应的符号则执行方括号内的操作 */</span></span><br><span class="line">&#123;TYPEID&#125; &#123;</span><br><span class="line">  <span class="comment">/* 将当前识别到的typeid添加进字符表中，使其不添加重复字符串 */</span></span><br><span class="line">  cool_yylval.symbol = idtable.add_string(yytext);</span><br><span class="line">  <span class="comment">/* 将当前识别到的token返回 */</span></span><br><span class="line">  <span class="keyword">return</span> TYPEID;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>正则表达式的规则很容易理解，但是正则表达式并不能直接用来解析字符串，所以还要引入一种适合转化为计算机程序的模型 —— <strong>有穷自动机</strong>(finite automation，FA)</p>
+<blockquote>
+<p>flex的核心就是自动机。</p>
+</blockquote>
+<ul>
+<li>有穷自动机首先包含一个有限状态的集合，还包含了从一个状态到另外一个状态的转换。有穷自动机看上去就像是一个有向图，其中状态是图的节点，而状态转换则是图的边。此外这些状态中还必须有一个初始状态和至少一个接受状态。</li>
+<li>有穷自动机处理输入字符串的流程
+<ul>
+<li>初始情况下，自动机处于初始状态</li>
+<li>读取字符串的第一个字符，这时自动机会查询当前状态上与输入字符相匹配的边，并沿这条边转换到下一个状态。</li>
+<li>继续输入下一个字符，重复第二步，查询当前状态上的边并进行状态转换。</li>
+<li>当字符串全部输入后，如果自动机正好处于接受状态上，就说该自动机 <strong>接受了这一字符串</strong>。</li>
+</ul>
+</li>
+<li>有穷自动机分为两种
+<ul>
+<li>确定性有穷自动机（DFA）。特点：从每一个状态只能发出一条具有某个符号的边 —— 不能出现同一个符号出现在同一状态发出的两条边上。</li>
+<li>非确定性有穷自动机(NFA)。 特点：允许从一个状态发出多条具有相同符号的边，甚至允许发出标有ε（表示空）符号的边，即NFA可以不输入任何字符就自动沿ε边转换到下一个状态。
+<blockquote>
+<p>NFA与DFA <strong>等价</strong>，且NFA 可以转化为 DFA</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>flex所生成的代码，其大致流程为：</p>
+<ul>
+<li>初始化相关内存与状态</li>
+<li>从上一次读取的位置开始，循环读取单个字节，并根据<code>yy_nxt</code>状态表与<code>yy_current_state</code>当前状态，跳转至下一个状态</li>
+<li>待无法跳转至下一个状态时（即匹配完成或出错），根据当前状态，在<code>yy_accept</code>动作表中确定<code>yy_act</code>动作</li>
+<li>根据<code>yy_act</code>执行特定操作（用户定义的操作或异常捕获）</li>
+</ul>
+<blockquote>
+<p>注：状态表等是自动机中的重中之重。</p>
+</blockquote>
+</li>
+<li>
+<p>参考</p>
+<ul>
+<li><a href="http://eternalsakura13.com/2020/05/27/flex/" target="_blank" rel="noopener">flex中文文档</a></li>
+<li><a href="https://blog.csdn.net/qq_39521554/article/details/79416553" target="_blank" rel="noopener">编译原理：有穷自动机（DFA与NFA）</a></li>
+<li><strong>偏向代码分析</strong> 的 <a href="https://happyers.top/uncategorized/understanding-c-lexer-generated-by-flex/" target="_blank" rel="noopener">flex生成代码分析</a> - <a href="https://github.com/pcy190/CompilerAnalysis/blob/master/flex_analysis.md" target="_blank" rel="noopener">github</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="2-parser-语法分析">2. parser - 语法分析</h2>
+<ul>
+<li>
+<p>parser，一般是指把某种格式的文本（字符串）转换成某种数据结构的过程。</p>
+<blockquote>
+<p>之所以需要做这种从字符串到数据结构的转换，是因为编译器是无法直接操作“1+2”这样的字符串的。<br>
+实际上，代码的本质根本就不是字符串，它本来就是一个具有复杂拓扑的数据结构</p>
+</blockquote>
+<p>对于程序语言，这种解码的动作就叫做 parsing，用于解码的那段代码就叫做 parser</p>
+</li>
+<li>
+<p>语法分析所使用的工具通常是<code>bison</code>，<code>bison</code>与<code>flex</code>类似，核心都是 <strong>自动机</strong>，但其处理方式又有所不同。</p>
+</li>
+<li>
+<p><code>bison</code>所使用的是自底向上，左递归的分析方式。</p>
+</li>
+<li>
+<p>在语法分析这个过程中，可以过滤出一些不符合语法的错误，例如token排列不符合条件，无法规约。<br>
+在这种情况下必须进行错误处理程序，将token弹出栈（或者其他操作）。</p>
+</li>
+<li>
+<p>语法分析所得到的结果是一个AST抽象语法分析树。它只是一个由Token简单组合起来的树，仍然需要二次处理。</p>
+</li>
+<li>
+<p>一个简单的例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* If no parent is specified, the class inherits from the Object class. */</span></span><br><span class="line"><span class="comment">/* 定义：以下token规约后的符号名称为"class" */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> :</span></span><br><span class="line">  <span class="comment">/* 若当前栈中的token满足下面这条式子 */</span></span><br><span class="line">  CLASS TYPEID <span class="string">'&#123;'</span> dummy_feature_list <span class="string">'&#125;'</span> <span class="string">';'</span> <span class="comment">/* ' */</span></span><br><span class="line">    <span class="comment">/* 进行规约。在规约的同时执行以下这条式子 */</span></span><br><span class="line">    <span class="comment">/* 注意，赋给$$的值，就是规约后新生成"class"的值 */</span></span><br><span class="line">    &#123; $$ = class_($<span class="number">2</span>,idtable.add_string(<span class="string">"Object"</span>), $<span class="number">4</span>, stringtable.add_string(curr_filename)); &#125;</span><br><span class="line">  | <span class="comment">/* 或者，如果满足以下式子 */</span></span><br><span class="line">  CLASS TYPEID INHERITS TYPEID <span class="string">'&#123;'</span> dummy_feature_list <span class="string">'&#125;'</span> <span class="string">';'</span></span><br><span class="line">    &#123; $$ = class_($<span class="number">2</span>,$<span class="number">4</span>,$<span class="number">6</span>,stringtable.add_string(curr_filename)); &#125;</span><br><span class="line">  | <span class="comment">/* 或者，如果捕获到了错误 */</span></span><br><span class="line">  error <span class="string">';'</span></span><br><span class="line">    &#123;&#125;</span><br><span class="line">;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>参考</p>
+<ul>
+<li><strong>偏向状态表分析</strong> <a href="https://happyers.top/compiler/bison-parser/" target="_blank" rel="noopener">bison生成代码的分析</a> - <a href="https://github.com/pcy190/CompilerAnalysis/blob/master/bison_analysis.md" target="_blank" rel="noopener">github</a></li>
+<li><a href="http://www.yinwang.org/blog-cn/2015/09/19/parser" target="_blank" rel="noopener">对Parser的误解</a></li>
+</ul>
+</li>
+</ul>
+<h2 id="3-semant-语义分析">3. semant - 语义分析</h2>
+<ul>
+<li>语义分析要对语法分析所生成的不全面的AST进行二次处理，并捕获 <strong>所有</strong> 剩余的错误。</li>
+<li>在语义分析中，必须填补缺失的信息，例如每个节点的类型。</li>
+<li>在此过程中，所捕获的错误包括但不限于
+<ul>
+<li>类型不匹配</li>
+<li>变量名未定义</li>
+<li>类继承成环状关系</li>
+</ul>
+</li>
+<li>以cool语言为例，该语言的语义分析需要经过以下步骤
+<ul>
+<li>
+<p>将基础类（<code>Object</code>，<code>IO</code>，<code>String</code>，<code>Bool</code>），添加至classTable中</p>
+</li>
+<li>
+<p>将用户定义的类，添加进classTable中</p>
+</li>
+<li>
+<p>检查是否有不正确的类继承。即检查是否存在某个类继承了一个 <strong>未声明或无法被继承</strong> 的类等等。</p>
+</li>
+<li>
+<p>将所有类按照继承关系建立 <strong>继承树</strong> 。例如：</p>
+<pre class="mermaid">    graph TB;
+Object --> String;
+Object --> Int;
+Object --> IO
+Object --> Bool
+Object --> A
+IO --> B
+C --> D
+D --> E
+E --> C</pre>
+<p><code>InheritanceNode</code>是类继承的基本单元。每个<code>InheritanceNode</code>都和一个cool语言中的类绑定。同时每个<code>InheritanceNode</code>中都存在一个指向<code>Environment</code>的指针成员。</p>
+</li>
+<li>
+<p>从根类（即从<code>Object</code>类）开始，自顶向下递归设置<code>InheritanceNode</code>为 <strong>“可到达的”</strong>。</p>
+</li>
+<li>
+<p>遍历全部类，判断是否有<code>InheritanceNode</code>是 <strong>“不可到达的”</strong> 。 如果存在，则说明类继承关系中存在环，报错终止。（例如上图）</p>
+<blockquote>
+<p>注意：由于cool语言是单继承的，每个类都只能继承一个类。所以这种判断是可行的。</p>
+</blockquote>
+</li>
+<li>
+<p>递归建立<code>feature_table</code>。从 <strong>继承树</strong> 的根开始（即<code>Object</code>类），自顶向下递归建立每个<code>InheritanceNode</code>中<code>Environment</code>的<code>feature_table</code>。该操作会将cool语言中，每个类内的<code>attribute</code>和<code>method</code>均添加进表中。<br>
+当父节点的<code>feature_table</code>建立完成后，子节点便会复制父节点的<code>Environment</code>，并在其上进行添加操作。这样，父节点的属性自然就包含于子节点的属性中。</p>
+</li>
+<li>
+<p>检查是否存在<code>Main</code>类以及<code>main</code>方法。</p>
+</li>
+<li>
+<p>递归进行类型检查。从 <strong>继承树</strong> 的根开始，<strong>自顶向下</strong> 检查每个类的类型，检查是错误，以及为AST添加缺失的类型信息。<br>
+在每个类中，类型检查是 <strong>自底向上</strong> 的，由节点较低的类型生成节点较高的类型，如此反复直至树根。其中需要捕获大量的错误，以及正确处理变量的作用域等等。</p>
+</li>
+<li>
+<p>语义分析结束，输出完整的AST。</p>
+</li>
+</ul>
+</li>
+<li>语义分析的功能，归根到底就只有两点
+<ul>
+<li>捕获所有错误。</li>
+<li>补充AST缺失的信息。</li>
+</ul>
+</li>
+<li>语义分析需要对每个表达式都进行类型检查，所以类型检查代码的编写是十分重要的。每个表达式所确定的类型也必须严格按照对应编程语言手册里的相关规定来设计，不可随意更改。</li>
+</ul>
+<h2 id="4-Code-optimization-代码优化">4. Code optimization - 代码优化</h2>
+<p>请移步  <a href="/2020/06/LLVM-IR-pass/">代码优化与LLVM IR pass</a></p>
+<h2 id="5-cgen-目标代码生成">5. cgen - 目标代码生成</h2>
+<ul>
+<li>
+<p>以cool语言为例，在生成目标代码前，需要先读入AST树的相关信息，重建继承图，并自上而下的初始化相关的映射表格<br>
+在该初始化过程中，每个类会遍历其中的<code>feature</code>，并将其相关信息添加至对应的<code>SymbolTable</code>中<br>
+如果该<code>feature</code>是<code>method</code>，则还会额外自顶向下计算所需要的最小临时变量数量，并将其添加进表格中。</p>
+</li>
+<li>
+<p>初始化过后就是生成代码，这个步骤会执行以下几个过程：</p>
+<ul>
+<li>
+<p>声明全局变量。例如以下mips汇编代码：</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line">  <span class="meta">.data</span></span><br><span class="line">  <span class="meta">.align</span>  <span class="number">2</span></span><br><span class="line">  .globl  class_nameTab</span><br><span class="line">  .globl  Main_protObj</span><br><span class="line">  .globl  Int_protObj</span><br><span class="line">  .globl  String_protObj</span><br><span class="line">  .globl  <span class="keyword">bool_const0</span></span><br><span class="line"><span class="keyword"> </span> .globl  <span class="keyword">bool_const1</span></span><br><span class="line"><span class="keyword"> </span> .globl  _int_tag</span><br><span class="line">  .globl  _bool_tag</span><br><span class="line">  .globl  _string_tag</span><br><span class="line"></span><br><span class="line"><span class="symbol">_int_tag:</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">3</span></span><br><span class="line"><span class="symbol">_bool_tag:</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">4</span></span><br><span class="line"><span class="symbol">_string_tag:</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">5</span></span><br><span class="line">  .globl _MemMgr_INITIALIZER</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>声明GC器。例如以下汇编代码：</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">_MemMgr_INITIALIZER:</span></span><br><span class="line">  <span class="meta">.word</span> _NoGC_Init</span><br><span class="line">  .globl _MemMgr_COLLECTOR</span><br><span class="line"><span class="symbol">_MemMgr_COLLECTOR:</span></span><br><span class="line">  <span class="meta">.word</span> _NoGC_Collect</span><br><span class="line">  .globl _MemMgr_TEST</span><br><span class="line"><span class="symbol">_MemMgr_TEST:</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">0</span></span><br><span class="line">  <span class="meta">.word</span> -<span class="number">1</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将常量输出（例如：数字，字符串，布尔常量），例如以下部分汇编代码</p>
+<blockquote>
+<p>注意：数字常量包括<code>0</code>，字符串常量包括空字符串<code>&quot;&quot;</code></p>
+</blockquote>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">  <span class="meta">.word</span> -<span class="number">1</span>              <span class="comment"># eye catcher for _gc_check</span></span><br><span class="line"><span class="symbol">str_const8:</span>             <span class="comment"># 该字符串的标签</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">5</span>               <span class="comment"># （未知用途）</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">6</span>               <span class="comment"># （未知用途）</span></span><br><span class="line">  <span class="meta">.word</span> String_dispTab  <span class="comment"># 该类型可以使用的方法</span></span><br><span class="line">  <span class="meta">.word</span> int_const2      <span class="comment"># 字符串长度（其中的int_const2指向另一个数字常量）</span></span><br><span class="line">  <span class="meta">.ascii</span> <span class="string">"Main"</span>         <span class="comment"># 字符串的ASCII码</span></span><br><span class="line">  .<span class="keyword">byte </span><span class="number">0</span>               <span class="comment"># 字符串末尾的\0终结符</span></span><br><span class="line">  <span class="meta">.align</span> <span class="number">2</span>              <span class="comment"># 对齐</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将所有类的名称输出。例如以下汇编代码：</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">class_nameTab:</span>        <span class="comment"># 这一个个的str_const都指向特定的字符串</span></span><br><span class="line">  <span class="meta">.word</span> str_const6    <span class="comment"># str_const6  =&gt; "Object"</span></span><br><span class="line">  <span class="meta">.word</span> str_const7    <span class="comment"># str_const7  =&gt; "IO"</span></span><br><span class="line">  <span class="meta">.word</span> str_const8    <span class="comment"># str_const8  =&gt; "Main"</span></span><br><span class="line">  <span class="meta">.word</span> str_const9    <span class="comment"># str_const9  =&gt; "Int"</span></span><br><span class="line">  <span class="meta">.word</span> str_const10   <span class="comment"># str_const10 =&gt; "Bool"</span></span><br><span class="line">  <span class="meta">.word</span> str_const11   <span class="comment"># str_const11 =&gt; "String"</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将所有类中的object table输出（未知用途，删除后仍然可以执行）</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">class_objTab:</span></span><br><span class="line">  <span class="meta">.word</span>  Object_protObj</span><br><span class="line">  <span class="meta">.word</span>  Object_init</span><br><span class="line">  <span class="meta">.word</span>  IO_protObj</span><br><span class="line">  <span class="meta">.word</span>  IO_init</span><br><span class="line">  <span class="meta">.word</span>  Main_protObj</span><br><span class="line">  <span class="meta">.word</span>  Main_init</span><br><span class="line">  <span class="meta">.word</span>  Int_protObj</span><br><span class="line">  <span class="meta">.word</span>  Int_init</span><br><span class="line">  <span class="meta">.word</span>  <span class="keyword">Bool_protObj</span></span><br><span class="line"><span class="keyword"> </span> <span class="meta">.word</span>  <span class="keyword">Bool_init</span></span><br><span class="line"><span class="keyword"> </span> <span class="meta">.word</span>  String_protObj</span><br><span class="line">  <span class="meta">.word</span>  String_init</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将每个类所含的方法输出（包括该类的继承类中的方法），例如以下汇编代码</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">Main_dispTab:</span></span><br><span class="line">  <span class="meta">.word</span>  Object.abort</span><br><span class="line">  <span class="meta">.word</span>  Object.type_name</span><br><span class="line">  <span class="meta">.word</span>  Object.copy</span><br><span class="line">  <span class="meta">.word</span>  IO.out_string</span><br><span class="line">  <span class="meta">.word</span>  IO.out_int</span><br><span class="line">  <span class="meta">.word</span>  IO.in_string</span><br><span class="line">  <span class="meta">.word</span>  IO.in_int</span><br><span class="line">  <span class="meta">.word</span>  Main.main</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将每个类的类型信息输出。<code>protObj</code>中含有当前类的属性以及函数表。例如以下部分汇编代码</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">    <span class="meta">.word</span>  -<span class="number">1</span>         <span class="comment"># -1 header for the garbage collector(eye catcher for _gc_check)</span></span><br><span class="line"><span class="symbol">Main_protObj:</span>         <span class="comment"># label</span></span><br><span class="line">  <span class="meta">.word</span>  <span class="number">2</span>            <span class="comment"># class tag</span></span><br><span class="line">  <span class="meta">.word</span>  <span class="number">7</span>            <span class="comment"># total_attributes + DEFAULT_OBJFIELDS</span></span><br><span class="line">  <span class="meta">.word</span>  Main_dispTab <span class="comment"># 函数表</span></span><br><span class="line">  <span class="meta">.word</span>  int_const0   <span class="comment"># 第一个attribute是数字类型</span></span><br><span class="line">  <span class="meta">.word</span>  str_const12  <span class="comment"># 第二个attribute是字符串类型</span></span><br><span class="line">  <span class="meta">.word</span>  <span class="keyword">bool_const0 </span> <span class="comment"># 第三个attribute是布尔类型</span></span><br><span class="line">  <span class="meta">.word</span>  <span class="number">0</span>            <span class="comment"># 第四个attribute是其他类型，例如各种类</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>声明全局代码段的相关信息，例如以下汇编代码</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#声明堆的相关信息</span></span><br><span class="line">  .globl  heap_start</span><br><span class="line"><span class="symbol">heap_start:</span></span><br><span class="line">  <span class="meta">.word</span>  <span class="number">0</span></span><br><span class="line"><span class="comment">#声明text代码段</span></span><br><span class="line">  <span class="meta">.text</span></span><br><span class="line">  .globl  Main_init</span><br><span class="line">  .globl  Int_init</span><br><span class="line">  .globl  String_init</span><br><span class="line">  .globl  <span class="keyword">Bool_init</span></span><br><span class="line"><span class="keyword"> </span> .globl  Main.main</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>输出每个类的初始化函数的代码，例如以下汇编代码</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">String_init:</span></span><br><span class="line">  <span class="keyword">addiu </span> $<span class="built_in">sp</span> $<span class="built_in">sp</span> -<span class="number">12</span></span><br><span class="line">  <span class="keyword">sw </span> $<span class="built_in">fp</span> <span class="number">12</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">sw </span> $<span class="built_in">s0</span> <span class="number">8</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">sw </span> $<span class="built_in">ra</span> <span class="number">4</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">addiu </span> $<span class="built_in">fp</span> $<span class="built_in">sp</span> <span class="number">4</span></span><br><span class="line">  <span class="keyword">move </span> $<span class="built_in">s0</span> $<span class="built_in">a0</span></span><br><span class="line">  <span class="keyword">jal </span> Object_init</span><br><span class="line">  <span class="keyword">move </span> $<span class="built_in">a0</span> $<span class="built_in">s0</span></span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">fp</span> <span class="number">12</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">s0</span> <span class="number">8</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">ra</span> <span class="number">4</span>($<span class="built_in">sp</span>)</span><br><span class="line">  <span class="keyword">addiu </span> $<span class="built_in">sp</span> $<span class="built_in">sp</span> <span class="number">12</span></span><br><span class="line">  <span class="keyword">jr </span> $<span class="built_in">ra</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><strong>输出每个类中的函数代码</strong>（示例代码就不放出来了）</p>
+</li>
+</ul>
+</li>
+<li>
+<p>在给出的课程文件夹中，文件<code>trap.handler</code>是一个不可或缺的存在。相当一部分重要函数被定义在其中，例如<code>out_string</code>以及垃圾回收器<code>GC</code>  等等。<br>
+mips汇编的执行流程如下：</p>
+<ul>
+<li>首先执行<code>__start</code></li>
+<li>在<code>__start</code>中，初始化垃圾回收器<code>GC</code></li>
+<li>设置<code>_exception_handler</code>异常处理程序</li>
+<li>复制一份<code>Main</code>类，并将其保存至栈上</li>
+<li>调用<code>Main.init</code>进行初始化</li>
+<li>执行<code>Main.main</code></li>
+<li>待函数返回后恢复栈</li>
+<li>输出终止信息并调用<code>exit</code>退出</li>
+</ul>
+<p>所以在生成main函数的代码时，不需要额外调用<code>abort</code>，只要将其视为一个普通的函数调用就好。</p>
+<blockquote>
+<p><code>trap.handler</code>中的函数，其参数传递方式为寄存器传递，与约定俗成的压栈传递有所不同，在阅读源码时注意甄别。</p>
+</blockquote>
+</li>
+<li>
+<p>在生成的mips汇编代码中，当调用另一个函数时，程序会</p>
+<ul>
+<li>待调用函数的参数全部压栈</li>
+<li>加载 <strong>当前类</strong> 的<code>dispatch_table</code></li>
+<li>加上某个特定偏移</li>
+<li>得到待调用函数的具体位置</li>
+<li><code>jalr</code>无条件跳转</li>
+</ul>
+</li>
+<li>
+<p>在mips汇编代码中，当调用new时，会执行以下流程</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">la  $<span class="built_in">a0</span> IO_protObj  <span class="comment"># 将待生成对象的静态地址赋给$a0</span></span><br><span class="line"><span class="keyword">jal </span>Object.copy     <span class="comment"># 调用copy复制一份到堆内存中（参数：$a0指向待复制的类对象；返回：$a0指向堆内存中复制出的类对象）</span></span><br><span class="line"><span class="keyword">jal </span>IO_init         <span class="comment"># 调用init方法初始化（参数：$a0指向复制出的类对象</span></span><br></pre></td></tr></table></figure>
+<p>即，整个过程结束时，<code>$a0</code>指向新建的类对象</p>
+</li>
+<li>
+<p><code>self</code>指针（<code>$s0</code>）的改变过程</p>
+<ul>
+<li>当<code>Main</code>类被新建出来后，<code>$a0</code>便指向堆上所复制出<code>Main</code>类的地址</li>
+<li>执行<code>Main.init</code>初始化（参数<code>$a0</code>指向堆上复制出的类）。之后执行<code>Main.main</code>函数。</li>
+<li>在每个函数开头，<code>$a0</code>都存放当前函数所属类的地址。故我们可以认定，<code>$a0</code>是类成员函数的隐藏参数，与C++类中的<code>this</code>指针类似，都是指向此函数所属的类。</li>
+<li>在每个成员函数中，
+<ul>
+<li>
+<p>函数开始时，<code>$s0</code>会先将上一个类地址存进栈中，然后将当前类地址<code>$a0</code>赋给<code>$s0</code>，使<code>$s0</code>指向新类的地址。</p>
+<blockquote>
+<p>为什么要将<code>self</code>放至<code>callee save</code>的寄存器中呢？请看下述代码：</p>
+</blockquote>
+  <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">A</span></span>&#123;</span><br><span class="line">  func() : Object &#123;&#123;</span><br><span class="line">    <span class="number">1</span>;</span><br><span class="line">  &#125;&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Main</span> </span>&#123;</span><br><span class="line">  main():Object &#123;&#123;</span><br><span class="line">        (<span class="keyword">new</span> A).func();</span><br><span class="line">  &#125;&#125;;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>当执行<code>A.func</code>函数时，其<code>old $s0</code>指向<code>Main</code>类，而传入的<code>$a0</code>指向<code>A</code>类。所以<code>$s0</code>需要在函数中保存。</p>
+</blockquote>
+</li>
+<li>
+<p>之后<code>$a0</code>便作为中间寄存器，参与当前函数中的表达式计算过程。</p>
+</li>
+<li>
+<p>在当前函数中调用函数，则会取得<code>$s0</code>的相对偏移处的类函数表<code>dispatch_table</code>，并根据特定偏移取得待调用函数的地址。若是取当前类中的成员变量，则同样使用<code>$s0</code>取得<code>protObj</code>中的成员信息。</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">Main_protObj:</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">2</span></span><br><span class="line">  <span class="meta">.word</span> <span class="number">4</span></span><br><span class="line">  <span class="meta">.word</span> Main_dispTab      <span class="comment"># 函数表，offset = 8</span></span><br><span class="line">  <span class="meta">.word</span> int_const2        <span class="comment"># main中的一个成员变量，offset = 12</span></span><br><span class="line"></span><br><span class="line"><span class="symbol">Main_dispTab:</span></span><br><span class="line">  <span class="meta">.word</span> Object.abort</span><br><span class="line">  <span class="meta">.word</span> Object.type_name</span><br><span class="line">  <span class="meta">.word</span> Object.copy</span><br><span class="line">  <span class="meta">.word</span> IO.out_string</span><br><span class="line">  <span class="meta">.word</span> IO.out_int        <span class="comment"># 函数out_int，offset = 16</span></span><br><span class="line">  <span class="meta">.word</span> IO.in_string</span><br><span class="line">  <span class="meta">.word</span> IO.in_int</span><br><span class="line">  <span class="meta">.word</span> Main.main</span><br><span class="line"></span><br><span class="line"><span class="symbol">Main.main:</span></span><br><span class="line">  <span class="comment">#...</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">a0</span> <span class="number">12</span>($<span class="built_in">s0</span>)         <span class="comment"># 获取Main类的特定成员变量地址</span></span><br><span class="line">  <span class="keyword">sw </span> $<span class="built_in">a0</span> <span class="number">0</span>($<span class="built_in">sp</span>)          <span class="comment"># 压栈，作为下一个函数的参数</span></span><br><span class="line">  <span class="keyword">addiu </span>$<span class="built_in">sp</span> $<span class="built_in">sp</span> -<span class="number">4</span></span><br><span class="line">  <span class="keyword">move </span> $<span class="built_in">a0</span> $<span class="built_in">s0</span>           <span class="comment"># 设置$a0为self，便于在下面中定位函数</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">#...</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">t1</span> <span class="number">8</span>($<span class="built_in">a0</span>)          <span class="comment"># 获取Main_dispTab地址</span></span><br><span class="line">  <span class="keyword">lw </span> $<span class="built_in">t1</span> <span class="number">16</span>($<span class="built_in">t1</span>)         <span class="comment"># 获取Main.out_int函数地址</span></span><br><span class="line">  <span class="keyword">jalr </span> $<span class="built_in">t1</span>               <span class="comment"># 无条件跳转执行</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>函数返回时，将<code>$s0</code>重新赋给<code>$a0</code>，并将<code>$s0</code>恢复至上一个类地址。</p>
+</li>
+<li>
+<p>这一整个流程下来，<code>$s0</code>和<code>$a0</code>的值不变，函数执行前与函数执行后的值一致相同。</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>cool-mips中的GC</p>
+<ul>
+<li>
+<p>cool语言的<code>cgen</code>在传入不同的参数下可以选择使用的GC类型（也可以不选）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* handle_flag.cc */</span></span><br><span class="line">Memmgr cgen_Memmgr = GC_NOGC;      <span class="comment">// enable/disable garbage collection</span></span><br><span class="line">Memmgr_Test cgen_Memmgr_Test = GC_NORMAL;  <span class="comment">// normal/test GC</span></span><br><span class="line">Memmgr_Debug cgen_Memmgr_Debug = GC_QUICK; <span class="comment">// check heap frequently</span></span><br><span class="line"><span class="comment">/* ... */</span></span><br><span class="line"><span class="keyword">case</span> <span class="string">'g'</span>:  <span class="comment">// enable garbage collection</span></span><br><span class="line">  cgen_Memmgr = GC_GENGC;</span><br><span class="line">  <span class="keyword">break</span>;</span><br><span class="line"><span class="keyword">case</span> <span class="string">'t'</span>:  <span class="comment">// run garbage collection very frequently (on every allocation)</span></span><br><span class="line">  cgen_Memmgr_Test = GC_TEST;</span><br><span class="line">  <span class="keyword">break</span>;</span><br><span class="line"><span class="keyword">case</span> <span class="string">'T'</span>:  <span class="comment">// do even more pedantic tests in garbage collection</span></span><br><span class="line">  cgen_Memmgr_Debug = GC_DEBUG;</span><br><span class="line">  <span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="comment">/* cgen.cc */</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">char</span> *gc_init_names[] =</span><br><span class="line">  &#123; <span class="string">"_NoGC_Init"</span>, <span class="string">"_GenGC_Init"</span>, <span class="string">"_ScnGC_Init"</span> &#125;;</span><br><span class="line"><span class="keyword">static</span> <span class="keyword">char</span> *gc_collect_names[] =</span><br><span class="line">  &#123; <span class="string">"_NoGC_Collect"</span>, <span class="string">"_GenGC_Collect"</span>, <span class="string">"_ScnGC_Collect"</span> &#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">CgenClassTable::code_select_gc</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="comment">//</span></span><br><span class="line">  <span class="comment">// Generate GC choice constants (pointers to GC functions)</span></span><br><span class="line">  <span class="comment">//</span></span><br><span class="line">  str &lt;&lt; GLOBAL &lt;&lt; <span class="string">"_MemMgr_INITIALIZER"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; <span class="string">"_MemMgr_INITIALIZER:"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; WORD &lt;&lt; gc_init_names[cgen_Memmgr] &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; GLOBAL &lt;&lt; <span class="string">"_MemMgr_COLLECTOR"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; <span class="string">"_MemMgr_COLLECTOR:"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; WORD &lt;&lt; gc_collect_names[cgen_Memmgr] &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; GLOBAL &lt;&lt; <span class="string">"_MemMgr_TEST"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; <span class="string">"_MemMgr_TEST:"</span> &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">  str &lt;&lt; WORD &lt;&lt; (cgen_Memmgr_Test == GC_TEST) &lt;&lt; <span class="built_in">endl</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当<code>cgen_Memmgr == GC_GENGC</code>时，<code>_GenGC_Assign</code>函数只在<code>AttributeBinding::code_update</code>中被调用，以记录成员变量的赋值操作至<code>assignment table</code></p>
+<blockquote>
+<p><code>assignment table</code> 用于分代垃圾回收。由于尚未学习GC的相关算法，故具体细节暂不追究。</p>
+</blockquote>
+</li>
+<li>
+<p>当<code>cgen_Memmgr_Debug == GC_DEBUG</code>时，<code>_gc_check</code>函数会被频繁调用，以检测对象的<code>eye catcher</code>是否存在。具体细节请查阅下述伪代码。</p>
+<blockquote>
+<p>这个check的用意，私以为是对特定变量进行检测，防止heap chunk的 <strong>重叠/被覆盖</strong></p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// $a1 存放 堆上某个对象的起始地址</span></span><br><span class="line">def _gc_check($a1):</span><br><span class="line">  <span class="keyword">if</span> $a1 != <span class="number">0</span>:</span><br><span class="line">    <span class="keyword">if</span> (obj_eyecatch($a1) != <span class="number">-1</span>): <span class="comment">// obj_eyecatch: offset from object pointer to the eyecatcher  </span></span><br><span class="line">      _gc_abort()</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>_GenGC_Collect</code>方法会在<code>Object.copy</code>函数中内部调用，以分配一块堆内存</p>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="6-思考题">6. 思考题</h2>
+<ul>
+<li>
+<blockquote>
+<p>描述每种文法（LL(1),SLR, LR(1), LALR等…)的使用条件，和它是为了解决什么问题？</p>
+</blockquote>
+<ul>
+<li><code>LL(1)</code> :
+<ul>
+<li>使用条件： 对于产生式A-&gt;α|β
+<ul>
+<li>当α、β均不能推出ε时，FIRST(α) ∩ FIRST(β) = φ</li>
+<li>α、β最多有一个能推出ε。同时当α、β中的某个符号推出ε时，另一个符号的FOLLOW集 ∩ FIRST(A) = φ</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>SLR</code> :
+<ul>
+<li>使用条件：不产生冲突</li>
+<li>解决的问题：<code>LR(0)</code>没有考虑文法符号的上下文环境，当进入任何一个规约状态时，总是会采取规约动作，这会造成 <strong>归约-移入冲突</strong>。而<code>SLR</code>限制了规约条件，也就是当进入规约状态时，只有当下一个符号属于规约项目的FOLLOW集时，才可以进行规约动作。</li>
+</ul>
+</li>
+<li><code>LR(1)</code> :
+<ul>
+<li>使用条件：需要忍受<code>LR(1)</code>自动机的高状态数所带来的影响。</li>
+<li>解决的问题： <code>SLR</code>只是简单判断下一个输入符号是否属于规约项目的FOLLOW集，只能排除不合理的规约而不能确保正确的规约。而<code>LR(1)</code>引入 <strong>后继符</strong> 这个概念。后继符集合是FOLLOW集的子集，故可进一步限制了规约的条件。</li>
+</ul>
+</li>
+<li><code>LALR</code> :
+<ul>
+<li>使用条件：合并项集后所构造出的语法分析表中，不存在语法分析动作冲突。</li>
+<li>解决的问题： <code>LR(1)</code>根据展望符集合的不同，将原始的<code>LR(0)</code>项目分裂成了不同的<code>LR(1)</code>项目。这会增大<code>LR(1)</code>自动机的状态数。而<code>LALR</code>将相同核心的<code>LR(1)</code>项集合并为一个项集，从而减少自动机的状态数。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<blockquote>
+<p>可以将cool语言的语义分析中 <code>!type_leq(type2, nd-&gt;get_name())</code>修改为<code>type_leq(nd-&gt;get_name(),type2)</code>吗？为什么？</p>
+</blockquote>
+<ul>
+<li>
+<p>先试着改了然后编译，发现错了五个，很明显是改不了的</p>
+</li>
+<li>
+<p>那为什么是改不了的呢？我们需要从<code>type_leq</code>这两个函数的功能开始说起</p>
+</li>
+<li>
+<p><code>type_leq</code>的功能是，查找<code>supertype</code>是否位于<code>subtype</code>的传递链中。以下图为例：</p>
+  <pre class="mermaid">      graph LR;
+  OBJECT-->A
+  OBJECT-->B;
+  B-->C;</pre>
+<ul>
+<li><code>type_leq(C, B)</code>会返回<code>true</code></li>
+<li><code>type_leq(C, A)</code>返回<code>false</code></li>
+</ul>
+</li>
+<li>
+<p>这就涉及到一个有趣的问题，当<code>A &lt;= B</code>为<code>false</code>时，是否就一定是<code>A &gt; B</code>呢？反之亦然呢？以上面的两条代码为例，我们可以很容易的得到：</p>
+<ul>
+<li>若<code>type_leq(B, C)</code>为<code>false</code>，则<code>type_leq(C, B)</code>为<code>true</code></li>
+<li>若<code>type_leq(C, A)</code>为<code>false</code>，则<code>type_leq(A, C)</code>仍为<code>false</code></li>
+</ul>
+</li>
+<li>
+<p>很明显,<code>A</code>和<code>C</code>无论如何也没有从属关系，所以这两个类型是 <strong>没办法比较</strong> 的。既然都没办法比较了，那就更无从谈起谁大谁小了。所以无论<code>A &lt;= C</code> 还是 <code>C &lt;= A</code> 都是<code>false</code>。</p>
+</li>
+<li>
+<p>所以, <code>type_lub</code>里的那条语句是无法替换的。</p>
+</li>
+</ul>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/06/compiler-learning/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Compiler/" rel="tag">Compiler</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/06/MakefileIntroduce/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Makefile的简单编写
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/06/ANSI-Unicode-type-confusion-study/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">字符串类型混淆漏洞的研究</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

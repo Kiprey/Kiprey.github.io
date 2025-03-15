@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记, 计算机网络, CS144,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CS144计算机网络 Lab0 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cs144-lab0"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CS144计算机网络 Lab0
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/cs144-lab0/" class="article-date">
+  <time datetime="2021-11-03T16:00:00.000Z" itemprop="datePublished">2021-11-04</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">8 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里记录了笔者配置 CS144 计算机网络实验环境的一些步骤。</p>
+<p>CS144 Lab0 实验指导书 - <a href="https://cs144.github.io/assignments/lab0.pdf" target="_blank" rel="noopener">Lab Checkpoint 0: networking warmup</a></p>
+<p>个人 CS144 实验项目地址 - <a href="https://github.com/Kiprey/sponge" target="_blank" rel="noopener">github</a></p>
+<a id="more"></a>
+<h2 id="二、环境搭建">二、环境搭建</h2>
+<p>如果是使用自己的 Linux 操作系统，照着这个装就好 - <a href="https://stanford.edu/class/cs144/vm_howto/vm-howto-byo.html" target="_blank" rel="noopener">BYO Linux installation</a>。</p>
+<p>不过鉴于目前 Linux 下已经装了不少的东西，因此我这边只需额外再装一个 doxygen + clang-format</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo apt-get install doxygen clang-format</span><br></pre></td></tr></table></figure>
+<p>之后下载 CS144 实验包，然后编译</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> --recursive git@github.com:Kiprey/sponge.git</span><br><span class="line">mkdir -p sponge/build</span><br><span class="line"><span class="built_in">cd</span> sponge/build</span><br><span class="line">cmake ..</span><br><span class="line">make</span><br></pre></td></tr></table></figure>
+<p>cmake 时可以设置几种编译宏：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">-DCMAKE_BUILD_TYPE=Release   <span class="comment"># optimizations</span></span><br><span class="line">-DCMAKE_BUILD_TYPE=Debug     <span class="comment"># debug symbols and -Og</span></span><br><span class="line">-DCMAKE_BUILD_TYPE=RelASan   <span class="comment"># release build with ASan and UBSan</span></span><br><span class="line">-DCMAKE_BUILD_TYPE=RelTSan   <span class="comment"># release build with ThreadSan (私以为这个大概率用不到)</span></span><br><span class="line">-DCMAKE_BUILD_TYPE=DebugASan <span class="comment"># debug build with ASan and UBSan</span></span><br><span class="line">-DCMAKE_BUILD_TYPE=DebugTSan <span class="comment"># debug build with ThreadSan</span></span><br></pre></td></tr></table></figure>
+<p>make 也有一些可以用到的编译选项，这里只罗列出比较常用的选项：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">make doc     <span class="comment"># 在 build/doc 中生成本地静态文档，通过 index.html 访问</span></span><br><span class="line">make format  <span class="comment"># 使用 CLANG 套件 来格式化代码</span></span><br><span class="line">make <span class="built_in">help</span>    <span class="comment"># 查看全部可make的目标</span></span><br><span class="line">make check_* <span class="comment"># 检测编写的代码</span></span><br></pre></td></tr></table></figure>
+<h2 id="三、代码风格">三、代码风格</h2>
+<p>CS144 使用 C++11 标准完成实验，它对C++代码的风格有着严格的限制：</p>
+<ul>
+<li>
+<p>使用 Resource acquisition is initialization 风格，即 RAII 风格。</p>
+</li>
+<li>
+<p>禁止使用 malloc 和 free 函数</p>
+</li>
+<li>
+<p>禁止使用 new 和 delete 关键字</p>
+</li>
+<li>
+<p>禁止使用原生指针（*）。若有必要，最好使用智能指针（unique_ptr等等）。</p>
+<blockquote>
+<p>CS144实验指导书说明，该实验没有必要用到指针。</p>
+</blockquote>
+</li>
+<li>
+<p>禁止使用模板、线程相关、各类锁机制以及虚函数</p>
+</li>
+<li>
+<p>禁止使用C风格字符串(char*) 以及 C 风格字符串处理函数。使用 string 来代替。</p>
+</li>
+<li>
+<p>禁止使用 C 风格强制类型转换。若有必要请使用 <code>static_cast</code></p>
+</li>
+<li>
+<p>传递参数给函数时，请使用常量引用类型（const Ty&amp; t）</p>
+</li>
+<li>
+<p>尽可能将每个变量和函数方法都声明成 const</p>
+</li>
+<li>
+<p>禁止使用全局变量，以及尽可能让每个变量的作用域最小</p>
+</li>
+<li>
+<p>在完成代码后，务必使用 <code>make format</code> 来标准化代码风格。</p>
+</li>
+</ul>
+<h2 id="四、尝试手动访问网页">四、尝试手动访问网页</h2>
+<p>使用 <code>telnet cs144.keithw.org http</code>命令以连接远程网页服务器，之后在终端键入以下内容</p>
+<blockquote>
+<p>内容中的<code>&lt;enter&gt;</code>指的是按下回车符</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">GET /hello HTTP/1.1&lt;enter&gt;</span><br><span class="line">Host: cs144.keithw.org&lt;enter&gt;</span><br><span class="line">Connection: close&lt;enter&gt;</span><br><span class="line">&lt;enter&gt;</span><br></pre></td></tr></table></figure>
+<p>之后就可以看到远程服务器将内容正确返回:</p>
+<p><img src="/2021/11/cs144-lab0/image-20211105091331646.png" alt="image-20211105091331646"></p>
+<p>比较有意思的是， telnet 在进行 http 访问下，会自动将用户输入的换行转化为 <code>\r\n</code>，而 nc 程序不会这样做。</p>
+<h2 id="五、-动手实现一个网络程序">五、 动手实现一个网络程序</h2>
+<p>这里我们需要实现一个程序 <code>webget</code>，用于访问外部网页，类似于 wget。</p>
+<p>代码量预计 10 行左右，位于<code>apps/webget.cc</code>，实现代码时务必借助 libsponge 中的 <code>TCPSocket</code> 和 <code>Address</code> 类来完成。</p>
+<p>需要注意的是</p>
+<ul>
+<li>
+<p>HTTP 头部的每一行末尾都是以<code>\r\n</code>结尾，而不是<code>\n</code></p>
+</li>
+<li>
+<p>需要包含<code>Connection: close</code> 的HTTP头部，以指示远程服务器在处理完当前请求后直接关闭。</p>
+</li>
+<li>
+<p>除非获取到EOF，否则必须<strong>循环</strong>从远程服务器读取信息。</p>
+<p>因为网络数据的传输可能断断续续，需要多次 read。</p>
+</li>
+</ul>
+<p>这里贴出我的实现方式：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">get_URL</span><span class="params">(<span class="keyword">const</span> <span class="built_in">string</span> &amp;host, <span class="keyword">const</span> <span class="built_in">string</span> &amp;path)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Your code here.</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// You will need to connect to the "http" service on</span></span><br><span class="line">    <span class="comment">// the computer whose name is in the "host" string,</span></span><br><span class="line">    <span class="comment">// then request the URL path given in the "path" string.</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// Then you'll need to print out everything the server sends back,</span></span><br><span class="line">    <span class="comment">// (not just one call to read() -- everything) until you reach</span></span><br><span class="line">    <span class="comment">// the "eof" (end of file).</span></span><br><span class="line"></span><br><span class="line">    <span class="function">Address <span class="title">addr</span><span class="params">(host, <span class="string">"http"</span>)</span></span>;</span><br><span class="line">    TCPSocket http_tcp;</span><br><span class="line">    http_tcp.connect(addr);</span><br><span class="line">    http_tcp.write(<span class="string">"GET "</span> + path + <span class="string">" HTTP/1.1\r\n"</span>);</span><br><span class="line">    http_tcp.write(<span class="string">"HOST: "</span> + host + <span class="string">"\r\n"</span>);</span><br><span class="line">    http_tcp.write(<span class="string">"Connection: close\r\n"</span>);</span><br><span class="line">    http_tcp.write(<span class="string">"\r\n"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span>(!http_tcp.eof())</span><br><span class="line">        <span class="built_in">cout</span> &lt;&lt; http_tcp.read();</span><br><span class="line">    http_tcp.close();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行的很成功：</p>
+<p><img src="/2021/11/cs144-lab0/image-20211105103200309.png" alt="image-20211105103200309"></p>
+<h2 id="六、实现Lab0">六、实现Lab0</h2>
+<p>Lab0 要求我们实现一个<strong>在内存中的</strong> 有序可靠字节流（有点类似于管道）</p>
+<p>要求</p>
+<ul>
+<li>
+<p>字节流可以从<strong>写入端</strong>写入，并以<strong>相同的顺序</strong>，从<strong>读取端</strong>读取</p>
+</li>
+<li>
+<p>字节流是有限的，写者可以终止写入。而读者可以在读取到字节流末尾时，产生EOF标志，不再读取。</p>
+</li>
+<li>
+<p>所实现的字节流必须支持<strong>流量控制</strong>，以控制内存的使用。当所使用的缓冲区爆满时，将禁止写入操作。直到读者读取了一部分数据后，空出了一部分缓冲区内存，才让写者写入。</p>
+</li>
+<li>
+<p>写入的字节流可能会很长，必须考虑到字节流大于缓冲区大小的情况。即便缓冲区只有1字节大小，所实现的程序也必须支持正常的写入读取操作。</p>
+</li>
+</ul>
+<blockquote>
+<p>在单线程环境下执行，因此不用考虑各类条件竞争问题。</p>
+</blockquote>
+<p>这是在<strong>内存</strong>中的有序可靠字节流，接下来的实验会让我们在<strong>不可靠网络</strong>中实现一个这样的可靠字节流，而这便是<strong>传输控制协议（Transmission Control Protocol，TCP）</strong></p>
+<p>以下是实现的代码。</p>
+<p>首先是类声明的实现，这里我添加了一个私有变量用以存放一些数据：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">ByteStream</span> &#123;</span></span><br><span class="line">  <span class="keyword">private</span>:</span><br><span class="line">    <span class="comment">// Your code here -- add private members as necessary.</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// Hint: This doesn't need to be a sophisticated data structure at</span></span><br><span class="line">    <span class="comment">// all, but if any of your tests are taking longer than a second,</span></span><br><span class="line">    <span class="comment">// that's a sign that you probably want to keep exploring</span></span><br><span class="line">    <span class="comment">// different approaches.</span></span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">deque</span>&lt;<span class="keyword">char</span>&gt; _queue;</span><br><span class="line">    <span class="keyword">size_t</span> _capacity_size;</span><br><span class="line">    <span class="keyword">size_t</span> _written_size;</span><br><span class="line">    <span class="keyword">size_t</span> _read_size;</span><br><span class="line">    <span class="keyword">bool</span> _end_input;</span><br><span class="line">    <span class="keyword">bool</span> _error&#123;&#125;;  <span class="comment">//!&lt; Flag indicating that the stream suffered an error.</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">public</span>:</span><br><span class="line">    <span class="comment">//! Construct a stream with room for `capacity` bytes.</span></span><br><span class="line">    ByteStream(<span class="keyword">const</span> <span class="keyword">size_t</span> capacity);</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \name "Input" interface for the writer</span></span><br><span class="line">    <span class="comment">//!@&#123;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Write a string of bytes into the stream. Write as many</span></span><br><span class="line">    <span class="comment">//! as will fit, and return how many were written.</span></span><br><span class="line">    <span class="comment">//! \returns the number of bytes accepted into the stream</span></span><br><span class="line">    <span class="function"><span class="keyword">size_t</span> <span class="title">write</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> &amp;data)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns the number of additional bytes that the stream has space for</span></span><br><span class="line">    <span class="function"><span class="keyword">size_t</span> <span class="title">remaining_capacity</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Signal that the byte stream has reached its ending</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">end_input</span><span class="params">()</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Indicate that the stream suffered an error.</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">set_error</span><span class="params">()</span> </span>&#123; _error = <span class="literal">true</span>; &#125;</span><br><span class="line">    <span class="comment">//!@&#125;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \name "Output" interface for the reader</span></span><br><span class="line">    <span class="comment">//!@&#123;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Peek at next "len" bytes of the stream</span></span><br><span class="line">    <span class="comment">//! \returns a string</span></span><br><span class="line">    <span class="function"><span class="built_in">std</span>::<span class="built_in">string</span> <span class="title">peek_output</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Remove bytes from the buffer</span></span><br><span class="line">    <span class="function"><span class="keyword">void</span> <span class="title">pop_output</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Read (i.e., copy and then pop) the next "len" bytes of the stream</span></span><br><span class="line">    <span class="comment">//! \returns a string</span></span><br><span class="line">    <span class="function"><span class="built_in">std</span>::<span class="built_in">string</span> <span class="title">read</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns `true` if the stream input has ended</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">input_ended</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns `true` if the stream has suffered an error</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">error</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _error; &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns the maximum amount that can currently be read from the stream</span></span><br><span class="line">    <span class="function"><span class="keyword">size_t</span> <span class="title">buffer_size</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns `true` if the buffer is empty</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">buffer_empty</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \returns `true` if the output has reached the ending</span></span><br><span class="line">    <span class="function"><span class="keyword">bool</span> <span class="title">eof</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line">    <span class="comment">//!@&#125;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//! \name General accounting</span></span><br><span class="line">    <span class="comment">//!@&#123;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Total number of bytes written</span></span><br><span class="line">    <span class="function"><span class="keyword">size_t</span> <span class="title">bytes_written</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">//! Total number of bytes popped</span></span><br><span class="line">    <span class="function"><span class="keyword">size_t</span> <span class="title">bytes_read</span><span class="params">()</span> <span class="keyword">const</span></span>;</span><br><span class="line">    <span class="comment">//!@&#125;</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>具体的成员实现：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line">ByteStream::ByteStream(<span class="keyword">const</span> <span class="keyword">size_t</span> capacity)</span><br><span class="line">    : _queue(), _capacity_size(capacity), _written_size(<span class="number">0</span>), _read_size(<span class="number">0</span>), _end_input(<span class="literal">false</span>), _error(<span class="literal">false</span>) &#123;&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">ByteStream::write</span><span class="params">(<span class="keyword">const</span> <span class="built_in">string</span> &amp;data)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (_end_input)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">size_t</span> write_size = min(data.size(), _capacity_size - _queue.size());</span><br><span class="line">    _written_size += write_size;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; write_size; i++)</span><br><span class="line">        _queue.push_back(data[i]);</span><br><span class="line">    <span class="keyword">return</span> write_size;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//! \param[in] len bytes will be copied from the output side of the buffer</span></span><br><span class="line"><span class="function"><span class="built_in">string</span> <span class="title">ByteStream::peek_output</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span> <span class="keyword">const</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> pop_size = min(len, _queue.size());</span><br><span class="line">    <span class="keyword">return</span> <span class="built_in">string</span>(_queue.begin(), _queue.begin() + pop_size);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//! \param[in] len bytes will be removed from the output side of the buffer</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">ByteStream::pop_output</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> pop_size = min(len, _queue.size());</span><br><span class="line">    _read_size += len;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; pop_size; i++)</span><br><span class="line">        _queue.pop_front();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">//! Read (i.e., copy and then pop) the next "len" bytes of the stream</span></span><br><span class="line"><span class="comment">//! \param[in] len bytes will be popped and returned</span></span><br><span class="line"><span class="comment">//! \returns a string</span></span><br><span class="line"><span class="function"><span class="built_in">std</span>::<span class="built_in">string</span> <span class="title">ByteStream::read</span><span class="params">(<span class="keyword">const</span> <span class="keyword">size_t</span> len)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">string</span> data = <span class="keyword">this</span>-&gt;peek_output(len);</span><br><span class="line">    <span class="keyword">this</span>-&gt;pop_output(len);</span><br><span class="line">    <span class="keyword">return</span> data;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">ByteStream::end_input</span><span class="params">()</span> </span>&#123; _end_input = <span class="literal">true</span>; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">ByteStream::input_ended</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _end_input; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">ByteStream::buffer_size</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _queue.size(); &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">ByteStream::buffer_empty</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _queue.empty(); &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">ByteStream::eof</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _end_input &amp;&amp; _queue.empty(); &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">ByteStream::bytes_written</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _written_size; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">ByteStream::bytes_read</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _read_size; &#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">ByteStream::remaining_capacity</span><span class="params">()</span> <span class="keyword">const</span> </span>&#123; <span class="keyword">return</span> _capacity_size - _queue.size(); &#125;</span><br></pre></td></tr></table></figure>
+<p>这个 Lab0 还是比较简单的，可以看到 check 跑的非常成功：</p>
+<p><img src="/2021/11/cs144-lab0/image-20211107094712926.png" alt="image-20211107094712926"></p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/cs144-lab0/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CS144/" rel="tag">CS144</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/cs144-lab1/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CS144计算机网络 Lab1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/10/kernel_pwn_introduction/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Kernel pwn CTF 入门</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

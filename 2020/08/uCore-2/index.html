@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab2、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab2 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-2"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab2
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/08/uCore-2/" class="article-date">
+  <time datetime="2020-08-09T14:25:53.000Z" itemprop="datePublished">2020-08-09</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">8.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">34 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 2时写下的一些笔记</li>
+<li>内容涉及段页式存储管理、页机制以及uCore页目录与页表结构等</li>
+<li>内容较多，建议使用右侧导航栏。</li>
+</ul>
+<a id="more"></a>
+<h2 id="1-知识点">1. 知识点</h2>
+<h3 id="1-物理内存探测">1) 物理内存探测</h3>
+<ul>
+<li>
+<p>操作系统需要知道了解整个计算机系统中的物理内存如何分布的，哪些被可用，哪些不可用。其基本方法是通过BIOS中断调用来帮助完成的。<code>bootasm.S</code>中新增了一段代码，使用BIOS中断检测物理内存总大小。</p>
+</li>
+<li>
+<p>在讲解该部分代码前，先引入一个结构体</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">e820map</span> &#123;</span>      <span class="comment">// 该数据结构保存于物理地址0x8000</span></span><br><span class="line">    <span class="keyword">int</span> nr_map;       <span class="comment">// map中的元素个数</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">        <span class="keyword">uint64_t</span> addr;    <span class="comment">// 某块内存的起始地址</span></span><br><span class="line">        <span class="keyword">uint64_t</span> size;    <span class="comment">// 某块内存的大小</span></span><br><span class="line">        <span class="keyword">uint32_t</span> type;    <span class="comment">// 某块内存的属性。1标识可被使用内存块；2表示保留的内存块，不可映射。</span></span><br><span class="line">    &#125; __attribute__((packed)) <span class="built_in">map</span>[E820MAX];</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下是bootasm.S中新增的代码，详细信息均以注释的形式写入代码中。</p>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">probe_memory:</span></span><br><span class="line">    movl <span class="number">$0</span>, <span class="number">0x8000</span>   # 初始化，向内存地址<span class="number">0x8000</span>，即uCore结构e820map中的成员nr_map中写入<span class="number">0</span></span><br><span class="line">    xorl %ebx, %ebx   # 初始化%ebx为<span class="number">0</span>，这是<span class="keyword">int</span> <span class="number">0x15</span>的其中一个参数</span><br><span class="line">    movw <span class="number">$0</span>x8004, %di # 初始化%di寄存器，使其指向结构e820map中的成员数组map</span><br><span class="line"><span class="symbol">start_probe:</span></span><br><span class="line">    movl <span class="number">$0</span>xE820, %eax  # BIOS <span class="number">0x15</span>中断的子功能编号 %eax == <span class="number">0xE820</span></span><br><span class="line">    movl <span class="number">$20</span>, %ecx    # 存放地址范围描述符的内存大小，至少<span class="number">20</span></span><br><span class="line">    movl $SMAP, %edx  # 签名， %edx == 0x534D4150h(<span class="string">"SMAP"</span>字符串的ASCII码)</span><br><span class="line">    <span class="keyword">int</span> <span class="number">$0</span>x15     # 调用<span class="number">0x15</span>中断</span><br><span class="line">    <span class="keyword">jnc</span> cont      # 如果该中断执行失败，则CF标志位会置<span class="number">1</span>，此时要通知UCore出错</span><br><span class="line">    movw <span class="number">$12345</span>, <span class="number">0x8000</span> # 向结构e820map中的成员nr_map中写入特殊信息，报告当前错误</span><br><span class="line">    <span class="keyword">jmp</span> finish_probe    # 跳转至结束，不再探测内存</span><br><span class="line"><span class="symbol">cont:</span></span><br><span class="line">    addw <span class="number">$20</span>, %di   # 如果中断执行正常，则目标写入地址就向后移动一个位置</span><br><span class="line">    incl <span class="number">0x8000</span>     # e820::nr_map++</span><br><span class="line">    cmpl <span class="number">$0</span>, %ebx   # 执行中断后，返回的%ebx是原先的%ebx加一。如果%ebx为<span class="number">0</span>，则说明当前内存探测完成</span><br><span class="line">    <span class="keyword">jnz</span> start_probe</span><br><span class="line"><span class="symbol">finish_probe:</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这部分代码执行完成后，从BIOS中获得的内存分布信息以结构体<code>e820map</code>的形式写入至物理<code>0x8000</code>地址处。稍后ucore的page_init函数会访问该地址并处理所有的内存信息。</p>
+</li>
+</ul>
+<h3 id="2-链接地址">2) 链接地址</h3>
+<ul>
+<li>
+<p>审计<code>lab2/tools/kernel.ld</code>这个链接脚本，我们可以很容易的发现，链接器设置kernel的链接地址(link address)为<code>0xC0100000</code>，这是个虚拟地址。在uCore的bootloader中，bootloader使用如下语句来加载kernel：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">readseg(ph-&gt;p_va &amp; <span class="number">0xFFFFFF</span>, ph-&gt;p_memsz, ph-&gt;p_offset);</span><br></pre></td></tr></table></figure>
+<p><code>0xC0010000 &amp; 0xFFFFFF == 0x00100000</code>即kernel最终被装载入物理地址<code>0x10000</code>处，其相对偏移为<code>-0xc0000000</code>，与uCore中所设置的虚拟地址的偏移量相对应。</p>
+</li>
+<li>
+<p>需要注意的是，在lab2的一些代码中会使用到如下两个变量，但这两个变量并没有被定义在任何C语言的源代码中：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">extern</span> <span class="keyword">char</span> end[];</span><br><span class="line"><span class="keyword">extern</span> <span class="keyword">char</span> edata[];</span><br></pre></td></tr></table></figure>
+<p>实际上，它们定义于<code>kernel.ld</code>这个链接脚本中</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">. = ALIGN(<span class="number">0x1000</span>);</span><br><span class="line">.data.pgdir : &#123;</span><br><span class="line">    *(.data.pgdir)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">PROVIDE(edata = .);</span><br><span class="line"></span><br><span class="line">.bss : &#123;</span><br><span class="line">    *(.bss)</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">PROVIDE(end = .);</span><br><span class="line"></span><br><span class="line">/DISCARD/ : &#123;</span><br><span class="line">    *(.eh_frame .note.GNU-<span class="built_in">stack</span>)</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 脚本文件的结尾</span></span><br></pre></td></tr></table></figure>
+<p><code>edata</code>表示<code>kernel</code>的<code>data</code>段结束地址；<code>end</code>表示<code>bss</code>段的结束地址（即整个<code>kernel</code>的结束地址）</p>
+<p><code>edata[]</code>和 <code>end[]</code>这些变量是ld根据kernel.ld链接脚本生成的全局变量，表示相应段的结束地址，它们不在任何一个.S、.c或.h文件中定义，但仍然可以在源码文件中使用。</p>
+</li>
+</ul>
+<h3 id="3-uCore的内存空间布局">3) uCore的内存空间布局</h3>
+<ul>
+<li>
+<p>在uCore中，CPU先在bootasm.S（实模式）中通过调用BIOS中断，将物理内存的相关描述符写入特定位置<code>0x8000</code>，然后读入kernel至物理地址<code>0x10000</code>、虚拟地址<code>0xC0000000</code>。</p>
+</li>
+<li>
+<p>而kernel在<code>page_init</code>函数中，读取物理内存地址<code>0x8000</code>处的内存，查找最大物理地址，并计算出所需的<strong>页面数</strong>。虚拟页表<code>VPT(Virtual Page Table)</code>的地址紧跟<code>kernel</code>，其地址为4k对齐。虚拟地址空间结构如下所示：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* *</span></span><br><span class="line"><span class="comment"> * Virtual memory map:                                          Permissions</span></span><br><span class="line"><span class="comment"> *                                                              kernel/user</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> *     4G -----------&gt; +---------------------------------+</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     |         Empty Memory (*)        |</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     +---------------------------------+ 0xFB000000</span></span><br><span class="line"><span class="comment"> *                     |   Cur. Page Table (Kern, RW)    | RW/-- PTSIZE</span></span><br><span class="line"><span class="comment"> *     VPT ----------&gt; +---------------------------------+ 0xFAC00000</span></span><br><span class="line"><span class="comment"> *                     |        Invalid Memory (*)       | --/--</span></span><br><span class="line"><span class="comment"> *     KERNTOP ------&gt; +---------------------------------+ 0xF8000000</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     |    Remapped Physical Memory     | RW/-- KMEMSIZE</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *     KERNBASE -----&gt; +---------------------------------+ 0xC0000000</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     |                                 |</span></span><br><span class="line"><span class="comment"> *                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</span></span><br><span class="line"><span class="comment"> * (*) Note: The kernel ensures that "Invalid Memory" is *never* mapped.</span></span><br><span class="line"><span class="comment"> *     "Empty Memory" is normally unmapped, but user programs may map pages</span></span><br><span class="line"><span class="comment"> *     there if desired.</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * */</span></span><br></pre></td></tr></table></figure>
+<p>完成<strong>物理内存页管理初始化工作</strong>后，其物理地址的分布空间如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line">+----------------------+ &lt;- <span class="number">0xFFFFFFFF</span>(<span class="number">4</span>GB)       ----------------------------  <span class="number">4</span>GB</span><br><span class="line">|  一些保留内存，例如用于|                                保留空间</span><br><span class="line">|   <span class="number">32b</span>it设备映射空间等  |</span><br><span class="line">+----------------------+ &lt;- 实际物理内存空间结束地址 ----------------------------</span><br><span class="line">|                      |</span><br><span class="line">|                      |</span><br><span class="line">|     用于分配的         |                                 可用的空间</span><br><span class="line">|    空闲内存区域        |</span><br><span class="line">|                      |</span><br><span class="line">|                      |</span><br><span class="line">|                      |</span><br><span class="line">+----------------------+ &lt;- 空闲内存起始地址      ----------------------------  </span><br><span class="line">|     VPT页表存放位置      |                                VPT页表存放的空间   (<span class="number">4</span>MB左右)</span><br><span class="line">+----------------------+ &lt;- bss段结束处           ----------------------------</span><br><span class="line">|uCore的text、data、bss |                              uCore各段的空间</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x00100000</span>(<span class="number">1</span>MB)       ---------------------------- <span class="number">1</span>MB</span><br><span class="line">|       BIOS ROM       |</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x000F0000</span>(<span class="number">960</span>KB)</span><br><span class="line">|     <span class="number">16b</span>it设备扩展ROM  |                             显存与其他ROM映射的空间</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x000C0000</span>(<span class="number">768</span>KB)</span><br><span class="line">|     CGA显存空间       |</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x000B8000</span>            ---------------------------- <span class="number">736</span>KB</span><br><span class="line">|        空闲内存       |</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x00011000</span>(+<span class="number">4</span>KB)          uCore header的内存空间</span><br><span class="line">| uCore的ELF header数据 |</span><br><span class="line">+----------------------+ &lt;<span class="number">-0x00010000</span>             ---------------------------- <span class="number">64</span>KB</span><br><span class="line">|       空闲内存        |</span><br><span class="line">+----------------------+ &lt;- 基于bootloader的大小          bootloader的</span><br><span class="line">|      bootloader的   |                                    内存空间</span><br><span class="line">|     text段和data段    |</span><br><span class="line">+----------------------+ &lt;- <span class="number">0x00007C00</span>            ---------------------------- <span class="number">31</span>KB</span><br><span class="line">|   bootloader和uCore  |</span><br><span class="line">|      共用的堆栈       |                                 堆栈的内存空间</span><br><span class="line">+----------------------+ &lt;- 基于栈的使用情况</span><br><span class="line">|     低地址空闲空间    |</span><br><span class="line">+----------------------+ &lt;-  <span class="number">0x00000000</span>           ---------------------------- <span class="number">0</span>KB</span><br></pre></td></tr></table></figure>
+<p>易知，其页表地址之上的物理内存空间是空闲的（除去保留的内存），故将该物理地址之下的物理空间对应的页表全部设置为保留(reserved)。并将这些空闲的内存全部添加进页表项中。</p>
+</li>
+</ul>
+<h3 id="4-段页式存储管理（重要）">4. 段页式存储管理（重要）</h3>
+<blockquote>
+<p>在保护模式中，x86 体系结构将内存地址分成三种：<strong>逻辑地址</strong>（也称<strong>虚拟地址</strong>）、<strong>线性地址</strong>和<strong>物理地址</strong>。</p>
+</blockquote>
+<ul>
+<li>段式存储在内存保护方面有优势，页式存储在内存利用和优化转移到后备存储方面有优势。</li>
+<li>在段式存储管理基础上，给每个段加一级页表。同时，通过指向相同的页表基址，实现进程间的段共享。</li>
+<li>在段页式管理中，操作系统弱化了段式管理中的功能，实现以分页为主的内存管理。段式管理只起到了一个过滤的作用，它将地址不加转换直接映射成线性地址。将虚拟地址转换为物理地址的过程如下：
+<ul>
+<li>根据段寄存器中的段选择子，获取GDT中的特定基址并加上目标偏移来确定<strong>线性地址</strong>。由于GDT中所有的基址全为0（因为弱化了段式管理的功能，对等映射），所以此时的逻辑地址和线性地址是相同的。</li>
+<li>根据该线性地址，获取对应页表项，并根据该页表项来获取对应的物理地址。</li>
+</ul>
+</li>
+<li><strong>一级页表（页目录表PageDirectoryTable, PDT）的起始地址存储于<code>%cr3</code>寄存器中。</strong></li>
+</ul>
+<h4 id="a-启动页机制（重要）">a. 启动页机制（重要）</h4>
+<p>启动页机制的代码很简单，其对应的汇编代码为</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"># labcodes/lab2/kern/init/entry<span class="number">.</span>S</span><br><span class="line"><span class="symbol">kern_entry:</span></span><br><span class="line">    # load pa of boot pgdir</span><br><span class="line">    movl $REALLOC(__boot_pgdir), %eax</span><br><span class="line">    movl %eax, %cr3</span><br><span class="line">    # enable paging</span><br><span class="line">    movl %cr0, %eax</span><br><span class="line">    orl $(CR0_PE | CR0_PG | CR0_AM | CR0_WP | CR0_NE | CR0_TS | CR0_EM | CR0_MP), %eax</span><br><span class="line">    andl $~(CR0_TS | CR0_EM), %eax</span><br><span class="line">    movl %eax, %cr0</span><br><span class="line"></span><br><span class="line">    # update <span class="built_in">eip</span></span><br><span class="line">    # now, <span class="built_in">eip</span> = 0x1xxxxx</span><br><span class="line">    leal next, %eax</span><br><span class="line">    # set <span class="built_in">eip</span> = KERNBASE + 0x1xxxxx</span><br><span class="line">    <span class="keyword">jmp</span> *%eax</span><br><span class="line"><span class="symbol">next:</span></span><br><span class="line">  # .....省略剩余代码</span><br><span class="line"></span><br><span class="line"># kernel builtin pgdir</span><br><span class="line"># an initial page directory (Page Directory Table, PDT)</span><br><span class="line"># These page directory table <span class="keyword">and</span> page table can be reused!</span><br><span class="line"><span class="meta">.section</span> .data<span class="number">.</span>pgdir</span><br><span class="line"><span class="meta">.align</span> PGSIZE</span><br><span class="line"><span class="symbol">__boot_pgdir:</span></span><br><span class="line"><span class="meta">.globl</span> __boot_pgdir</span><br><span class="line">    # map va <span class="number">0</span> ~ 4M to pa <span class="number">0</span> ~ 4M (temporary)</span><br><span class="line"><span class="meta">    .long</span> REALLOC(__boot_pt1) + (PTE_P | PTE_U | PTE_W)</span><br><span class="line"><span class="meta">    .space</span> (KERNBASE &gt;&gt; PGSHIFT &gt;&gt; <span class="number">10</span> &lt;&lt; <span class="number">2</span>) - (. - __boot_pgdir) # pad to PDE of KERNBASE</span><br><span class="line">    # map va KERNBASE + (<span class="number">0</span> ~ 4M) to pa <span class="number">0</span> ~ 4M</span><br><span class="line"><span class="meta">    .long</span> REALLOC(__boot_pt1) + (PTE_P | PTE_U | PTE_W)</span><br><span class="line"><span class="meta">    .space</span> PGSIZE - (. - __boot_pgdir) # pad to PGSIZE</span><br><span class="line"></span><br><span class="line"><span class="meta">.set</span> i, <span class="number">0</span></span><br><span class="line"><span class="symbol">__boot_pt1:</span></span><br><span class="line"><span class="meta">.rept</span> <span class="number">1024</span></span><br><span class="line"><span class="meta">    .long</span> i * PGSIZE + (PTE_P | PTE_W)</span><br><span class="line"><span class="meta">    .set</span> i, i + <span class="number">1</span></span><br><span class="line"><span class="meta">.endr</span></span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>首先，将一级页表 <strong>__boot_pgdir</strong>  （页目录表PDT）的<strong>物理</strong>基地址加载进<code>%cr3</code>寄存器中。</p>
+<ul>
+<li>
+<p>该一级页表<strong>暂时</strong>将虚拟地址 <strong>0xC0000000 + (0~4M)</strong> 以及虚拟地址 <strong>(0~4M)</strong>   设置为物理地址 <strong>(0-4M)</strong> 。</p>
+<p>之后会重新设置一级页表的映射关系。</p>
+<blockquote>
+<p>为什么要将两段虚拟内存映射到同一段物理地址呢？思考一下，答案就在下方。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>之后，设置<code>%cr0</code>寄存器中<strong>PE、PG、AM、WP、NE、MP</strong>位，关闭<strong>TS</strong> 与<strong>EM</strong> 位，以启动分页机制。</p>
+<blockquote>
+<p>先介绍一下<code>%cr0</code>寄存器主要3个标志位的功能：</p>
+<ul>
+<li><strong>P</strong>rotection <strong>E</strong>nable: 启动保护模式，默认只是打开分段。</li>
+<li><strong>P</strong>a<strong>g</strong>ing: 设置分页标志。只有PE和PG位同时置位，才能启动分页机制。</li>
+<li><strong>W</strong>rite <strong>P</strong>rotection: 当该位为1时，CPU会禁止ring0代码向read only page写入数据。这个标志位主要与<strong>写时复制</strong>有关系。</li>
+</ul>
+<p>除<strong>PE</strong>、<strong>PG</strong>与<strong>WP</strong> 的<strong>其他</strong>标志位与分页机制关联不大，其设置或清除的原因盲猜可能是通过启动分页机制这个机会来<strong>顺便做个初始化</strong>。</p>
+</blockquote>
+<blockquote>
+<p>当改变PE和PG位时，必须小心。只有<strong>当执行程序至少有部分代码和数据在线性地址空间和物理地址空间中具有相同地址时，我们才能改变PG位的设置</strong>。</p>
+<p>因为当<code>%cr0</code>寄存器一旦设置，则<strong>分页机制立即开启</strong>。此时这部分具有相同地址的代码在分页和未分页之间起着桥梁的作用。无论是否开启分页机制，这部分代码都必须具有相同的地址。</p>
+<p>而这一步的操作能否成功，关键就在于一级页表的设置。一级页表将虚拟内存中的两部分地址<strong>KERNBASE+(0-4M)</strong> 与 <strong>(0-4M)</strong> 暂时都映射至物理地址 <strong>(0-4M)</strong> 处，这样就可以满足上述的要求。</p>
+</blockquote>
+</li>
+<li>
+<p>最后，<strong>必须</strong>来个简单的<code>jmp</code>指令，将<code>eip</code>从物理地址“修改”为虚拟地址。</p>
+<blockquote>
+<p>在修改该了PE位之后程序必须立刻使用一条跳转指令，以刷新处理器执行管道中已经获取的不同模式下的任何指令。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="b-uCore段页机制启动过程">b. uCore段页机制启动过程</h4>
+<ul>
+<li>bootloader在启动保护模式前，会设置一个临时GDT以便于进入CPU保护模式后的bootloader和uCore所使用。</li>
+<li>uCore被bootloader加载进内存后，在<code>kern_entry</code>中启动页机制。</li>
+<li>在<code>pmm_init</code>中建立双向链表来管理物理内存，并设置一级页表（页目录表）与二级页表。</li>
+<li>最后重新加载新的GDT。</li>
+</ul>
+<blockquote>
+<p>lab2相对于lab1，新增了页机制相关的处理过程，其他过程没有改变。</p>
+</blockquote>
+<h4 id="c-uCore物理页结构">c. uCore物理页结构</h4>
+<ul>
+<li>
+<p>uCore中用于管理物理页的结构如下所示</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* *</span></span><br><span class="line"><span class="comment">* struct Page - Page descriptor structures. Each Page describes one</span></span><br><span class="line"><span class="comment">* physical page. In kern/mm/pmm.h, you can find lots of useful functions</span></span><br><span class="line"><span class="comment">* that convert Page to other data types, such as phyical address.</span></span><br><span class="line"><span class="comment">* */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Page</span> &#123;</span></span><br><span class="line">  <span class="keyword">int</span> ref;                <span class="comment">// 当前页被引用的次数，与内存共享有关</span></span><br><span class="line">  <span class="keyword">uint32_t</span> flags;         <span class="comment">// 标志位的集合，与eflags寄存器类似</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> property;  <span class="comment">// 空闲的连续page数量。这个成员只会用在连续空闲page中的第一个page</span></span><br><span class="line">  <span class="keyword">list_entry_t</span> page_link; <span class="comment">// 两个分别指向上一个和下一个非连续空闲页的指针。</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>目前在lab2中，flags可以设置的位只有<code>reserved</code>位和<code>Property</code>位。</p>
+<blockquote>
+<p><code>reserved</code>位表示当前页是否被保留，一旦保留该页，则该页无法用于分配；</p>
+<p><code>Property</code>位表示当前页是否已被分配，为1则表示已分配。</p>
+</blockquote>
+</li>
+<li>
+<p>所有的数据结构Page都存放在<strong>一维Page结构数组</strong>中。但请注意，这并非虚拟页表（VPT），即该<strong>一维Page结构数组并非分页机制用于<em>将虚拟地址转换为物理地址</em>这个过程所用到的一级与二级页表</strong>，它们只是用于设置对应物理页表的相关属性，例如当前物理页表被二级页表的引用次数等等。</p>
+</li>
+<li>
+<p>同时，该一维Page结构数组的存储位置与虚拟页表VPT的存储位置不同。前者的起始存储地址为kernel结尾地址向上4k对齐后的第一个物理页面，而后者则存储于指定虚拟地址<code>0xFAC00000</code>。</p>
+</li>
+<li>
+<p>页目录表使用<strong>线性地址</strong>的首部(PDX, 10bit)作为索引，二级页表使用<strong>线性地址</strong>的中部(PTX, 10bit)作为索引，而Page结构数组使用<strong>物理地址</strong>的首部与中部(PPN, 20bit)作为索引（注意是<strong>物理</strong>地址）。</p>
+</li>
+<li>
+<p>为了加快查找，所有连续空闲pages中的第一个Page结构都会构成一个双向链表。相互链接，其第一个结点是<code>free_area.free_list</code></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* free_area_t - maintains a doubly linked list to record free (unused) pages */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">  <span class="keyword">list_entry_t</span> free_list;         <span class="comment">// the list header</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> nr_free;           <span class="comment">// # of free pages in this free list</span></span><br><span class="line">&#125; <span class="keyword">free_area_t</span>;</span><br><span class="line"><span class="keyword">free_area_t</span> free_area;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="d-虚拟页表结构">d. 虚拟页表结构</h4>
+<p>每个页表项（PTE）都由一个32位整数来存储数据，其结构如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">      <span class="number">31</span><span class="number">-12</span>      <span class="number">9</span><span class="number">-11</span>     <span class="number">8</span>    <span class="number">7</span>    <span class="number">6</span>   <span class="number">5</span>   <span class="number">4</span>      <span class="number">3</span>    <span class="number">2</span>   <span class="number">1</span>   <span class="number">0</span></span><br><span class="line">+--------------+-------+-----+----+---+---+-----+-----+---+---+---+</span><br><span class="line">|     Offset   | Avail | MBZ | PS | D | A | PCD | PWT | U | W | P |</span><br><span class="line">+--------------+-------+-----+----+---+---+-----+-----+---+---+---+</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>0 - <strong>P</strong>resent: 表示当前PTE所指向的物理页面是否驻留在内存中</p>
+</li>
+<li>
+<p>1 - <strong>W</strong>riteable: 表示是否允许读写</p>
+</li>
+<li>
+<p>2 - <strong>U</strong>ser: 表示该页的访问所需要的特权级。即User(ring 3)是否允许访问</p>
+</li>
+<li>
+<p>3 - <strong>P</strong>age<strong>W</strong>rite<strong>T</strong>hough:  表示是否使用write through缓存写策略</p>
+</li>
+<li>
+<p>4 - <strong>P</strong>age<strong>C</strong>ache<strong>D</strong>isable: 表示是否<strong>不对</strong>该页进行缓存</p>
+</li>
+<li>
+<p>5 - <strong>A</strong>ccess: 表示该页是否已被访问过</p>
+</li>
+<li>
+<p>6 - <strong>D</strong>irty: 表示该页是否已被修改</p>
+</li>
+<li>
+<p>7 - <strong>P</strong>age<strong>S</strong>ize: 表示该页的大小</p>
+</li>
+<li>
+<p>8 - <strong>M</strong>ust<strong>B</strong>e<strong>Z</strong>ero: 该位必须保留为0</p>
+</li>
+<li>
+<p>9-11 - <strong>Avail</strong>able: 第9-11这三位并没有被内核或中断所使用，可保留给OS使用。</p>
+</li>
+<li>
+<p>12-31 - Offset: 目标地址的后20位。</p>
+<blockquote>
+<p>因为目标地址以4k作为对齐标准，所以该地址的低12位永远为0，故这12位空间可用于设置标志位。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="e-自映射">e. 自映射</h4>
+<ul>
+<li>
+<p>自映射的好处</p>
+<ul>
+<li>当页目录与页表建立完成后，如果需要按虚拟地址的地址<strong>顺序显示整个页目录表和页表的内容</strong>，则要查找页目录表的页目录表项内容，并根据页目录表项内容找到页表的物理地址，再转换成对应的虚地址，然后访问页表的虚地址，搜索整个页表的每个页目录项。这样的过程比较繁琐，而自映射可以改善这个过程。</li>
+<li>节省4KB空间</li>
+<li>方便用户态程序访问页表，可以用这种方式实现一个用户地址空间的映射</li>
+</ul>
+</li>
+<li>
+<p>页表自映射的关键点</p>
+<ul>
+<li>
+<p>把所有的页表（4KB * 1024个）放到<strong>连续</strong>的4MB <strong>虚拟地址</strong> 空间中，并且要求这段空间4MB对齐，这样，<strong>就会有一张虚拟页的内容与页目录的内容完全相同</strong>。</p>
+</li>
+<li>
+<p>页目录结构必须和页表结构相同。</p>
+</li>
+<li>
+<p>此时在页目录表中，会存在一个页目录条目，该页目录条目指向某个二级页表。而该二级页表的物理地址，正是页目录表所处于物理页的<strong>物理</strong>地址。</p>
+<p>即，页目录表中存在一个页目录条目，该条目内含的物理地址就是页目录表本身的物理地址。</p>
+<p>uCore中的这条代码证实了这个结论:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// recursively insert boot_pgdir in itself</span></span><br><span class="line"><span class="comment">// to form a virtual page table at virtual address VPT</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// PDX(VPT)为4MB虚拟页表所对应的PageDirectoryIndex</span></span><br><span class="line">boot_pgdir[PDX(VPT)] = PADDR(boot_pgdir) | PTE_P | PTE_W;</span><br></pre></td></tr></table></figure>
+<p>而下面这张图演示了其指向过程:</p>
+<blockquote>
+<p>注意页目录表此时存储于VPT的4MB范围中。</p>
+</blockquote>
+<pre class="mermaid">    graph LR;
+PDT-->PT1
+PDT-->PT2/PDT
+PT1-->PhyPage1
+PT1-->PhyPage2
+PT2/PDT-->PhyPage3/PT1
+PT2/PDT-->PhyPage4/PT2</pre>
+</li>
+</ul>
+</li>
+<li>
+<p>参考：<a href="https://blog.csdn.net/u010513059/article/details/80311248" target="_blank" rel="noopener">页表自映射</a></p>
+</li>
+</ul>
+<h3 id="5-uCore栈的迁移">5) uCore栈的迁移</h3>
+<ul>
+<li>
+<p>在原先的lab1中，bootloader所设置的栈起始地址为<code>0x7c00</code>，之后的uCore的代码也沿用了这个栈，但仍然划分出了一个全局数组作为TSS上的ring0栈地址（该全局数组位于uCore的bss段）。</p>
+<blockquote>
+<p>注意此时的<strong>两个</strong>内核栈是不一样的，一个是中断外使用的栈，另一个是中断内使用的栈。</p>
+</blockquote>
+</li>
+<li>
+<p>而在lab2中，栈稍微做了一些改变。bootloader所设置的栈起始地址仍然为<code>0x7c00</code>，但在将uCore加载进内存之后，在<code>kern_entry</code>中，该部分代码在启动页机制后将栈设置为uCore data段上的一个全局数组的末尾地址<code>bootstacktop</code>（8KB），并也在<code>gdt_init</code>将TSS ring0栈地址设置为了<code>bootstacktop</code>。</p>
+<blockquote>
+<p>与Lab1不同，之后内核可以使用的内核栈只有一个。</p>
+</blockquote>
+<blockquote>
+<p>中断处理程序可能会从高地址开始，向下覆盖ring3的栈数据。这个漏洞可能是因为未完全实现的内存管理机制所导致的。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="2-练习解答">2. 练习解答</h2>
+<h3 id="1-练习0">1) 练习0</h3>
+<blockquote>
+<p><strong>填写已有实验</strong>，将完成的实验1中的代码添加进实验2中。</p>
+</blockquote>
+<p>这个没什么好说的，一个个照搬就成。</p>
+<h3 id="2-练习1">2) 练习1</h3>
+<blockquote>
+<p><strong>实现 first-fit 连续物理内存分配算法</strong>。</p>
+</blockquote>
+<p>原先的uCore实验2代码中几乎已经完全实现了first-fit算法，但其中仍然存在一个问题，以至于无法通过check。什么问题呢：</p>
+<blockquote>
+<p><code>first-fit</code>算法要求将空闲内存块<strong>按照地址从小到大的方式</strong>连起来。</p>
+</blockquote>
+<p>但uCore中的代码没有实现这一点。所以要手动修改相关的代码。</p>
+<ul>
+<li>
+<p><code>default_init_memmap</code></p>
+<ul>
+<li>
+<p>该函数将新页面插入链表时，没有按照地址顺序插入</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list_add(&amp;free_list, &amp;(base-&gt;page_link));</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>故需要修改该行代码，使其按地址顺序插入至双向链表中。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list_add_before(&amp;free_list, &amp;(base-&gt;page_link));</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>default_alloc_pages</code></p>
+<ul>
+<li>
+<p>在原先的代码中，当获取到了一个大小足够大的页面地址时，程序会先将该页头从链表中断开，切割，并将剩余空间放回链表中。但将<em>剩余空间放回链表</em>时，并没有按照地址顺序插入链表。</p>
+<blockquote>
+<p>连续空闲页面中的第一个页称为页头，page header。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (page != <span class="literal">NULL</span>) &#123;</span><br><span class="line">    list_del(&amp;(page-&gt;page_link));</span><br><span class="line">    <span class="keyword">if</span> (page-&gt;property &gt; n) &#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">page</span> + <span class="title">n</span>;</span></span><br><span class="line">        p-&gt;property = page-&gt;property - n;</span><br><span class="line">        <span class="comment">// 注意这一步</span></span><br><span class="line">        list_add(&amp;free_list, &amp;(p-&gt;page_link));</span><br><span class="line">    &#125;</span><br><span class="line">    nr_free -= n;</span><br><span class="line">    ClearPageProperty(page);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>以下是修改后的代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (page != <span class="literal">NULL</span>) &#123;</span><br><span class="line">    <span class="keyword">if</span> (page-&gt;property &gt; n) &#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">page</span> + <span class="title">n</span>;</span></span><br><span class="line">        p-&gt;property = page-&gt;property - n;</span><br><span class="line">        SetPageProperty(p);</span><br><span class="line">        <span class="comment">// 注意这一步add after</span></span><br><span class="line">        list_add_after(&amp;(page-&gt;page_link), &amp;(p-&gt;page_link));</span><br><span class="line">    &#125;</span><br><span class="line">    list_del(&amp;(page-&gt;page_link));</span><br><span class="line">    nr_free -= n;</span><br><span class="line">    ClearPageProperty(page);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>default_free_pages</code></p>
+<ul>
+<li>
+<p>该函数默认会在函数末尾处，将待释放的页头插入至链表的第一个节点。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">list_add(&amp;free_list, &amp;(base-&gt;page_link));</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>所以我们需要修改这部分代码，使其按地址顺序插入至对应的链表结点处。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 将空闲页面按地址大小插入至链表中</span></span><br><span class="line"><span class="keyword">for</span>(le = list_next(&amp;free_list); le != &amp;free_list; le = list_next(le))</span><br><span class="line">&#123;</span><br><span class="line">    p = le2page(le, page_link);</span><br><span class="line">    <span class="keyword">if</span> (base + base-&gt;property &lt;= p) &#123;</span><br><span class="line">        assert(base + base-&gt;property != p);</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line">list_add_before(le, &amp;(base-&gt;page_link));</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-练习2">3) 练习2</h3>
+<blockquote>
+<p><strong>实现寻找虚拟地址对应的页表项</strong>.</p>
+</blockquote>
+<blockquote>
+<p>通过设置页表和对应的页表项，可建立虚拟内存地址和物理内存地址的对应关系。</p>
+<p>其中的<code>get_pte</code>函数是设置页表项环节中的一个重要步骤。此函数找到一个虚地址对应的二级页表项的内核虚地址，如果此二级页表项不存在，则分配一个包含此项的二级页表。</p>
+</blockquote>
+<p>以下为实现的代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">pte_t</span> * <span class="title">get_pte</span><span class="params">(<span class="keyword">pde_t</span> *pgdir, <span class="keyword">uintptr_t</span> la, <span class="keyword">bool</span> create)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 获取传入的线性地址中所对应的页目录条目的物理地址</span></span><br><span class="line">    <span class="keyword">pde_t</span> *pdep = &amp;pgdir[PDX(la)];</span><br><span class="line">    <span class="comment">// 如果该条目不可用(not present)</span></span><br><span class="line">    <span class="keyword">if</span> (!(*pdep &amp; PTE_P)) &#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">page</span>;</span></span><br><span class="line">        <span class="comment">// 如果分配页面失败，或者不允许分配，则返回NULL</span></span><br><span class="line">        <span class="keyword">if</span> (!create || (page = alloc_page()) == <span class="literal">NULL</span>)</span><br><span class="line">            <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">// 设置该物理页面的引用次数为1</span></span><br><span class="line">        set_page_ref(page, <span class="number">1</span>);</span><br><span class="line">        <span class="comment">// 获取当前物理页面所管理的物理地址</span></span><br><span class="line">        <span class="keyword">uintptr_t</span> pa = page2pa(page);</span><br><span class="line">        <span class="comment">// 清空该物理页面的数据。需要注意的是使用虚拟地址</span></span><br><span class="line">        <span class="built_in">memset</span>(KADDR(pa), <span class="number">0</span>, PGSIZE);</span><br><span class="line">        <span class="comment">// 将新分配的页面设置为当前缺失的页目录条目中</span></span><br><span class="line">        <span class="comment">// 之后该页面就是其中的一个二级页面</span></span><br><span class="line">        *pdep = pa | PTE_U | PTE_W | PTE_P;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 返回在pgdir中对应于la的二级页表项</span></span><br><span class="line">    <span class="keyword">return</span> &amp;((<span class="keyword">pte_t</span> *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>请描述页目录项（Pag Director Entry）和页表（Page Table Entry）中每个组成部分的含义和以及对ucore而言的潜在用处。</p>
+<blockquote>
+<p>请查看<a href="#d-%E8%99%9A%E6%8B%9F%E9%A1%B5%E8%A1%A8%E7%BB%93%E6%9E%84">虚拟页表结构</a></p>
+</blockquote>
+</li>
+<li>
+<p>如果ucore执行过程中访问内存，出现了页访问异常，请问硬件要做哪些事情？</p>
+<blockquote>
+<p>以下答案参考了其他blog，具体细节留待以后再来研究。</p>
+</blockquote>
+<ul>
+<li>将引发页访问异常的地址将被保存在cr2寄存器中</li>
+<li>设置错误代码</li>
+<li>引发Page Fault，将外存的数据换到内存中</li>
+<li>进行上下文切换，退出中断，返回到中断前的状态</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-练习3">4) 练习3</h3>
+<blockquote>
+<p><strong>释放某虚地址所在的页并取消对应二级页表项的映射</strong>.</p>
+</blockquote>
+<blockquote>
+<p>当释放一个包含某虚地址的物理内存页时，需要让对应此物理内存页的管理数据结构Page做相关的清除处理，使得此物理内存页成为空闲；另外还需把表示虚地址与物理地址对应关系的二级页表项清除。</p>
+</blockquote>
+<p>这个练习不是很难，对着注释完成即可。以下为实现的代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//page_remove_pte - free an Page sturct which is related linear address la</span></span><br><span class="line"><span class="comment">//                - and clean(invalidate) pte which is related linear address la</span></span><br><span class="line"><span class="comment">//note: PT is changed, so the TLB need to be invalidate</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">void</span></span><br><span class="line">page_remove_pte(<span class="keyword">pde_t</span> *pgdir, <span class="keyword">uintptr_t</span> la, <span class="keyword">pte_t</span> *ptep) &#123;</span><br><span class="line">    <span class="comment">// 如果传入的页表条目是可用的</span></span><br><span class="line">    <span class="keyword">if</span> (*ptep &amp; PTE_P) &#123;</span><br><span class="line">        <span class="comment">// 获取该页表条目所对应的地址</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">page</span> = <span class="title">pte2page</span>(*<span class="title">ptep</span>);</span></span><br><span class="line">        <span class="comment">// 如果该页的引用次数在减1后为0</span></span><br><span class="line">        <span class="keyword">if</span> (page_ref_dec(page) == <span class="number">0</span>)</span><br><span class="line">            <span class="comment">// 释放当前页</span></span><br><span class="line">            free_page(page);</span><br><span class="line">        <span class="comment">// 清空PTE</span></span><br><span class="line">        *ptep = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 刷新TLB内的数据</span></span><br><span class="line">        tlb_invalidate(pgdir, la);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>数据结构Page的全局变量（其实是一个数组）的每一项与页表中的页目录项和页表项有无对应关系？如果有，其对应关系是啥？</p>
+<ul>
+<li>
+<p>当页目录项或页表项有效时，Page数组中的项与页目录项或页表项存在对应关系。</p>
+</li>
+<li>
+<p>页目录表中存放着数个页表条目PTE，这些页表条目中存放了某个二级页表所在物理页的信息，包括该二级页表的<strong>物理地址</strong>，但使用<strong>线性地址</strong>的头部PDX(Page Directory Index)来索引页目录表。</p>
+<blockquote>
+<p>总结一下，页目录表内存放二级页表的<strong>物理地址</strong>，但却使用<strong>线性地址</strong>索引页目录表中的条目。</p>
+</blockquote>
+</li>
+<li>
+<p>而页表（二级页表）与页目录（一级页表）具有类似的特性，页表中的页表项指向所管理的物理页的<strong>物理地址</strong>（不是数据结构Page的地址），使用线性地址的中部PTX(Page Table Index)来索引页表。</p>
+</li>
+<li>
+<p>当二级页表获取物理页时，需要对该物理页所对应的数据结构page来做一些操作。其操作包括但不限于设置引用次数，这样方便共享内存。</p>
+</li>
+</ul>
+<blockquote>
+<p>为什么页目录表中存放的是<strong>物理</strong>地址呢？可能是为了防止递归查找。</p>
+<p>即原先查找页目录表的目的是想将某个线性地址转换为物理地址，但如果页目录表中存放的是二级页表的<strong>线性</strong>地址，则需要先查找该二级页表的物理地址，此时需要递归查找，这可能会出现永远也查找不到物理地址的情况。</p>
+</blockquote>
+</li>
+<li>
+<p>如果希望虚拟地址与物理地址相等，则需要如何修改lab2，完成此事？ <strong>鼓励通过编程来具体完成这个问题</strong></p>
+<ul>
+<li>
+<p>将<code>labcodes/lab2/tools/kernel.ld</code>中的加载地址从<code>0xC0100000</code>修改为<code>0x0</code></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 修改前</span></span><br><span class="line">. = <span class="number">0xC0100000</span>;</span><br><span class="line"><span class="comment">// 修改后</span></span><br><span class="line">. = <span class="number">0x0</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将<code>mm/</code>中的内核偏移地址修改为0</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 修改前</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> KERNBASE            0xC0000000</span></span><br><span class="line"><span class="comment">// 修改后</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> KERNBASE            0x0</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>最后一步，但也是必须要做的一步——<strong>关闭页机制</strong>。将开启页机制的那一段代码删除或注释掉最后一句即可。</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"># 修改后</span><br><span class="line">movl %cr0, %eax</span><br><span class="line">orl $(CR0_PE | CR0_PG | CR0_AM | CR0_WP | CR0_NE | CR0_TS | CR0_EM | CR0_MP), %eax</span><br><span class="line">andl $~(CR0_TS | CR0_EM), %eax</span><br><span class="line"># 注释了最后一句</span><br><span class="line"># movl %eax, %cr0</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>为什么要关闭页机制？只将偏移地址设置为0不够么？这是个值得探讨的问题。</p>
+<p>注意到<code>kern/init.entry.S</code>中有这样一段代码</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">next:</span></span><br><span class="line">  # unmap va <span class="number">0</span> ~ 4M, it<span class="string">'s temporary mapping</span></span><br><span class="line"><span class="string">  xorl %eax, %eax</span></span><br><span class="line"><span class="string">  movl %eax, __boot_pgdir</span></span><br></pre></td></tr></table></figure>
+<p>当CPU完成了<code>eip</code>的地址更新后，这两条指令会删除页目录表中的一个<strong>临时</strong>映射（va 0 ~ 4M to pa 0 ~ 4M）</p>
+<p>但一旦删除了这个临时映射后，CPU无法正常寻址，即便页目录表中还有一个映射（va KERNBASE + (0 ~ 4M) to pa 0 ~ 4M， 注意KERNBASE为0）</p>
+<p>但只要基地址不为0，则不会出错。</p>
+<p>具体的问题在哪呢？或许，需要查询一下intel 80386的相关手册。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="5-扩展练习">5) 扩展练习</h3>
+<h4 id="Challenge1">Challenge1</h4>
+<blockquote>
+<p><strong>buddy system（伙伴系统）分配算法</strong></p>
+<p>Buddy System算法把系统中的可用存储空间划分为存储块(Block)来进行管理, 每个存储块的大小必须是2的n次幂(Pow(2, n)), 即1, 2, 4, 8, 16, 32, 64, 128…</p>
+</blockquote>
+<h5 id="a-前置准备">a. 前置准备</h5>
+<p>伙伴系统中每个存储块的大小都必须是2的n次幂，所以其中必须有个<strong>可以将传入数转换为最接近该数的2的n次幂</strong>的函数，相关代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 传入一个数，返回最接近该数的2的指数（包括该数为2的整数这种情况）</span></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">getLessNearOfPower2</span><span class="params">(<span class="keyword">size_t</span> x)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">size_t</span> _i;</span><br><span class="line">    <span class="keyword">for</span>(_i = <span class="number">0</span>; _i &lt; <span class="keyword">sizeof</span>(<span class="keyword">size_t</span>) * <span class="number">8</span> - <span class="number">1</span>; _i++)</span><br><span class="line">        <span class="keyword">if</span>((<span class="number">1</span> &lt;&lt; (_i+<span class="number">1</span>)) &gt; x)</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">return</span> (<span class="keyword">size_t</span>)(<span class="number">1</span> &lt;&lt; _i);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="b-初始化">b. 初始化</h5>
+<p>初始时，程序会多次将一块尺寸很大的物理内存空间传入<code>init_memmap</code>函数，但该物理内存空间的大小却不一定是2的n次幂，所以需要对其进行分割。设定分割后的内存布局如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">buddy system中的内存布局</span></span><br><span class="line"><span class="comment">      某块较大的物理空间</span></span><br><span class="line"><span class="comment">低地址                              高地址</span></span><br><span class="line"><span class="comment">+-+--+----+--------+-------------------+</span></span><br><span class="line"><span class="comment">| |  |    |        |                   |</span></span><br><span class="line"><span class="comment">+-+--+----+--------+-------------------+</span></span><br><span class="line"><span class="comment">低地址的内存块较小             高地址的内存块较大</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">*/</span></span><br></pre></td></tr></table></figure>
+<p>同时，在双向链表<code>free_area.free_list</code>中，令空间较小的内存块在双向链表中靠前，空间较大的内存块在双向链表中靠后；低地址在前，高地址在后。故以下是最终的链表布局：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">free_area.free_list中的内存块顺序:</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">1. 一大块连续物理内存被切割后，free_area.free_list中的内存块顺序</span></span><br><span class="line"><span class="comment">    addr: 0x34       0x38           0x40</span></span><br><span class="line"><span class="comment">        +----+     +--------+     +---------------+</span></span><br><span class="line"><span class="comment">    &lt;-&gt; | 0x4| &lt;-&gt; | 0x8    | &lt;-&gt; |     0x10      | &lt;-&gt;</span></span><br><span class="line"><span class="comment">        +----+     +--------+     +---------------+</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">2. 几大块物理内存（这几块之间可能不连续）被切割后，free_area.free_list中的内存块顺序</span></span><br><span class="line"><span class="comment">    addr: 0x34       0x104       0x38           0x108          0x40                 0x110</span></span><br><span class="line"><span class="comment">        +----+     +----+     +--------+     +--------+     +---------------+     +---------------+</span></span><br><span class="line"><span class="comment">    &lt;-&gt; | 0x4| &lt;-&gt; | 0x4| &lt;-&gt; | 0x8    | &lt;-&gt; | 0x8    | &lt;-&gt; |     0x10      | &lt;-&gt; |     0x10      | &lt;-&gt;</span></span><br><span class="line"><span class="comment">        +----+     +----+     +--------+     +--------+     +---------------+     +---------------+</span></span><br><span class="line"><span class="comment">*/</span></span><br></pre></td></tr></table></figure>
+<p>根据上面的内存规划，可以得到<code>buddy_init_memmap</code>的代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">buddy_init_memmap(struct Page *base, <span class="keyword">size_t</span> n) &#123;</span><br><span class="line">    assert(n &gt; <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 设置当前页向后的curr_n个页</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">base</span>;</span></span><br><span class="line">    <span class="keyword">for</span> (; p != base + n; p ++) &#123;</span><br><span class="line">        assert(PageReserved(p));</span><br><span class="line">        p-&gt;flags = p-&gt;property = <span class="number">0</span>;</span><br><span class="line">        set_page_ref(p, <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 设置总共的空闲内存页面</span></span><br><span class="line">    nr_free += n;</span><br><span class="line">    <span class="comment">// 设置base指向尚未处理内存的end地址</span></span><br><span class="line">    base += n;</span><br><span class="line">    <span class="keyword">while</span>(n != <span class="number">0</span>)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">size_t</span> curr_n = getLessNearOfPower2(n);</span><br><span class="line">        <span class="comment">// 向前挪一块</span></span><br><span class="line">        base -= curr_n;</span><br><span class="line">        <span class="comment">// 设置free pages的数量</span></span><br><span class="line">        base-&gt;property = curr_n;</span><br><span class="line">        <span class="comment">// 设置当前页为可用</span></span><br><span class="line">        SetPageProperty(base);</span><br><span class="line">        <span class="comment">// 按照块的大小来插入空闲块，从小到大排序</span></span><br><span class="line">        <span class="comment">// @note 这里必须使用搜索的方式来插入块而不是直接list_add_after(&amp;free_list)，因为存在大的内存块不相邻的情况</span></span><br><span class="line">        <span class="keyword">list_entry_t</span>* le;</span><br><span class="line">        <span class="keyword">for</span>(le = list_next(&amp;free_list); le != &amp;free_list; le = list_next(le))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">le2page</span>(<span class="title">le</span>, <span class="title">page_link</span>);</span></span><br><span class="line">            <span class="comment">// 排序方式以内存块大小优先，地址其次。</span></span><br><span class="line">            <span class="keyword">if</span>((p-&gt;property &gt; base-&gt;property)</span><br><span class="line">                 || (p-&gt;property ==  base-&gt;property &amp;&amp; p &gt; base))</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        list_add_before(le, &amp;(base-&gt;page_link));</span><br><span class="line">        n -= curr_n;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="c-空间分配">c. 空间分配</h5>
+<p>分配空间时，遍历双向链表，查找大小合适的内存块。</p>
+<ul>
+<li>
+<p>若链表中不存在合适大小的内存块，则<strong>对半切割</strong>遍历过程中遇到的第一块大小大于所需空间的内存块。</p>
+</li>
+<li>
+<p>如果切割后的两块内存块的大小还是太大，则继续切割<strong>第一块</strong>内存块。</p>
+</li>
+<li>
+<p>循环该操作，直至切割出合适大小的内存块。</p>
+</li>
+<li>
+<p>最终<code>buddy_alloc_pages</code>代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *</span></span><br><span class="line"><span class="class"><span class="title">buddy_alloc_pages</span>(<span class="title">size_t</span> <span class="title">n</span>) &#123;</span></span><br><span class="line">    assert(n &gt; <span class="number">0</span>);</span><br><span class="line">    <span class="comment">// 向上取2的幂次方，如果当前数为2的幂次方则不变</span></span><br><span class="line">    <span class="keyword">size_t</span> lessOfPower2 = getLessNearOfPower2(n);</span><br><span class="line">    <span class="keyword">if</span> (lessOfPower2 &lt; n)</span><br><span class="line">        n = <span class="number">2</span> * lessOfPower2;</span><br><span class="line">    <span class="comment">// 如果待分配的空闲页面数量小于所需的内存数量</span></span><br><span class="line">    <span class="keyword">if</span> (n &gt; nr_free) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 查找符合要求的连续页</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">page</span> = <span class="title">NULL</span>;</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> *le = &amp;free_list;</span><br><span class="line">    <span class="keyword">while</span> ((le = list_next(le)) != &amp;free_list) &#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">le2page</span>(<span class="title">le</span>, <span class="title">page_link</span>);</span></span><br><span class="line">        <span class="keyword">if</span> (p-&gt;property &gt;= n) &#123;</span><br><span class="line">            page = p;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果需要切割内存块时，一定分配切割后的前面那块</span></span><br><span class="line">    <span class="keyword">if</span> (page != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="comment">// 如果内存块过大，则持续切割内存</span></span><br><span class="line">        <span class="keyword">while</span>(page-&gt;property &gt; n)</span><br><span class="line">        &#123;</span><br><span class="line">            page-&gt;property /= <span class="number">2</span>;</span><br><span class="line">            <span class="comment">// 切割出的右边那一半内存块不用于内存分配</span></span><br><span class="line">            <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">page</span> + <span class="title">page</span>-&gt;<span class="title">property</span>;</span></span><br><span class="line">            p-&gt;property = page-&gt;property;</span><br><span class="line">            SetPageProperty(p);</span><br><span class="line">            list_add_after(&amp;(page-&gt;page_link), &amp;(p-&gt;page_link));</span><br><span class="line">        &#125;</span><br><span class="line">        nr_free -= n;</span><br><span class="line">        ClearPageProperty(page);</span><br><span class="line">        assert(page-&gt;property == n);</span><br><span class="line">        list_del(&amp;(page-&gt;page_link));</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> page;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h5 id="d-内存释放">d. 内存释放</h5>
+<p>释放内存时</p>
+<ul>
+<li>
+<p>先将该内存块按照<strong>内存块大小从小到大与内存块地址从小到大</strong>的顺序插入至双向链表（具体请看上面的链表布局）。</p>
+</li>
+<li>
+<p>尝试向前合并，一次就够。如果向前合并成功，则一定不能再次向前合并。</p>
+</li>
+<li>
+<p>之后循环向后合并，直至无法合并。</p>
+<blockquote>
+<p>需要注意的是，在查找两块内存块能否合并时，若当前内存块合并过，则其大小会变为原来的2倍，此时需要遍历比原始大小（合并前内存块大小）更大的内存块。</p>
+</blockquote>
+</li>
+<li>
+<p>判断当前内存块的位置是否正常，如果不正常，则需要断开链表并重新插入至新的位置。</p>
+<blockquote>
+<p>如果当前内存块没有合并则肯定正常，如果合并过则<strong>不一定异常</strong>。</p>
+</blockquote>
+</li>
+<li>
+<p>最终代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">buddy_free_pages(struct Page *base, <span class="keyword">size_t</span> n) &#123;</span><br><span class="line">    assert(n &gt; <span class="number">0</span>);</span><br><span class="line">    <span class="comment">// 向上取2的幂次方，如果当前数为2的幂次方则不变</span></span><br><span class="line">    <span class="keyword">size_t</span> lessOfPower2 = getLessNearOfPower2(n);</span><br><span class="line">    <span class="keyword">if</span> (lessOfPower2 &lt; n)</span><br><span class="line">        n = <span class="number">2</span> * lessOfPower2;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">Page</span> *<span class="title">p</span> = <span class="title">base</span>;</span></span><br><span class="line">    <span class="keyword">for</span> (; p != base + n; p ++) &#123;</span><br><span class="line">        assert(!PageReserved(p) &amp;&amp; !PageProperty(p));</span><br><span class="line">        p-&gt;flags = <span class="number">0</span>;</span><br><span class="line">        set_page_ref(p, <span class="number">0</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    base-&gt;property = n;</span><br><span class="line">    SetPageProperty(base);</span><br><span class="line">    nr_free += n;</span><br><span class="line">    <span class="keyword">list_entry_t</span> *le;</span><br><span class="line">    <span class="comment">// 先插入至链表中</span></span><br><span class="line">    <span class="keyword">for</span>(le = list_next(&amp;free_list); le != &amp;free_list; le = list_next(le))</span><br><span class="line">    &#123;</span><br><span class="line">        p = le2page(le, page_link);</span><br><span class="line">        <span class="keyword">if</span> ((base-&gt;property &lt;= p-&gt;property)</span><br><span class="line">                 || (p-&gt;property ==  base-&gt;property &amp;&amp; p &gt; base))) &#123;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    list_add_before(le, &amp;(base-&gt;page_link));</span><br><span class="line">    <span class="comment">// 先向左合并</span></span><br><span class="line">    <span class="keyword">if</span>(base-&gt;property == p-&gt;property &amp;&amp; p + p-&gt;property == base) &#123;</span><br><span class="line">        p-&gt;property += base-&gt;property;</span><br><span class="line">        ClearPageProperty(base);</span><br><span class="line">        list_del(&amp;(base-&gt;page_link));</span><br><span class="line">        base = p;</span><br><span class="line">        le = &amp;(base-&gt;page_link);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 之后循环向后合并</span></span><br><span class="line">    <span class="comment">// 此时的le指向插入块的下一个块</span></span><br><span class="line">    <span class="keyword">while</span> (le != &amp;free_list) &#123;</span><br><span class="line">        p = le2page(le, page_link);</span><br><span class="line">        <span class="comment">// 如果可以合并(大小相等+地址相邻),则合并</span></span><br><span class="line">        <span class="comment">// 如果两个块的大小相同，则它们不一定内存相邻。</span></span><br><span class="line">        <span class="comment">// 也就是说，在一条链上，可能存在多个大小相等但却无法合并的块</span></span><br><span class="line">        <span class="keyword">if</span> (base-&gt;property == p-&gt;property &amp;&amp; base + base-&gt;property == p)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 向右合并</span></span><br><span class="line">            base-&gt;property += p-&gt;property;</span><br><span class="line">            ClearPageProperty(p);</span><br><span class="line">            list_del(&amp;(p-&gt;page_link));</span><br><span class="line">            le = &amp;(base-&gt;page_link);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果遍历到的内存块一定无法合并，则退出</span></span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span>(base-&gt;property &lt; p-&gt;property)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 如果合并不了，则需要修改base在链表中的位置，使大小相同的聚在一起</span></span><br><span class="line">            <span class="keyword">list_entry_t</span>* targetLe = list_next(&amp;base-&gt;page_link);</span><br><span class="line">            p = le2page(targetLe, page_link);</span><br><span class="line">            <span class="keyword">while</span>(p-&gt;property &lt; base-&gt;property)</span><br><span class="line">                 || (p-&gt;property ==  base-&gt;property &amp;&amp; p &gt; base))</span><br><span class="line">                targetLe = list_next(targetLe);</span><br><span class="line">            <span class="comment">// 如果当前内存块的位置不正确，则重置位置</span></span><br><span class="line">            <span class="keyword">if</span>(targetLe != list_next(&amp;base-&gt;page_link))</span><br><span class="line">            &#123;</span><br><span class="line">                list_del(&amp;(base-&gt;page_link));</span><br><span class="line">                list_add_before(targetLe, &amp;(base-&gt;page_link));</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// 最后退出</span></span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        le = list_next(le);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h5 id="5-算法检查">5. 算法检查</h5>
+<p><code>buddy_check</code>是一个不能忽视的检查函数，该函数可以帮助查找出程序内部隐藏的bug。笔者将其中原本用于检查<code>FIFO</code>算法的内容修改成检查<code>buddySystem</code>的内容。所修改的内容如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//.........................................................</span></span><br><span class="line"><span class="comment">// 先释放</span></span><br><span class="line">free_pages(p0, <span class="number">26</span>);     <span class="comment">// 32+  (-:已分配 +: 已释放)</span></span><br><span class="line"><span class="comment">// 首先检查是否对齐2</span></span><br><span class="line">p0 = alloc_pages(<span class="number">6</span>);    <span class="comment">// 8- 8+ 16+</span></span><br><span class="line">p1 = alloc_pages(<span class="number">10</span>);   <span class="comment">// 8- 8+ 16-</span></span><br><span class="line">assert((p0 + <span class="number">8</span>)-&gt;property == <span class="number">8</span>);</span><br><span class="line">free_pages(p1, <span class="number">10</span>);     <span class="comment">// 8- 8+ 16+</span></span><br><span class="line">assert((p0 + <span class="number">8</span>)-&gt;property == <span class="number">8</span>);</span><br><span class="line">assert(p1-&gt;property == <span class="number">16</span>);</span><br><span class="line">p1 = alloc_pages(<span class="number">16</span>);   <span class="comment">// 8- 8+ 16-</span></span><br><span class="line"><span class="comment">// 之后检查合并</span></span><br><span class="line">free_pages(p0, <span class="number">6</span>);      <span class="comment">// 16+ 16-</span></span><br><span class="line">assert(p0-&gt;property == <span class="number">16</span>);</span><br><span class="line">free_pages(p1, <span class="number">16</span>);     <span class="comment">// 32+</span></span><br><span class="line">assert(p0-&gt;property == <span class="number">32</span>);</span><br><span class="line"></span><br><span class="line">p0 = alloc_pages(<span class="number">8</span>);    <span class="comment">// 8- 8+ 16+</span></span><br><span class="line">p1 = alloc_pages(<span class="number">9</span>);    <span class="comment">// 8- 8+ 16-</span></span><br><span class="line">free_pages(p1, <span class="number">9</span>);     <span class="comment">// 8- 8+ 16+</span></span><br><span class="line">assert(p1-&gt;property == <span class="number">16</span>);</span><br><span class="line">assert((p0 + <span class="number">8</span>)-&gt;property == <span class="number">8</span>);</span><br><span class="line">free_pages(p0, <span class="number">8</span>);      <span class="comment">// 32+</span></span><br><span class="line">assert(p0-&gt;property == <span class="number">32</span>);</span><br><span class="line"><span class="comment">// 检测链表顺序是否按照块的大小排序的</span></span><br><span class="line">p0 = alloc_pages(<span class="number">5</span>);</span><br><span class="line">p1 = alloc_pages(<span class="number">16</span>);</span><br><span class="line">free_pages(p1, <span class="number">16</span>);</span><br><span class="line">assert(list_next(&amp;(free_list)) == &amp;((p1 - <span class="number">8</span>)-&gt;page_link));</span><br><span class="line">free_pages(p0, <span class="number">5</span>);</span><br><span class="line">assert(list_next(&amp;(free_list)) == &amp;(p0-&gt;page_link));</span><br><span class="line"></span><br><span class="line">p0 = alloc_pages(<span class="number">5</span>);</span><br><span class="line">p1 = alloc_pages(<span class="number">16</span>);</span><br><span class="line">free_pages(p0, <span class="number">5</span>);</span><br><span class="line">assert(list_next(&amp;(free_list)) == &amp;(p0-&gt;page_link));</span><br><span class="line">free_pages(p1, <span class="number">16</span>);</span><br><span class="line">assert(list_next(&amp;(free_list)) == &amp;(p0-&gt;page_link));</span><br><span class="line"></span><br><span class="line"><span class="comment">// 还原</span></span><br><span class="line">p0 = alloc_pages(<span class="number">26</span>);</span><br><span class="line"><span class="comment">//.........................................................</span></span><br></pre></td></tr></table></figure>
+<h5 id="6-总结与完整代码">6. 总结与完整代码</h5>
+<ul>
+<li>
+<p><code>buddySystem</code>在<strong>所分配的内存大小均为2的n次幂</strong>这种环境下，使用效果极佳。</p>
+</li>
+<li>
+<p>由于<code>buddySystem</code>的特性，最好使用二叉树而非普通双向链表来管理内存块，这样就可以避免一系列的bug。</p>
+<p>即便普通双向链表可以很好的实现<code>buddySystem</code>，但其中仍然存在一个较为麻烦的问题：</p>
+<blockquote>
+<p><strong>当某个物理块释放，将其插入至双向链表后，如果该物理块既可以和上一个物理块合并，又可以和下一个物理块合并，那么此时该合并哪一个物理块？</strong></p>
+</blockquote>
+<p>这个问题，双向链表无法很好的解决，该问题很可能会使一些物理块因为错误的合并顺序而最终导致内存的碎片化，降低内存的使用率。</p>
+</li>
+<li>
+<p>完整代码位于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/uCore/os_kernel_lab-master_RAW/labcodes/lab2/kern/mm/buddySystem_pmm.c" target="_blank" rel="noopener">github</a>，如有需要请自取。</p>
+</li>
+</ul>
+<h4 id="Challenge2">Challenge2</h4>
+<blockquote>
+<p><strong>任意大小的内存单元slub分配算法</strong></p>
+<p>slub算法，实现两层架构的高效内存单元分配，第一层是基于页大小的内存分配，第二层是在第一层基础上实现基于任意大小的内存分配。可简化实现，能够体现其主体思想即可。</p>
+</blockquote>
+<blockquote>
+<p>Challenge2 先鸽了，赶进度QWQ</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/08/uCore-2/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/08/uCore-3/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab3
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/08/uCore-1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab1</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

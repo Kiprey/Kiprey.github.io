@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab6、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab6 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-6"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab6
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/09/uCore-6/" class="article-date">
+  <time datetime="2020-09-18T09:35:38.000Z" itemprop="datePublished">2020-09-18</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.4k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">21 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 6时写下的一些笔记</li>
+<li>内容涉及处理机调度的一些相关实现。</li>
+</ul>
+<a id="more"></a>
+<h2 id="知识点">知识点</h2>
+<h3 id="1-CPU资源的时分复用">1. CPU资源的时分复用</h3>
+<ul>
+<li>进程切换：CPU资源的当前占用者切换
+<ul>
+<li>保存当前进程在PCB中的执行上下文（CPU状态）</li>
+<li>恢复下一个进程的执行上下文</li>
+</ul>
+</li>
+<li>处理机调度
+<ul>
+<li>从就绪队列中<strong>挑选</strong>下一个占用CPU运行的进程。</li>
+<li>从多个可用CPU中<strong>挑选</strong>就绪进程可使用的CPU资源。</li>
+</ul>
+</li>
+<li>调度程序：挑选就绪进程的内核函数
+<ul>
+<li>调度策略：依据什么原理挑选进程/线程</li>
+<li>调度时机：什么时候进行调度
+<ul>
+<li>内核运行调度程序的条件
+<ul>
+<li>进程从运行状态切换到等待状态</li>
+<li>进程被终结了</li>
+</ul>
+</li>
+<li>非抢占系统：当前进程主动放弃CPU时</li>
+<li>可抢占系统
+<ul>
+<li>中断请求被服务例程响应完成时</li>
+<li>当前进程被抢占
+<ul>
+<li>进程的时间片耗尽</li>
+<li>进程从等待状态切换到就绪状态</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-调度准则">2. 调度准则</h3>
+<ul>
+<li>
+<p>比较调度算法的准则</p>
+<ul>
+<li>CPU使用率：CPU处于忙状态的<strong>时间百分比</strong></li>
+<li>吞吐量：单位时间内完成的<strong>进程数量</strong></li>
+<li>周转时间：进程从初始化到结束（包括等待）的<strong>总时间</strong></li>
+<li>等待时间：进程在就绪队列中的<strong>总时间</strong></li>
+<li>响应时间：从提交请求到产生响应所花费的<strong>总时间</strong></li>
+</ul>
+</li>
+<li>
+<p>调度策略的目标</p>
+<ul>
+<li><strong>减少响应时间</strong>：及时处理用户的输入，尽快将输出反馈给用户</li>
+<li><strong>减少平均响应时间的波动</strong>：在交互系统中，可预测性比高差异低平均更重要。</li>
+</ul>
+<blockquote>
+<p>低延迟调度改善用户的交互体验。</p>
+<p>响应时间是操作系统的计算延迟。</p>
+</blockquote>
+</li>
+<li>
+<p>调度策略的吞吐量目标</p>
+<ul>
+<li><strong>增加吞吐量</strong>
+<ul>
+<li>减小开销（例如上下文切换的开销）</li>
+<li>系统资源的高效利用（例如CPU和IO设备的并行使用）</li>
+</ul>
+</li>
+<li><strong>减少每个进程的等待时间</strong></li>
+<li>保证<strong>吞吐量不受用户交互的影响</strong></li>
+</ul>
+<blockquote>
+<p>吞吐量是操作系统的计算带宽。</p>
+</blockquote>
+</li>
+<li>
+<p>调度的公平性目标</p>
+<ul>
+<li>保证每个进程<strong>占用相同的CPU时间</strong></li>
+<li>保证每个进程的<strong>等待时间</strong>相同</li>
+<li>公平通常会增加<strong>平均响应时间</strong></li>
+</ul>
+</li>
+</ul>
+<h3 id="3-调度算法">3. 调度算法</h3>
+<h4 id="a-先来先服务算法（First-Come-First-Served-FCFS）">a. 先来先服务算法（First Come First Served, FCFS）</h4>
+<blockquote>
+<p>依据进程进入就绪状态的先后顺序排序</p>
+</blockquote>
+<ul>
+<li>优点：简单</li>
+<li>缺点：
+<ul>
+<li>
+<p>平均等待时间波动较大（短进程可能排在长进程后面）</p>
+</li>
+<li>
+<p>IO资源和CPU资源的利用效率可能较低</p>
+<blockquote>
+<p>CPU密集型进程会导致IO设备闲置时，IO密集型进程也在等待。（CPU和IO设备可并行执行）</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="b-短进程优先算法（SPN）">b. 短进程优先算法（SPN）</h4>
+<blockquote>
+<p>选择就绪队列中执行时间<strong>最短</strong>进程占用的CPU进入运行状态。就绪队列按预期的执行时间来排序。</p>
+</blockquote>
+<ul>
+<li>优点：短进程优先算法具有<strong>最优</strong>平均周转时间。</li>
+<li>缺点：
+<ul>
+<li>
+<p>可能导致<strong>饥饿</strong>。例如连续的短进程流会使长进程无法获得CPU资源。</p>
+</li>
+<li>
+<p><strong>需要预估下一个CPU计算的持续时间</strong></p>
+<blockquote>
+<p>一种方法是，用<strong>历史</strong>执行时间预估<strong>未来</strong>执行时间</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>短剩余时间优先算法（SRT）：SPN算法的可抢占改进</p>
+</blockquote>
+<h4 id="c-最高响应比优先算法（HRRN）">c. 最高响应比优先算法（HRRN）</h4>
+<blockquote>
+<p>选择就绪队列中响应比R值最高的进程</p>
+<p>其中$R=(w+s)/s$, s：执行时间；w：等待时间</p>
+</blockquote>
+<ul>
+<li>在短进程优先算法基础上的改进</li>
+<li>不可抢占</li>
+<li>关注进程的等待时间</li>
+<li>防止无限期推迟</li>
+</ul>
+<h4 id="d-时间片轮转算法（RR，Round-Robin）">d. 时间片轮转算法（RR，Round-Robin）</h4>
+<ul>
+<li>时间片：分配处理机资源的基本时间单位</li>
+<li>算法思路：
+<ul>
+<li>时间片结束时，按FCFS算法切换到下一个就绪进程。</li>
+<li>每隔n-1个时间片，进程执行一个时间片。</li>
+</ul>
+</li>
+<li>时间片长度选择
+<ul>
+<li>时间片长度过长，则<strong>等待时间太长</strong>，极端情况下退化成FCFS。</li>
+<li>时间片长度过短，则<strong>反应较为迅速</strong>，但产生大量进程上下文切换，影响系统吞吐量。</li>
+<li>需要选择一个合适的时间片长度，以维持上下文切换开销处于1%状态。</li>
+</ul>
+</li>
+</ul>
+<h4 id="e-多级队列调度算法（MQ）">e. 多级队列调度算法（MQ）</h4>
+<ul>
+<li>就绪队列被划分为多个独立的子队列，每个队列拥有自己的调度策略</li>
+<li>队列间的调度
+<ul>
+<li>
+<p>固定优先级。例如先处理前台，后处理后台。但可能会导致饥饿。</p>
+</li>
+<li>
+<p>时间片轮转。每个队列都得到一个确定的能够调度其进程的CPU总时间。</p>
+<blockquote>
+<p>例如80%CPU时间用于前台，20%CPU时间用于后台。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="f-多级反馈队列算法（MLFQ）">f. 多级反馈队列算法（MLFQ）</h4>
+<ul>
+<li>
+<p>进程可在不同队列间移动的多级队列算法。</p>
+<blockquote>
+<p>时间片大小随优先级级别的增加而增加。</p>
+<p>例如进程在当前时间片内没有完成，则降到下一个优先级。</p>
+</blockquote>
+</li>
+<li>
+<p>特征：CPU密集型进程优先级下降的很快，IO密集型进程停留在高优先级。</p>
+</li>
+</ul>
+<h4 id="g-公平共享调度（FSS-Fair-Share-Scheduling）">g. 公平共享调度（FSS, Fair Share Scheduling）</h4>
+<p>FSS控制用户对系统资源的访问</p>
+<ul>
+<li>一些用户组比其他用户组更重要。</li>
+<li>保证不重要的组无法垄断资源
+<ul>
+<li>未使用的资源按比例分配</li>
+<li>没有达到资源使用率目标的组获得更高的优先级。</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-实时操作系统">4. 实时操作系统</h3>
+<ul>
+<li>实时操作系统的定义：正确性依赖于其时间和功能两方面的操作系统</li>
+<li>实时操作系统的性能指标：
+<ul>
+<li>时间约束的及时性（deadline）</li>
+<li>速度和平均性能相对不重要</li>
+</ul>
+</li>
+<li>实时操作系统的特性：时间约束的<strong>可预测性</strong></li>
+<li>实时任务：
+<ul>
+<li>任务：一次计算/文件读取/信息传递等等。</li>
+<li>任务属性：完成任务所需的资源以及定时参数。</li>
+</ul>
+</li>
+<li>周期实时任务：一系列相似的任务
+<ul>
+<li>任务有规律的重复</li>
+<li>周期p = 任务请求间隔$(0&lt;p)$</li>
+<li>执行时间e = 最大执行时间$(0&lt; e &lt;p)$</li>
+<li>使用率$U = e/p$</li>
+</ul>
+</li>
+<li>软时限和硬时限
+<ul>
+<li>硬时限（hard deadline）
+<ul>
+<li>错过任务时限将会导致<strong>灾难性或非常严重的后果</strong></li>
+<li><strong>必须</strong>验证，在最坏的情况下能够满足时限</li>
+</ul>
+</li>
+<li>软时限（soft deadline）
+<ul>
+<li><strong>通常</strong>能满足任务时限。如有时不能满足，则降低要求</li>
+<li>尽力保证满足任务时限。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>实时调度
+<ul>
+<li>速率单调调度算法（RM, Rate Monotonic）
+<ul>
+<li>通过周期安排优先级</li>
+<li>周期越短优先级越高</li>
+<li>执行周期越短的任务。</li>
+</ul>
+</li>
+<li>最早截止时间优先算法（EDF，Earliest Deadline First）
+<ul>
+<li>截止时间越早优先级越高</li>
+<li>执行截止时间最早的任务</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="5-多处理器调度">5. 多处理器调度</h3>
+<ul>
+<li>多处理器调度的特征
+<ul>
+<li>多个处理机组成一个多处理系统</li>
+<li>处理机间可负载共享</li>
+</ul>
+</li>
+<li>对称多处理器（SMP，Symmetric multiprocessing）调度
+<ul>
+<li>每个处理器运行自己的调度程序</li>
+<li>调度程序对共享资源的访问需要进行同步</li>
+</ul>
+</li>
+<li>对称多处理器的进程分配
+<ul>
+<li>静态进程分配
+<ul>
+<li>进程从开始到结束都被分配到一个固定的处理机上执行</li>
+<li>每个处理机都有自己的就绪队列</li>
+<li>调度开销小</li>
+<li>各处理机可能忙闲不均（例如<em>一核工作，七核在看</em> XD）</li>
+</ul>
+</li>
+<li>动态进程分配
+<ul>
+<li>进程在执行中可分配到任意空闲处理机执行</li>
+<li>所有处理机共享一个公共的就绪队列</li>
+<li>调度开销大</li>
+<li>各处理机的负载是均衡的</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="6-优先级反置">6. 优先级反置</h3>
+<blockquote>
+<p>优先级反置（Priority Inversion），是操作系统中出现的<strong>高优先级进程</strong>长时间等待<strong>低优先级进程</strong>所<strong>占用的资源</strong>的现象。</p>
+<p>基于优先级的可抢占调度算法存在优先级反置。</p>
+</blockquote>
+<ul>
+<li>优先级继承（Priority Inheritance）
+<ul>
+<li>占用资源的<strong>低优先级</strong>进程<strong>继承</strong>申请资源的<strong>高优先级</strong>进程的优先级。</li>
+<li>只在占有资源的低优先级进程<strong>被阻塞时</strong>，才提高占有资源进程的优先级。</li>
+</ul>
+</li>
+<li>优先级天花板协议（Priority ceiling protocol）
+<ul>
+<li>占用资源进程的优先级和所有可能的申请该资源的进程的最高优先级相同。</li>
+<li>不管是否发生等待，都提升占用资源进程的优先级。</li>
+<li>优先级高于系统中所有被锁定的资源的优先级上限，任务执行临界区时就不会被阻塞。</li>
+</ul>
+</li>
+</ul>
+<h2 id="练习解答">练习解答</h2>
+<h3 id="0-练习0">0) 练习0</h3>
+<blockquote>
+<p>填写已有实验</p>
+</blockquote>
+<p>先将Lab5中的相关代码照搬过来，然后修改<code>alloc_proc</code>的初始化，以及系统中断里的<strong>时钟中断</strong>这两处即可。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> struct proc_struct * <span class="title">alloc_proc</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span> = <span class="title">kmalloc</span>(<span class="title">sizeof</span>(<span class="title">struct</span> <span class="title">proc_struct</span>));</span></span><br><span class="line">    <span class="keyword">if</span> (proc != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        proc-&gt;state = PROC_UNINIT;</span><br><span class="line">        proc-&gt;pid = <span class="number">-1</span>;</span><br><span class="line">        proc-&gt;runs = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;kstack = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;need_resched = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;parent = <span class="literal">NULL</span>;</span><br><span class="line">        proc-&gt;mm = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="built_in">memset</span>(&amp;(proc-&gt;context), <span class="number">0</span>, <span class="keyword">sizeof</span>(struct context));</span><br><span class="line">        proc-&gt;tf = <span class="literal">NULL</span>;</span><br><span class="line">        proc-&gt;cr3 = boot_cr3;</span><br><span class="line">        proc-&gt;flags = <span class="number">0</span>;</span><br><span class="line">        <span class="built_in">memset</span>(proc-&gt;name, <span class="number">0</span>, PROC_NAME_LEN);</span><br><span class="line">        <span class="comment">// Lab5 code</span></span><br><span class="line">        proc-&gt;wait_state = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;cptr = proc-&gt;optr = proc-&gt;yptr = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">// Lab6 新增code</span></span><br><span class="line">        proc-&gt;rq = <span class="literal">NULL</span>;</span><br><span class="line">        list_init(&amp;(proc-&gt;run_link));</span><br><span class="line">        proc-&gt;time_slice = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;lab6_run_pool.left = proc-&gt;lab6_run_pool.right = proc-&gt;lab6_run_pool.parent = <span class="literal">NULL</span>;</span><br><span class="line">        proc-&gt;lab6_stride = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;lab6_priority = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> proc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">case</span> IRQ_OFFSET + IRQ_TIMER:</span><br><span class="line">    ticks++;</span><br><span class="line">    assert(current != <span class="literal">NULL</span>);</span><br><span class="line">    sched_class_proc_tick(current);</span><br><span class="line">    <span class="keyword">break</span>;</span><br></pre></td></tr></table></figure>
+<h3 id="1-练习1">1) 练习1</h3>
+<blockquote>
+<p>使用 Round Robin 调度算法（不需要编码）</p>
+</blockquote>
+<ul>
+<li>
+<p>请理解并分析sched_class中各个函数指针的用法，并结合Round Robin 调度算法描ucore的调度执行过程</p>
+<ul>
+<li><code>sched_class</code>中各个函数指针的用法
+<ul>
+<li>
+<p><code>sched_class</code>的定义如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// The introduction of scheduling classes is borrrowed from Linux, and makes the</span></span><br><span class="line"><span class="comment">// core scheduler quite extensible. These classes (the scheduler modules) encapsulate</span></span><br><span class="line"><span class="comment">// the scheduling policies.</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">sched_class</span> &#123;</span></span><br><span class="line">    <span class="comment">// the name of sched_class</span></span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span> *name;</span><br><span class="line">    <span class="comment">// Init the run queue</span></span><br><span class="line">    <span class="keyword">void</span> (*init)(struct run_queue *rq);</span><br><span class="line">    <span class="comment">// put the proc into runqueue, and this function must be called with rq_lock</span></span><br><span class="line">    <span class="keyword">void</span> (*enqueue)(struct run_queue *rq, struct proc_struct *proc);</span><br><span class="line">    <span class="comment">// get the proc out runqueue, and this function must be called with rq_lock</span></span><br><span class="line">    <span class="keyword">void</span> (*dequeue)(struct run_queue *rq, struct proc_struct *proc);</span><br><span class="line">    <span class="comment">// choose the next runnable task</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *(*<span class="title">pick_next</span>)(<span class="title">struct</span> <span class="title">run_queue</span> *<span class="title">rq</span>);</span></span><br><span class="line">    <span class="comment">// dealer of the time-tick</span></span><br><span class="line">    <span class="keyword">void</span> (*proc_tick)(struct run_queue *rq, struct proc_struct *proc);</span><br><span class="line">    <span class="comment">/* for SMP support in the future</span></span><br><span class="line"><span class="comment">     *  load_balance</span></span><br><span class="line"><span class="comment">     *     void (*load_balance)(struct rq* rq);</span></span><br><span class="line"><span class="comment">     *  get some proc from this rq, used in load_balance,</span></span><br><span class="line"><span class="comment">     *  return value is the num of gotten proc</span></span><br><span class="line"><span class="comment">     *  int (*get_proc)(struct rq* rq, struct proc* procs_moved[]);</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>其中，<code>const char *name</code>指向了<strong>当前调度算法的名称</strong>字符串</p>
+</li>
+<li>
+<p><code>void (*init)(struct run_queue *rq)</code>用于<strong>初始化</strong>传入的就绪队列。RR算法中只初始化了对应<code>run_queue</code>的<code>run_list</code>成员。</p>
+</li>
+</ul>
+</li>
+</ul>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">RR_init(struct run_queue *rq) &#123;</span><br><span class="line">    list_init(&amp;(rq-&gt;run_list));</span><br><span class="line">    rq-&gt;proc_num = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p><code>void (*enqueue)(struct run_queue *rq, struct proc_struct *proc)</code>用于将某个进程<strong>添加</strong>进传入的队列中。RR算法除了将进程添加进队列中，还重置了相关的时间片。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">RR_enqueue(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">    assert(list_empty(&amp;(proc-&gt;run_link)));</span><br><span class="line">    list_add_before(&amp;(rq-&gt;run_list), &amp;(proc-&gt;run_link));</span><br><span class="line">    <span class="keyword">if</span> (proc-&gt;time_slice == <span class="number">0</span> || proc-&gt;time_slice &gt; rq-&gt;max_time_slice) &#123;</span><br><span class="line">        proc-&gt;time_slice = rq-&gt;max_time_slice;</span><br><span class="line">  &#125;</span><br><span class="line">    proc-&gt;rq = rq;</span><br><span class="line">    rq-&gt;proc_num ++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>void (*dequeue)(struct run_queue *rq, struct proc_struct *proc)</code>用于将某个进程从传入的队列中<strong>移除</strong>。以下是RR算法的实现</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">RR_dequeue(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">    assert(!list_empty(&amp;(proc-&gt;run_link)) &amp;&amp; proc-&gt;rq == rq);</span><br><span class="line">    list_del_init(&amp;(proc-&gt;run_link));</span><br><span class="line">    rq-&gt;proc_num --;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>struct proc_struct *(*pick_next)(struct run_queue *rq)</code>用于在传入的就绪队列中<strong>选择</strong>出一个最适合运行的进程（<strong>选择进程但不将从队列中移除</strong>）。在RR算法中每次都只选择队列最前面那个进程。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *</span></span><br><span class="line"><span class="class"><span class="title">RR_pick_next</span>(<span class="title">struct</span> <span class="title">run_queue</span> *<span class="title">rq</span>) &#123;</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> *le = list_next(&amp;(rq-&gt;run_list));</span><br><span class="line">    <span class="keyword">if</span> (le != &amp;(rq-&gt;run_list)) &#123;</span><br><span class="line">        <span class="keyword">return</span> le2proc(le, run_link);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>void (*proc_tick)(struct run_queue *rq, struct proc_struct *proc)</code>。该函数会在时间中断处理例程中被调用，以减小当前运行进程的剩余时间片。若时间片耗尽，则设置当前进程的<code>need_resched</code>为1。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">RR_proc_tick(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">    <span class="keyword">if</span> (proc-&gt;time_slice &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        proc-&gt;time_slice --;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (proc-&gt;time_slice == <span class="number">0</span>) &#123;</span><br><span class="line">        proc-&gt;need_resched = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>结合<code>Round Robin</code>调度算法描uCore的调度执行过程</p>
+<ul>
+<li>
+<p>首先，uCore调用<code>sched_init</code>函数用于初始化相关的就绪队列。</p>
+</li>
+<li>
+<p>之后在<code>proc_init</code>函数中，建立第一个内核进程，并将其添加至就绪队列中。</p>
+</li>
+<li>
+<p>当所有的初始化完成后，uCore执行<code>cpu_idle</code>函数，并在其内部的<code>schedule</code>函数中，调用<code>sched_class_enqueue</code>将<strong>当前进程</strong>添加进就绪队列中（因为当前进程要被切换出CPU了）<br>
+然后，调用<code>sched_class_pick_next</code>获取就绪队列中可被轮换至CPU的进程。如果存在可用的进程，则调用<code>sched_class_dequeue</code>函数，将该进程移出就绪队列，并在之后执行<code>proc_run</code>函数进行进程上下文切换。</p>
+</li>
+<li>
+<p>需要注意的是，每次时间中断都会调用函数<code>sched_class_proc_tick</code>。该函数会减少当前运行进程的剩余时间片。如果时间片减小为0，则设置<code>need_resched</code>为1，并在时间中断例程完成后，在<code>trap</code>函数的剩余代码中进行进程切换。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">trap</span><span class="params">(struct trapframe *tf)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (current == <span class="literal">NULL</span>)</span><br><span class="line">        trap_dispatch(tf);</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">        struct trapframe *otf = current-&gt;tf;</span><br><span class="line">        current-&gt;tf = tf;</span><br><span class="line">  </span><br><span class="line">        <span class="keyword">bool</span> in_kernel = trap_in_kernel(tf);</span><br><span class="line">        <span class="comment">// 执行对应的中断处理例程</span></span><br><span class="line">        trap_dispatch(tf);</span><br><span class="line">        <span class="comment">// 恢复对应的trapframe</span></span><br><span class="line">        current-&gt;tf = otf;</span><br><span class="line">        <span class="comment">// 如果当前中断的是用户进程</span></span><br><span class="line">        <span class="comment">// 注意这里体现出用户进程的可抢占性</span></span><br><span class="line">        <span class="keyword">if</span> (!in_kernel) &#123;</span><br><span class="line">            <span class="keyword">if</span> (current-&gt;flags &amp; PF_EXITING)</span><br><span class="line">                do_exit(-E_KILLED);</span><br><span class="line">            <span class="comment">// 如果在中断处理例程中设置need_resched为1，则在此处切换进程</span></span><br><span class="line">            <span class="keyword">if</span> (current-&gt;need_resched)</span><br><span class="line">                schedule();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>请在实验报告中简要说明如何设计实现”多级反馈队列调度算法“，给出概要设计，鼓励给出详细设计</p>
+<ul>
+<li>
+<p>多级反馈队列算法与时间片轮换算法类似，但又有所区别。该算法需要设置多个<code>run_queue</code>，而这些<code>run_queue</code>的<code>max_time_slice</code>需要按照优先级依次递减。</p>
+</li>
+<li>
+<p>在<code>sched_init</code>函数中，程序先初始化这些<code>run_queue</code>，并依次从大到小设置<code>max_time_slice</code>。</p>
+<blockquote>
+<p>例如队列一的<code>max_time_slice</code>为7，队列二的<code>max_time_slice</code>为5，队列三的<code>max_time_slice</code>为3。</p>
+</blockquote>
+</li>
+<li>
+<p>而执行<code>sched_class_enqueue</code>时，先判断当前进程是否是新建立的进程。如果是，则将其添加至最高优先级（即时间片最大）的队列。如果当前进程是旧进程（即已经使用过一次或多次CPU，但进程仍然未结束），则将其添加至下一个优先级的队列，因为该进程可能是IO密集型的进程，CPU消耗相对较小。</p>
+<blockquote>
+<p>如果原先的队列已经是最低优先级的队列了，则重新添加至该队列。</p>
+</blockquote>
+</li>
+<li>
+<p><code>sched_class_pick_next</code>要做的事情稍微有点多。首先要确认下一次执行的该是哪条队列里的哪个进程。为便于编码，我们可以直接指定切换至队列中的<strong>第一个</strong>进程（该进程是<strong>等待执行时间</strong>最久的进程）。</p>
+<p>但队列的选择不能那么简单，因为如果只是简单的选择执行<strong>第一个队列</strong>中的进程，则大概率会产生<strong>饥饿</strong>，即低优先级的进程长时间得不到CPU资源。所以，我们可以设置每条队列占用<strong>固定时间/固定百分比</strong>的CPU。例如在每个队列中添加一个<code>max_list_time_slice</code>属性并初始化，当该队列中的进程<strong>总运行时间</strong>超过当前进程所在队列的<code>max_list_time_slice</code>（即<strong>最大运行时间片</strong>），则CPU切换至下一个队列中的进程。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-练习2">2) 练习2</h3>
+<blockquote>
+<p>实现 Stride Scheduling 调度算法（需要编码）</p>
+</blockquote>
+<h4 id="a-Stride调度算法的相关介绍">a. Stride调度算法的相关介绍</h4>
+<p>uCore的Round-Robin算法可以保证每个进程得到的CPU资源是相等的，但我们希望调度器能够更加智能的为每个进程分配合理的CPU资源，让<strong>每个进程得到的时间资源与它们的优先级成正比关系</strong>。而Stride Scheduling调度算法就是这样的一种典型而简单的算法。</p>
+<p>其中，该算法的有如下几个特点：</p>
+<ul>
+<li>实现简单</li>
+<li>可控性：可以证明Stride Scheduling对进程的调度次数正比于其优先级</li>
+<li>确定性：在不考虑计时器事件的情况下，整个调度机制都是可预知和重现的。</li>
+</ul>
+<p>而该算法的基本思想如下：</p>
+<ol>
+<li>为每个runnable的进程设置一个当前状态stride，表示该进程当前的调度权。另外定义其对应的pass值，表示对应进程在调度后，stride 需要进行的累加值。</li>
+<li>每次需要调度时，从当前 runnable 态的进程中选择 stride最小的进程调度。</li>
+<li>对于获得调度的进程P，将对应的stride加上其对应的步长pass（只与进程的优先权有关系）。</li>
+<li>在一段固定的时间之后，回到 2.步骤，重新调度当前stride最小的进程。</li>
+</ol>
+<blockquote>
+<p>可以证明，如果令 P.pass = BigStride / P.priority 其中 P.priority 表示进程的优先权（大于 1），而 BigStride 表示一个预先定义的大常数，则该调度方案为每个进程分配的时间将与其优先级成正比。</p>
+</blockquote>
+<p>不过这里有个点需要注意一下，随着进程的执行，stride属性值会一直在增加，那么就有可能造成整数溢出。当stride溢出后，不当的比较可能会造成错误。那应该怎么做呢？</p>
+<p>这里有一个结论：<code>STRIDE_MAX – STRIDE_MIN &lt;= PASS_MAX == BIG_STRIDE / 1</code> （注意最小的Priority为1）。所以我们只要将<code>BIG_STRIDE</code>限制在某个范围内，即可保证<strong>任意两个stride之差都会在机器整数表示的范围之内</strong>。</p>
+<p>而又因为溢出数a减去非溢出数b的结果<strong>仍然是正确</strong>的，例如</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">uint32_t</span> a = ((<span class="keyword">uint32_t</span>) <span class="number">-1</span>); <span class="comment">// 此时a为uint32_t的最大值</span></span><br><span class="line"><span class="keyword">uint32_t</span> b = <span class="number">4</span>;</span><br><span class="line"><span class="built_in">cout</span> &lt;&lt; b - a; <span class="comment">// 输出 5, 即 4 &gt; ((uint32_t) -1)</span></span><br></pre></td></tr></table></figure>
+<p>所以，我们只需将<code>BIG_STRIDE</code>的值限制在一个<code>uint32_t</code>所能表示的范围(uint32_t为uCore所设置的stride值的类型)，这样就可避开stride的溢出。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> BIG_STRIDE ((uint32_t) -1)</span></span><br></pre></td></tr></table></figure>
+<p>由于<code>Stride Scheduling</code>算法涉及到大量的查找，故我们可以使用斜堆<code>skew_heap</code>数据结构来提高算法效率。该数据结构在uCore中已提供，我们无需关注其具体细节，直接调用即可。</p>
+<h4 id="b-具体实现">b. 具体实现</h4>
+<ul>
+<li>
+<p><code>stride_init</code>简简单单的一个初始化</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">stride_init(struct run_queue *rq) &#123;</span><br><span class="line">    list_init(&amp;(rq-&gt;run_list));</span><br><span class="line">    <span class="comment">// 注意这里不要使用skew_heap_init(rq-&gt;lab6_run_pool)</span></span><br><span class="line">    rq-&gt;lab6_run_pool = <span class="literal">NULL</span>;</span><br><span class="line">    rq-&gt;proc_num = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>需要注意的是，初始化<code>rq-&gt;lab6_run_pool</code>时请直接赋值NULL即可，而不要使用<code>skew_heap_init</code>函数，因为<code>rq-&gt;lab6_run_pool</code><strong>只是一个指针，而不是一个对象</strong>。</p>
+</li>
+<li>
+<p><code>stride_enqueue</code>和<code>stride_dequeue</code>与RR算法相差不大</p>
+<p>不过要注意的是，在插入或删除一个进程后，<strong>一定要更新<code>rq-&gt;lab6_run_pool</code>指针！</strong></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">stride_enqueue(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">    rq-&gt;lab6_run_pool = skew_heap_insert(rq-&gt;lab6_run_pool, &amp;(proc-&gt;lab6_run_pool), proc_stride_comp_f);</span><br><span class="line">    <span class="keyword">if</span> (proc-&gt;time_slice == <span class="number">0</span> || proc-&gt;time_slice &gt; rq-&gt;max_time_slice) &#123;</span><br><span class="line">        proc-&gt;time_slice = rq-&gt;max_time_slice;</span><br><span class="line">    &#125;</span><br><span class="line">    proc-&gt;rq = rq;</span><br><span class="line">    rq-&gt;proc_num ++;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">stride_dequeue(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">    rq-&gt;lab6_run_pool = skew_heap_remove(rq-&gt;lab6_run_pool, &amp;(proc-&gt;lab6_run_pool), proc_stride_comp_f);</span><br><span class="line">    rq-&gt;proc_num --;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>pick_next</code>函数中涉及到了选取最小<code>Stride</code>值的进程，以及<code>stride</code>值的更新。</p>
+<p>由于uCore中的函数<code>proc_stride_comp_f</code>已经给出源码，结合对应斜堆代码的理解，我们可以得出：<strong>stride值最小的进程在斜堆的最顶端</strong>。所以<code>pick_next</code>函数中我们可以直接选取<code>rq-&gt;lab6_run_pool</code>所指向的进程。</p>
+<p>而<code>stride</code>值可以直接加上<code>BIG_STRIDE / p-&gt;lab6_priority</code>来完成该值的更新。不过这里有个需要注意的地方，除法运算是不能除以0的，所以我们需要在<code>alloc_proc</code>函数中将每个进程的<code>priority</code>都初始化为1.</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">proc_stride_comp_f(<span class="keyword">void</span> *a, <span class="keyword">void</span> *b)</span><br><span class="line">&#123;</span><br><span class="line">     <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">p</span> = <span class="title">le2proc</span>(<span class="title">a</span>, <span class="title">lab6_run_pool</span>);</span></span><br><span class="line">     <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">q</span> = <span class="title">le2proc</span>(<span class="title">b</span>, <span class="title">lab6_run_pool</span>);</span></span><br><span class="line">     <span class="keyword">int32_t</span> c = p-&gt;lab6_stride - q-&gt;lab6_stride;</span><br><span class="line">     <span class="keyword">if</span> (c &gt; <span class="number">0</span>) <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">     <span class="keyword">else</span> <span class="keyword">if</span> (c == <span class="number">0</span>) <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">     <span class="keyword">else</span> <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *</span></span><br><span class="line"><span class="class"><span class="title">stride_pick_next</span>(<span class="title">struct</span> <span class="title">run_queue</span> *<span class="title">rq</span>) &#123;</span></span><br><span class="line">    <span class="keyword">skew_heap_entry_t</span>* she = rq-&gt;lab6_run_pool;</span><br><span class="line">    <span class="keyword">if</span> (she != <span class="literal">NULL</span>) &#123;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span>* <span class="title">p</span> = <span class="title">le2proc</span>(<span class="title">she</span>, <span class="title">lab6_run_pool</span>);</span></span><br><span class="line">        p-&gt;lab6_stride += BIG_STRIDE / p-&gt;lab6_priority;</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>stride_proc_tick</code>与RR算法一致，这里不再赘述</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">stride_proc_tick(struct run_queue *rq, struct proc_struct *proc) &#123;</span><br><span class="line">     <span class="keyword">if</span> (proc-&gt;time_slice &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        proc-&gt;time_slice --;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (proc-&gt;time_slice == <span class="number">0</span>) &#123;</span><br><span class="line">        proc-&gt;need_resched = <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="3-扩展练习">3) 扩展练习</h3>
+<h4 id="1-Challenge-1">1. Challenge 1</h4>
+<blockquote>
+<p>实现Linux CFS算法</p>
+</blockquote>
+<p>CFS （完全公平调度器）实现的主要思想是维护为任务提供处理器时间方面的平衡（公平性）。它给每个进程设置了一个虚拟时钟vruntime。其中$vruntime = 实际运行时间 * 1024 / 进程权重$。</p>
+<p>进程按照各自不同的速率在物理时钟节拍内前进，优先级高则权重大，其虚拟时钟比真实时钟跑得慢，但获得比较多的运行时间；CFS调度器总是选择虚拟时钟跑得慢的进程来运行，从而让每个调度实体的虚拟运行时间互相追赶，进而实现进程调度上的平衡。</p>
+<p>CFS使用<strong>红黑树</strong>来进行快速高效的插入和删除进程。</p>
+<blockquote>
+<p>具体实现与Stride Scheduling类似，只是稍微有些不同。咕咕咕~</p>
+</blockquote>
+<p>参考链接：</p>
+<ul>
+<li>
+<p><a href="https://www.cnblogs.com/tianguiyu/articles/6091378.html" target="_blank" rel="noopener">linux内核分析——CFS（完全公平调度算法）</a></p>
+</li>
+<li>
+<p><a href="https://www.cnblogs.com/XiaoliBoy/p/10410686.html" target="_blank" rel="noopener">Linux内核CFS调度器</a></p>
+</li>
+</ul>
+<h4 id="2-Challenge-2">2. Challenge 2</h4>
+<blockquote>
+<p>在ucore上实现尽可能多的各种基本调度算法(FIFO, SJF,…)，并设计各种测试用例，能够定量地分析出各种调度算法在各种指标上的差异，说明调度算法的适用范围。</p>
+</blockquote>
+<blockquote>
+<p>这个，告辞~</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/09/uCore-6/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/09/uCore-7/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab7
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/08/uCore-5/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab5</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

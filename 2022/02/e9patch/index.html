@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="论文笔记, binary rewriting, patch,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《Binary Rewriting without Control Flow Recovery》论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-e9patch"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《Binary Rewriting without Control Flow Recovery》论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/02/e9patch/" class="article-date">
+  <time datetime="2022-02-24T16:00:00.000Z" itemprop="datePublished">2022-02-25</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">5.8k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">21 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、概述">一、概述</h2>
+<p>二进制重写技术在很多场景下都有大用，例如修复、加固、插桩、打补丁、调试等等。而大部分二进制重写技术都依赖于从输入二进制中<strong>恢复控制流信息</strong>，这是因为这些二进制重写技术通常都涉及指令移动等等，这就必须调整其他跳转指令的相对跳转偏移，即修复<strong>跳转目标集</strong>。</p>
+<p>但问题在于，<strong>从二进制文件中恢复控制流信息是相当困难的</strong>：</p>
+<ul>
+<li>一种方法是<strong>依赖于特定的二进制元数据</strong>，例如调试符号来恢复重定位信息，但并非所有二进制都会包含这类元数据（strip）</li>
+<li>另一种方法是<strong>使用静态二进制分析技术</strong>来恢复，但通常效果不佳，而且不能应用于大小较大的二进制文件。</li>
+</ul>
+<p>因此大部分二进制重写技术都依赖于一组甚至多组假设，例如特定编译器、特定编程语言等等。这样一来这些二进制重写技术都存在着局限性，难以扩展，同时也没办法处理大型程序，比如 chrome。</p>
+<p>这篇论文向我们展示了一种基于 <strong>x86_64</strong> 的二进制重写技术，称为 e9patch。其中，<code>e9</code> 表示的是 <code>jmpq rel32</code> 的 opcode：0xe9。这种二进制重写技术的优点在于<strong>控制流无关</strong>（<strong>control flow agnostic</strong>），即<strong>无需任何控制流信息的知识</strong>。其二进制重写方法保留了跳转目标集，无需控制流恢复。因此， 这个工具相当的鲁棒，而且还可以 patch 诸如 chrome 等等大小大于 100MB 的二进制程序。</p>
+<p>除了普通的二进制程序以外，e9patch 还可以为 shared objects 或 libraries 打补丁。</p>
+<a id="more"></a>
+<h2 id="二、背景">二、背景</h2>
+<p>控制流无关的二进制重写技术无需知道跳转目标集，它把每一条指令都当作潜在的跳转目标，并在控制流执行到该指令时，<strong>保留该指令的语义</strong>（注意，这里保留的是指令的语义，而不是原始指令）。即二进制中所有的指令满足以下三个条件中的任意一个:</p>
+<ul>
+<li>原始指令的保留</li>
+<li>替换为操作上等效的指令</li>
+<li>替换为执行特定目的的指令，例如修复和插桩等等</li>
+</ul>
+<p>以下是几种控制流无关的二进制重写技术，e9patch 将在这些技术的基础上进行扩展。</p>
+<h3 id="B0-int3-断点">B0: int3 断点</h3>
+<p>这应该是原理最简单的技术。通过把特定指令 patch 成 int3 断点，当控制流执行到此处时便会触发 SIGTRAP，此时控制流被信号处理例程接管（在某些用途下甚至是调试器接管，例如 trapfuzz），这样一来要 patch 的工作便可以在信号处理例程中进行。</p>
+<p>其缺点是：性能开销很大。中断和信号处理例程的切换，会涉及到用户-内核层上下文的切换，时间开销可能会上一个数量级。</p>
+<h3 id="B1-Jumps">B1: Jumps</h3>
+<p>这种方式会将目标指令替换成一条 <code>jmpq rel32</code> 指令，使得控制流在执行到此处时，跳转至 trampoline 里，之后在 trampoline 中执行 patch 的指令，并在需要时执行原先被 patch 的那条指令。这种方法的一个应用场景是 inline hook：</p>
+<p><img src="/2022/02/e9patch/CodeFlow.png" alt="img"></p>
+<p>但这种方法同样存在着局限性。对于 <code>jmpq rel32</code> 指令来说，该指令的大小为 5 个字节。如果待 patch 的指令其指令大小<strong>大于等于5个字节</strong>，则直接将 jmpq 指令替换上去，此时这种重写技术还是<strong>控制流无关</strong>的。</p>
+<p>但问题在于，如果待 patch 的指令小于 5 字节呢？以上图为例，将 <code>mov edi, edi </code> 指令替换成 <code>jmpq</code> 后，会一并覆盖掉下面两条指令。如果该函数中存在某条 jmp 指令跳转至被覆盖的那两条指令，则会触发异常，因为跳转目标的 opcode 已经被纂改。</p>
+<h3 id="B2-Instruction-Punning">B2: Instruction Punning</h3>
+<blockquote>
+<p>这个技术要重点说明一下，因为 e9patch 是基于这项技术进行的扩展。</p>
+</blockquote>
+<p>除了上述两种方法以外，还有一种方法是专门处理一种<strong>可以与其他指令安全重叠的 jmpq 指令</strong>，这种方法称为 指令双关(Instruction Punning)。基本思想是<strong>找到与任何重叠指令共享相同字节表示的相对偏移量值</strong>，之后使用该相对偏移量，用 <code>jmpq</code> 指令安全地替换被 patch 的指令。</p>
+<p>举个简单的例子，:</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">mov</span> %rax, (%rbx)</span><br><span class="line"><span class="keyword">add</span> <span class="number">$32</span>, %rax</span><br></pre></td></tr></table></figure>
+<p>对应到机器码便是下图中的 original：</p>
+<p><img src="/2022/02/e9patch/image-20220224094232075.png" alt="image-20220224094232075"></p>
+<p>假设我们需要 patch 掉 <code>mov $rax, (%rbx)</code>，instruction punning 便可以重用下条指令的前两个字节（0x48 0x83），使得在 patch 点凑出了一个五字节的 jmpq 指令（ <code>jmpq 0x8348xxxx</code>），同时避免修改下条指令的 opcode。</p>
+<p>这样，当控制流执行到 <code>mov</code> 指令所对应的位置时，控制流便可以进行 jmpq 跳转。同时如果存在其他指令需要跳转至 add 指令时，add 指令也可以很好的工作，因为 add 指令的 opcode 并没有修改。</p>
+<p>指令双关中的这个双关，指的是下条指令中的 <strong>opcode</strong>，<strong>既可以表示该指令，又可以表示 jmpq 的部分偏移量</strong>。</p>
+<p>但这种方法同样存在局限性。注意到 jmp 中的相对跳转偏移高地址两个字节<strong>已经被下个指令的 opcode 给定死了</strong>。因此可跳转的内存空间被局限住了，只能相对跳转至相对偏移在 <code>0x83480000~0x8348ffff</code> 这个范围内的内存空间。这个范围的内存空间并非总是可用的，有可能这个范围正对应于：</p>
+<ul>
+<li>另一个 trampoline 的内存区域</li>
+<li>其他代码段或数据段</li>
+<li>无效地址范围，例如 NULL 或下溢至负地址范围</li>
+</ul>
+<p>以这个图为例，相对偏移量 0x8348xxxx 实际上是一个负数（32位偏移）。当相对偏移量为负数时，实际跳转至的位置可能在 NULL 周围甚至下溢至负地址范围，而这部分内存空间可能很难 mmap 到。</p>
+<p>因此，指令双关技术只能给部分指令打上 patch，可 patch 的覆盖率不高。</p>
+<h2 id="三、设计">三、设计</h2>
+<p>e9patch 基于上面 B1/B2 的方法，做了一系列改进。在说明具体改进之前，我们先说明该工具所基于的假设：</p>
+<ul>
+<li>被 patch 的指令不能被<strong>自读取</strong>（例如自校验）或<strong>自写入</strong>。</li>
+<li>instrument 或 patch 是用户透明的，即程序行为不会通过某种侧通道（例如计时器、文件描述符等）而发生更改。</li>
+<li>输入二进制本身没有使用指令覆盖或指令双关技术。</li>
+</ul>
+<p>可以看到这里的假设相对于先前说的依赖编译器、依赖特定语言、依赖二进制元数据等放宽了很多，e9patch 都不依赖这些东西。</p>
+<p>e9patch 并不内嵌反汇编器，而是靠用户来输入目标程序的指令信息（例如指令相对偏移和指令大小等等）。这样做的目的是为了实现更好的灵活性，用户可以在只知部分指令信息的情况下完成<strong>局部插桩</strong>，提高效率；而且还便于 e9patch 嵌入其他的设计中。</p>
+<p>接下来我们来讲讲 e9patch 所提供的三种新策略。这里我们看看基于以下指令的一个示例：</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">Ins1:</span> <span class="keyword">mov</span> %rax, %(<span class="built_in">rbx</span>)</span><br><span class="line"><span class="symbol">Ins2:</span> <span class="keyword">add</span> <span class="number">$32</span>, %rax</span><br><span class="line"><span class="symbol">Ins3:</span> <span class="keyword">xor</span> %rax, %rcx</span><br><span class="line"><span class="symbol">Ins4:</span> cmpl <span class="number">$77</span>, -<span class="number">4</span>($<span class="built_in">rbx</span>)</span><br></pre></td></tr></table></figure>
+<p>为了便于说明，这里给出几种假设：</p>
+<ol>
+<li>
+<p>假设要 patch 的指令是 Inst1</p>
+</li>
+<li>
+<p>假设<strong>相对跳转偏移为负数</strong>时所对应的内存空间是无效的，即不可分配。</p>
+<blockquote>
+<p>因此先前介绍的 Instruction Punning 技术不可用，因为其相对跳转偏移为负数。</p>
+</blockquote>
+</li>
+</ol>
+<h3 id="T1-Padded-Jumps">T1: Padded Jumps</h3>
+<p>通常 jmpq 的机器码长度为 5 个字节：1 字节的 opcode 和 4 字节的相对偏移。而实际上，还存在一种方法可以使用更多字节来对 jmpq 进行编码：<strong>使用冗余指令前缀形式的额外字节</strong>来填充跳转指令。</p>
+<p>x86_64 中存在一些<strong>不会影响相对跳转指令语义</strong>的指令前缀，例如 REX 前缀、段重写前缀 (es,ss等等) 以及操作数重写前缀(0x66)。在这个例子中，我们可以使用指令前缀来对 jmpq 指令进行填充，以将相对偏移的字节表示向高地址处移动。</p>
+<p><img src="/2022/02/e9patch/image-20220224115717750.png" alt="image-20220224115717750"></p>
+<p>图中 T1(a) 使用了一个指令前缀 REX (0x48) 进行填充，填充后的 jmpq 范围为 <code>0xc08348XX</code>。由于该偏移量为一个负数值，因此不能使用，需要继续填充。</p>
+<p>这里 e9patch 在 T1(a) 的基础上填充了段重写前缀 es (0x26)，填充后即为 T1(b) 的效果。可以看到此时 T1(b) 中 jmpq 的相对跳转指令为 0x20c08348，不再是个正数，因此该 jmpq 大概率可以跳转至一个可被分配的内存空间。</p>
+<p>通过上面的这个例子我们可以看到策略 T1 的优点、缺陷和特性：</p>
+<ul>
+<li>
+<p>优点：可以通过额外写入一些指令前缀，来发现并使用新的有效相对跳转偏移</p>
+</li>
+<li>
+<p>缺点：T1 适用性依赖于指令长度。如果指令长度较短，则 T1 能进行补丁尝试的次数将较少。这也意味着 T1 不能适用于单字节指令的 patch。</p>
+</li>
+<li>
+<p>特性：每一次新的补丁尝试将会缩小 trampoline 可操作的内存地址范围。例如:</p>
+<ul>
+<li>B2 相对跳转的可操作内存范围：<code>0x83480000~0x8348ffff</code>（范围：0x10000字节）</li>
+<li>T1(a)：<code>0xc0834800~0xc08348ff</code>（范围：0x100字节）</li>
+<li>T1(b): <code>0x20c08348</code>（范围：0字节）</li>
+</ul>
+<p>这之所以被我归类到特性而非缺点，是因为 e9patch 只会在当前前缀所对应的内存空间不满足使用条件时才会继续增加前缀。不满足条件的内存空间范围再大也没有什么用处。</p>
+</li>
+</ul>
+<h3 id="T2-Successor-Eviction">T2: Successor Eviction</h3>
+<p>如果使用 T1 方法时，再怎么 padding Ins1 也不存在可用的跳转偏移该怎么办？是不是可以尝试修改 Ins2 前几个字节的数据来对 Ins1 patch 提供条件？接下来就要介绍另一种策略，称为后继指令驱逐。其思路是：</p>
+<ol>
+<li>
+<p>将相邻指令 Ins2 驱逐，换成一条 jmpq 指令。</p>
+</li>
+<li>
+<p>这条 jmpq 指令跳转至一个 trampoline2 上执行原有的 Ins2 指令，之后再调回来继续执行 ins3 即接下来的指令</p>
+</li>
+</ol>
+<blockquote>
+<p>注：将被驱逐的指令为 victim。</p>
+</blockquote>
+<p>这样一来，Ins2 指令所对应的语义并没有被修改（因为 Ins2 确实被执行，与先前相比只是是在 trampoline2 中执行，同时多了两次跳转操作：调至 trampoline2 再跳回来）。但 Ins2 指令所在的内存地址，其上面的字节表示确确实实的发生了修改。这样一来，Ins1 便可以再次尝试使用 T1 策略来进行 patch，patch 成功后便可跳转至 trampoline1 中执行其他操作。</p>
+<blockquote>
+<p>注意，两个 trampoline 是不一样的。</p>
+</blockquote>
+<p><img src="/2022/02/e9patch/image-20220224115717750.png" alt="image-20220224115717750"></p>
+<p>整个思路可以精简成：</p>
+<blockquote>
+<p>尝试使用 T1 策略，发现 T1 策略无法 patch Ins1。为了修改 Ins1 所依赖的那些 Ins2 上的机器码，e9patch 先尝试使用 T1 策略来 patch Ins2。等 Ins2 patch 成功后，再来对 Ins1 重试 T1 策略。</p>
+</blockquote>
+<p>整个过程仍然保证：</p>
+<ol>
+<li>Ins2 的语义与原先一致</li>
+<li>程序跳转目标集不变</li>
+</ol>
+<h3 id="T3-Neighbour-Eviction">T3: Neighbour Eviction</h3>
+<p>如果相邻的指令不满足 patch 条件，同时 Successor Eviction 也不起作用，那该如何呢：</p>
+<ol>
+<li>
+<p>e9patch 会继续向后面找可用的机器码序列，作为其相对跳转偏移 rel32（高地址方向）</p>
+</li>
+<li>
+<p>找到后，就会在这里原地创建一个 jmpq 指令，即 T3(a)。</p>
+</li>
+<li>
+<p>之后，在被 patch 指令上 patch 一个相对短跳指令，跳转至这个新的 jmpq 指令处，也就是 T3(b)。</p>
+</li>
+<li>
+<p>注意到 Ins3 的机器码因为第二步的 patch 被修改。因此这里同样需要对 Ins3 做一个 patch 操作，patch 一个 jmpq 上去，使其跳转至 trampoline 执行 Ins3 指令。</p>
+<p>这样便可保证修改后与修改前 Ins3 指令的<strong>语义</strong>保持不变。（T3©）</p>
+</li>
+</ol>
+<p><img src="/2022/02/e9patch/image-20220224115717750.png" alt="image-20220224115717750"></p>
+<p>T3 策略虽然较为复杂，但其功能较为强大，其关键之处在于 victim 的数量。假设指令平均长度为 4，那么短跳转大概可以跳转至 64 个潜在的 victim，因此大多情况下至少能找到一个合适的 victim，这个策略也将可 patch 指令的覆盖率提高至将近 100%。</p>
+<p>以下是 T3 策略的示例：</p>
+<p><img src="/2022/02/e9patch/image-20220224144643001.png" alt="image-20220224144643001"></p>
+<h3 id="S1-Reserve-Order-Patching">S1: Reserve Order Patching</h3>
+<p>上面说的这些情况针对的都是 patch 单个指令的情况。但在实际情况中，通常用户可能会要求<strong>连续 patch 多条指令</strong>。</p>
+<blockquote>
+<p>这里指的连续 patch 多条指令，<strong>不是指</strong>将这连续的指令 patch 成<strong>一个</strong> trampoline jmp，而是指将连续指令的<strong>每一条</strong>指令都 patch 成<strong>多个</strong> trampoline jmp。</p>
+</blockquote>
+<p>我们再来看看这张图：</p>
+<p><img src="/2022/02/e9patch/image-20220224115717750.png" alt="image-20220224115717750"></p>
+<p>假设用户要将 Ins1 patch 成一个 trampoline1 jmp、Ins2 patch 成一个 trampoline2 jmp。那么如果我们先 patch Ins1 的话（T1(b)），可以看到 patch 后的 trampoline1 jmp 指令，<strong>会依赖 Ins2 中的机器码</strong>（因为 Ins1 jmpq rel32 中的相对偏移量现与 Ins2 的机器码重合）。</p>
+<p>这种依赖关系会阻碍 Ins2 的 patch 过程，因为如果先 patch Ins1 再 patch Ins2 的话，Ins2 的 patch 过程可能会影响到 patch 后的 Ins1。</p>
+<p>因此为了更好的管理多个 patch 的位置，e9patch 使用<strong>反向顺序补丁策略</strong>。其基本思想是：按照<strong>从高到低</strong>的地址顺序来 patch 指令，因为 <strong>指令双关 只能引入与后续指令的依赖关系</strong>。</p>
+<p>e9patch 保存了每个指令机器码的状态，即锁定和未锁定，这可以使用一个 Bitmap 来保存。当某个机器码：</p>
+<ol>
+<li>
+<p><strong>被 e9patch 修改</strong></p>
+</li>
+<li>
+<p><strong>被用于指令双关的一部分机器码</strong></p>
+</li>
+</ol>
+<p>则认为这个机器码是被锁定的。</p>
+<p>T1-T3 的这些策略限制了：</p>
+<ol>
+<li>
+<p>patch 操作将不能<strong>修改</strong>被锁定的机器码（但是仍然可以利用，或者重叠）</p>
+</li>
+<li>
+<p>仅锁定当前 patch 位置后的字节（为了便于管理依赖）</p>
+<blockquote>
+<p>这使得 T3 的短跳 rel8 只能是<strong>正数</strong>，将可跳转的范围（即可被驱逐的指令个数）缩小一半。</p>
+<p>但是实际上这种限制在实验中影响很小。</p>
+</blockquote>
+</li>
+</ol>
+<h3 id="M1-Memory-and-File-Size-Management">M1: Memory and File Size Management</h3>
+<p>最后我们来考虑一下 trampoline 的内存存放位置。在先前的策略中我们可以看到，trampoline 的内存地址受到指令双关中相对偏移量的限制。例如：</p>
+<ul>
+<li>
+<p>T1(b) 的 trampoline addr 为 0x20c08348</p>
+</li>
+<li>
+<p>T3(b) 中的 trampoline addr 为 0x4dfc7b83</p>
+</li>
+</ul>
+<p>这之中相差了非常远的内存距离，会影响 trampoline 的打包，导致高内存碎片和低内存利用率。同时离散的 trampoline 也会大大增加其保存在 ELF 文件中的大小。</p>
+<p><img src="/2022/02/e9patch/image-20220224115717750.png" alt="image-20220224115717750"></p>
+<p>那么很明显有一种方法可以缓解这种低效率的情况：<strong>将多个 trampoline 尽可能地放到同一个虚拟页中</strong>。只是最坏情况下是一个 trampoline 存放至一个内存页中。</p>
+<p>因此 e9patch 还使用了一种机制称为 <code>Physical Page Grouping</code>：</p>
+<blockquote>
+<p>尝试将多个<strong>存放在不同 virtual page 中的 trampoline</strong>，<strong>聚拢并存放到同一个 physical page</strong>。</p>
+</blockquote>
+<p><img src="/2022/02/e9patch/image-20220225110734939.png" alt="image-20220225110734939"></p>
+<p>以上图为例，先前是一个 Physical Page <code>P(a) </code> 对应于一个 Virtual Page <code>V(a)</code>。这种对应关系会占用大量的物理内存。但执行 <code>Physical Page Grouping</code> 后，映射关系是一个 Physical Page <code>P(b)</code> 对应于多个 Virtual Page <code>V(b)</code>，这样可以节省下大量的物理内存。</p>
+<blockquote>
+<p>注：一个跨越 Page 的 trampoline 被视为两个 mini trampoline。</p>
+</blockquote>
+<p>从 <code>V(a)</code> 到 <code>P(b)</code> 的这种 grouping 算法称为分区算法。分区算法的实现有很多种，这里 e9patch 选择的是最简单的<strong>贪心算法</strong>，而且性能较为不错。</p>
+<p>Physical Page Grouping 也有自身的副作用：</p>
+<ol>
+<li>会将那些没有用到的 trampoline 加载进冗余的内存位置。由于这些冗余的 trampoline 并没有被使用，因此不会影响到程序的行为。</li>
+<li>会导致同一物理内存被<strong>多次</strong>映射至虚拟空间中，映射次数可能会超过默认的最大映射次数 <code>vm.max_map_count = 65536</code>。有两种解决方法：
+<ol>
+<li>使用 sudo 修改默认最大内存映射次数，不太现实。</li>
+<li>控制 e9patch 的<strong>划分精度参数 M</strong>（聚拢 trampoline 所使用的最大物理页面个数），增加所使用的物理页面个数 P(b)，从而降低每个物理内存的映射次数。通常 M &gt;= 64 时，<strong>单个二进制文件</strong>的<strong>物理内存页面映射次数</strong>便会<strong>始终小于默认内存最大映射次数</strong>。</li>
+</ol>
+</li>
+</ol>
+<h2 id="四、实现">四、实现</h2>
+<p>e9patch 的输入：</p>
+<ol>
+<li>未被 patch 的二进制程序</li>
+<li>二进制程序的指令信息，包括位置和指令大小</li>
+<li>待 patch 的指令位置信息集合</li>
+<li>trampoline 集合</li>
+</ol>
+<p>输出：一个使用上述策略的被 patch 程序。重写后的二进制文件相当于原始文件的<strong>插入式替换</strong>，无需额外依赖项。</p>
+<p>实现中有两个点需要注意：</p>
+<ol>
+<li>新的 trampoline 被<strong>添加至 ELF 文件的末尾</strong>，防止移动现有的数据或代码，以避免修改复杂的 ELF header。</li>
+<li>存放 trampoline 的新物理页面<strong>必须在程序加载期间映射到程序的虚拟地址空间</strong>。在具体实现中，e9patch 将一个 mini loader 集成到了输出的二进制文件中，并将入口点替换成 mini loader 的入口点。待将 trampoline 所对应的虚拟页面映射完成后，再将控制流返回到真正的入口点。</li>
+</ol>
+<p>e9patch 同时支持 PIE 和 non-PIE 的二进制文件。而且 <strong>PIE 程序会比 non-PIE 程序更好被 patch</strong>，因为 PIE 的代码通常会被加载到内存地址较高的位置，而 non-PIE 会被加载到内存地址较低的位置，而这与 NULL 更近。</p>
+<p>某些情况会影响到 e9patch 的使用：</p>
+<ul>
+<li>
+<p>L1: 虚拟内存短缺。对于一些具有非常大的代码段或者数据段的程序可能会限制 trampoline 的使用空间，因为 jmpq 的偏移是 32 位的，如果代码段和数据段太大，则可能会无法跳转至堆空间中。</p>
+</li>
+<li>
+<p>L2: patch 单字节指令。e9patch 无法 patch 单字节指令，这会影响到包括 push、pop、ret 在内的指令。</p>
+</li>
+<li>
+<p>L3: patch 超大量的指令 。如果尝试 patch 相当多指令的话，可能会因为机器码依赖关系而降低 patch 覆盖率。</p>
+</li>
+</ul>
+<p>除此之外，e9patch 不能处理那些 inline data 的情况，即 data 包含在 code 之中的情况。</p>
+<p>不过通常情况下 L1并不适用于大部分程序; L2 和 L3 也与许多程序没有什么关系。</p>
+<h2 id="五、评估">五、评估</h2>
+<p>主要从以下几个指标评估：</p>
+<ul>
+<li>patch 时间</li>
+<li>patch 覆盖率</li>
+<li>patch 后的二进制文件大小</li>
+<li>e9patch 实现原型的 scalability</li>
+</ul>
+<p>e9patch 可应用与二进制加固、插桩和修复等等。patch 程序时， e9patch 主要为以下两种指令进行 patch：</p>
+<ol>
+<li>
+<p>所有 jmp/jcc 跳转指令</p>
+<p>粗略模拟覆盖率插桩，因为 e9patch 在设计上没有基本块的信息，因此只是粗略的 patch 掉每个 jmp 指令。</p>
+</li>
+<li>
+<p>所有可能会写入堆指针的指令</p>
+<p>这里模拟的是二进制加固情况下，patch 掉写入堆指针相关的指令。</p>
+</li>
+</ol>
+<p>所有被 patch 的指令，都替换成一个除了执行原始指令以外的空 trampoline。以下是评估的结果：</p>
+<blockquote>
+<p>#Loc: 总被 patch 的个数</p>
+<p>Base%: B1+B2 策略</p>
+<p>Succ%：总 patch 覆盖率</p>
+</blockquote>
+<p><img src="/2022/02/e9patch/image-20220225171251837.png" alt="image-20220225171251837"></p>
+<p>从上图可以看到：</p>
+<ul>
+<li>
+<p>e9patch 的覆盖率相当的高，基本可以接近 100%。</p>
+</li>
+<li>
+<p>在 baseline 覆盖率不高的情况下，T1-T3 策略可以将覆盖率极大的往高处升。</p>
+<p>这里尤其需要强调一下 T3 策略。T3 策略本身可 patch 的覆盖率就比较大，可以 patch 那些其他策略无法 patch 的指令。</p>
+</li>
+<li>
+<p>PIE 程序中任何一种 patch 策略都会比 non-PIE 程序中所对应的 patch 覆盖率要高很多。</p>
+</li>
+<li>
+<p>gamess 和 zeusmp 之所以覆盖率没有到 100% 是因为这两个程序都分配了相当大的 .bss 段（正对应于 L1）。当这两个程序使用 PIE 模式进行编译时可以达到 100% 的覆盖率。</p>
+</li>
+<li>
+<p>在使用 physical page grouping 策略后，文件大小分别涨幅 +57% / +30% ，还算可以接受。</p>
+<p>在不使用该策略的情况下，大小涨幅分别是 +2239.83% / +568.96%，这就实在没法接受了。</p>
+</li>
+</ul>
+<p>之后是 <strong>scalability 的测试</strong>，这里是使用大型程序 chrome 和 firefox 的测试结果：</p>
+<blockquote>
+<p>firefox 将大部分代码放置在 <a href="http://libxul.so" target="_blank" rel="noopener">libxul.so</a> 中。</p>
+</blockquote>
+<p><img src="/2022/02/e9patch/image-20220225212346125.png" alt="image-20220225212346125"></p>
+<p>测试时选择的测试集要求<strong>尽可能减小执行 JIT - JS 的代码执行时间</strong>。因为 e9patch 没法对 JIT 代码打 patch。</p>
+<p>可以看到，chrome 引入了 ~+113% 的 overhead，firefox 引入了~+46% 的 overhead。firefox overhead 较低的一种可能原因是 firefox 花更多时间执行 JIT 代码，或者执行未被插桩的 shared object。</p>
+<p>通过上面的内容可以看到， e9patch 可以很轻松的将 patch 规模扩展至上百兆文件大小的二进制程序。</p>
+<p>最后是 e9patch 应用在二进制加固下的表现，这里先介绍一下测试用的二进制加固技术—— LowFat Pointer。其基本思想为：将程序虚拟内存空间分割为多个 large region，其中每个 region 负责分配一个给定的固定大小范围的对象：</p>
+<p><img src="/2022/02/e9patch/layout.png" alt="LowFat memory layout"></p>
+<ul>
+<li>
+<p>第一个 Region 像往常一样包含程序文本、数据、bss等段。</p>
+</li>
+<li>
+<p>后面的区域用于 LowFat 指针分配。例如，</p>
+<ul>
+<li>
+<p>Region #1用于大小为 1-16 字节的分配</p>
+</li>
+<li>
+<p>Region #2 用于大小为 17-32 字节的分配</p>
+</li>
+<li>
+<p>等等</p>
+</li>
+</ul>
+<p>此外，所有 LowFat 分配的对象<strong>都与分配大小边界对齐</strong>。这样一来，每一个 LowFat 指针的值都可以用于获取该对象的内存边界。</p>
+</li>
+</ul>
+<p>举个简单的例子：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">p = <span class="built_in">malloc</span>(<span class="number">10</span>); <span class="comment">// p = 0x8997f2820</span></span><br></pre></td></tr></table></figure>
+<p>由于指针 p 的值位于 <code>0x800000000~0x1000000000</code> 中，因此可以得知 p 所指向的内存大小为 16 字节（注意内存对齐）。</p>
+<p>对于内存访问 <code>q = 0x8997f2825</code>，由于：</p>
+<ol>
+<li>q 位于 <code>0x800000000~0x1000000000</code> 范围，因此 object size 大小为 16 字节</li>
+<li>由于 q <strong>向下与 object size 对齐</strong>得到地址 0x8997f2820，这样便可得知 object 基地址</li>
+</ol>
+<p>接下来对以下函数插桩：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">char</span> <span class="title">get</span><span class="params">(<span class="keyword">char</span> *q, <span class="keyword">int</span> i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> q[i];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>得到该函数以检测 OOB：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">char</span> <span class="title">get</span><span class="params">(<span class="keyword">char</span> *q, <span class="keyword">int</span> i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">char</span> *q_base = base(q);</span><br><span class="line">    <span class="keyword">size_t</span> q_size = size(q);</span><br><span class="line">    <span class="keyword">char</span> *r = q + i;</span><br><span class="line">    <span class="keyword">if</span> (r &lt; q_base || r &gt;= q_base + q_size)</span><br><span class="line">        report_oob_error();</span><br><span class="line">    <span class="keyword">return</span> *r;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而下图便是 e9patch 应用 LowFat 变体的实验结果：</p>
+<p><img src="/2022/02/e9patch/image-20220225215921164.png" alt="image-20220225215921164"></p>
+<p>而 lowfat 项目本身只能用在 C/C++ 语言中，而 e9patch 可以应用至任何语言的二进制文件中，因此 e9patch 相当的强大。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/02/e9patch/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/binary-rewriting/" rel="tag">binary rewriting</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/03/other_paper_notes/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            论文笔记随笔 - 1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/02/rwctf2022_hso/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">RWCTF2022 Pwn 笔记3 - hso groupie Writeup</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, heap, 堆漏洞,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    heap - 5 - malloc、free函数相关的宏定义 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-heap-5-heap_definitions"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  heap - 5 - malloc、free函数相关的宏定义
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/04/heap-5-heap_definitions/" class="article-date">
+  <time datetime="2020-04-03T16:00:00.000Z" itemprop="datePublished">2020-04-04</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">13 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>注：宏定义 <strong>不建议</strong> 单独阅读，应在分析源代码时查阅参考</p>
+<h2 id="fastbin相关宏定义">fastbin相关宏定义</h2>
+<ol>
+<li><code>set_max_fast(s)</code>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>设置fast chunk大小的最大值为变量s（为0则弃用fast chunk和fastbin）</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_max_fast(s) \</span></span><br><span class="line">  global_max_fast = (((s) == <span class="number">0</span>)      \</span><br><span class="line">      ? SMALLBIN_WIDTH : ((s + SIZE_SZ) &amp; ~MALLOC_ALIGN_MASK))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<a id="more"></a>
+<ol start="2">
+<li>
+<p><code>get_max_fast()</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取fast chunk大小的最大值</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> get_max_fast() global_max_fast</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>fastbin_index(sz)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>根据所请求的chunk大小，获取fastbin中对应的索引</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* offset 2 to use otherwise unindexable first 2 bins */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> fastbin_index(sz) \</span></span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">int</span>) (sz)) &gt;&gt; (SIZE_SZ == <span class="number">8</span> ? <span class="number">4</span> : <span class="number">3</span>)) - <span class="number">2</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>fastbin(ar_ptr, idx)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回指针ar_ptr指向的arena中，fastbin对应变量idx索引的值</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> fastbin(ar_ptr, idx) ((ar_ptr)-&gt;fastbinsY[idx])</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>catomic_compare_and_exchange_val_acq(mem, newval, oldval)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li><strong>线程安全</strong> 的交换两个值</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#  <span class="meta-keyword">define</span> catomic_compare_and_exchange_val_acq(mem, newval, oldval) \</span></span><br><span class="line">  atomic_compare_and_exchange_val_acq (mem, newval, oldval)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> atomic_compare_and_exchange_val_acq(mem, newval, oldval) \</span></span><br><span class="line">  (&#123; __typeof (mem) __gmemp = (mem);     \</span><br><span class="line">      __typeof (*mem) __gret = *__gmemp;      \</span><br><span class="line">      __typeof (*mem) __gnewval = (newval)      \</span><br><span class="line">                                      \</span><br><span class="line">      <span class="keyword">if</span> (__gret == (oldval))      \</span><br><span class="line">      *__gmemp = __gnewval;      \</span><br><span class="line">      __gret; &#125;)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>have_fastchunks(M)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>判断指针M指向的arena，其fastbin上是否有空闲的fast chunks</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> have_fastchunks(M)     (((M)-&gt;flags &amp; FASTCHUNKS_BIT) == 0)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<h2 id="smallbin-相关宏定义">smallbin 相关宏定义</h2>
+<ol>
+<li>
+<p><code>in_smallbin_range(sz)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>判断变量sz是否处于small chunk的大小范围内</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> in_smallbin_range(sz)  \</span></span><br><span class="line">  ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz) &lt; (<span class="keyword">unsigned</span> <span class="keyword">long</span>) MIN_LARGE_SIZE)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>smallbin_index(sz)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>根据所请求的chunk大小，获取smallbin中对应的索引</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> smallbin_index(sz) \</span></span><br><span class="line">  ((SMALLBIN_WIDTH == <span class="number">16</span> ? (((<span class="keyword">unsigned</span>) (sz)) &gt;&gt; <span class="number">4</span>) : (((<span class="keyword">unsigned</span>) (sz)) &gt;&gt; <span class="number">3</span>))\</span><br><span class="line">  + SMALLBIN_CORRECTION)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<h2 id="unsorted-bin-相关宏定义">unsorted bin 相关宏定义</h2>
+<ol>
+<li><code>unsorted_chunks(M)</code>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取指针M指向arena上的unsorted bin地址</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* The otherwise unindexable 1-bin is used to hold unsorted chunks. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> unsorted_chunks(M)          (bin_at (M, 1))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<h2 id="largebin-相关宏定义">largebin 相关宏定义</h2>
+<ol>
+<li><code>largebin_index(sz)</code>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>根据所请求的chunk大小，获取largebin中对应的索引</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index(sz) \</span></span><br><span class="line">  (SIZE_SZ == <span class="number">8</span> ? largebin_index_64 (sz)                                     \</span><br><span class="line">  : MALLOC_ALIGNMENT == <span class="number">16</span> ? largebin_index_32_big (sz)                     \</span><br><span class="line">  : largebin_index_32 (sz))</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_32(sz)                                                \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">38</span>) ?  <span class="number">56</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_32_big(sz)                                            \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">45</span>) ?  <span class="number">49</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br><span class="line"></span><br><span class="line">  <span class="comment">// XXX It remains to be seen whether it is good to keep the widths of</span></span><br><span class="line">  <span class="comment">// XXX the buckets the same or whether it should be scaled by a factor</span></span><br><span class="line">  <span class="comment">// XXX of two as well.</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> largebin_index_64(sz)                                                \</span></span><br><span class="line">  (((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) &lt;= <span class="number">48</span>) ?  <span class="number">48</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">6</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) &lt;= <span class="number">20</span>) ?  <span class="number">91</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">9</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) &lt;= <span class="number">10</span>) ? <span class="number">110</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">12</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) &lt;= <span class="number">4</span>) ? <span class="number">119</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">15</span>) :\</span><br><span class="line">  ((((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) &lt;= <span class="number">2</span>) ? <span class="number">124</span> + (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (sz)) &gt;&gt; <span class="number">18</span>) :\</span><br><span class="line">  <span class="number">126</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+<h2 id="其他通用宏定义">其他通用宏定义</h2>
+<ol>
+<li>
+<p><code>atomic_forced_read(x)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>使用内联汇编，在 <strong>线程间</strong> 安全的读取某个变量</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> atomic_forced_read(x) \</span></span><br><span class="line">(&#123; __typeof (x) __x; __asm (<span class="string">""</span> : <span class="string">"=r"</span> (__x) : <span class="string">"0"</span> (x)); __x; &#125;)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>__builtin_expect(expr, val)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回expr的值；val为人工预测expr返回的值。该特殊宏定义可以提高CPU分支预测的准确性，加快CPU的执行速度</li>
+<li>注意！这个宏定义只是 <strong>预测</strong> 该条件的结果，并没有对值进行任何修改</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> __builtin_expect(expr, val) (expr)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>__glibc_unlikely(cond)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>预测表达式cond的结果为假 <strong>（不修改返回值）</strong></li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> __glibc_unlikely(cond) __builtin_expect ((cond), 0)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>__glibc_likely(cond)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>预测表达式cond的结果为真 <strong>（不修改返回值）</strong></li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> __glibc_likely(cond) __builtin_expect ((cond), 1)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>arena_get(ptr, size)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取当前线程的arena(可能获得main_arena)，并将指针ptr设置为获取到的arena地址</li>
+<li>之后锁定该arena</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> arena_get(ptr, size) do &#123; \</span></span><br><span class="line">  ptr = thread_arena;      \</span><br><span class="line">  arena_lock (ptr, size);      \</span><br><span class="line">&#125; <span class="keyword">while</span> (<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>arena_lock(ptr, size)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>锁定指针ptr指向的arena，以保证对该arena操作时是 <strong>线程安全</strong> 的</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> arena_lock(ptr, size) do &#123;      \</span></span><br><span class="line">  <span class="keyword">if</span> (ptr &amp;&amp; !arena_is_corrupt (ptr))     \</span><br><span class="line">      (<span class="keyword">void</span>) mutex_lock (&amp;ptr-&gt;mutex);      \</span><br><span class="line">  <span class="keyword">else</span>      \</span><br><span class="line">      ptr = arena_get2 ((size), <span class="literal">NULL</span>);      \</span><br><span class="line">&#125; <span class="keyword">while</span> (<span class="number">0</span>)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>mutex_unlock(m)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>对指针m指向的单元进行 <strong>线程解锁</strong></li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> mutex_unlock(m)        (*(m) = 0)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>assert(expr)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>如果表达式expr为假，则输出错误信息并异常退出（抛出<code>SIGABRT</code>信号）</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> assert(expr) \</span></span><br><span class="line">  ((expr)      \</span><br><span class="line">  ? ((<span class="keyword">void</span>) <span class="number">0</span>)      \</span><br><span class="line">  : __malloc_assert (#expr, __FILE__, __LINE__, __func__))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>chunk_is_mmapped(p)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>判断指针p指向的chunk是否通过mmap函数分配</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> chunk_is_mmapped(p) ((p)-&gt;size &amp; IS_MMAPPED)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>chunk2mem(p)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>将指向chunk header的指针，通过添加偏移，变更为用户使用的指针</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+ <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> chunk2mem(p)   ((void*)((char*)(p) + 2*SIZE_SZ))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>mem2chunk(mem)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>将用户使用的指针，通过减小偏移，变更为指向chunk header的指针</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> mem2chunk(mem) ((mchunkptr)((char*)(mem) - 2*SIZE_SZ))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>arena_for_chunk(ptr)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取指针ptr指向的chunk，其所属的arena地址</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> arena_for_chunk(ptr) \</span></span><br><span class="line">  (chunk_non_main_arena (ptr) ? heap_for_ptr (ptr)-&gt;ar_ptr : &amp;main_arena)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> chunk_non_main_arena(p) ((p)-&gt;size &amp; NON_MAIN_ARENA)</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> heap_for_ptr(ptr) \</span></span><br><span class="line">  ((heap_info *) ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (ptr) &amp; ~(HEAP_MAX_SIZE - <span class="number">1</span>)))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>request2size(req)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>根据用户申请的内存大小req，计算出待申请的chunk的大小</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> request2size(req)                                         \</span></span><br><span class="line">  (((req) + SIZE_SZ + MALLOC_ALIGN_MASK &lt; MINSIZE)  ?             \</span><br><span class="line">  MINSIZE :                                                      \</span><br><span class="line">  ((req) + SIZE_SZ + MALLOC_ALIGN_MASK) &amp; ~MALLOC_ALIGN_MASK)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>checked_request2size(req, sz)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>该宏定义的主要功能在glibc中是这样声明的
+<blockquote>
+<p>Check if a request is so large that it would wrap around zero when padded and aligned.</p>
+</blockquote>
+</li>
+<li>判断用户申请的内存大小是否 <strong>非常大</strong>，大到以至于在添加堆头与内存对齐之后，<code>size_t</code>类型的堆块大小有可能上溢至0</li>
+<li>如果用户申请的内存大小req 正常，则由用户所需的内存大小，计算出将要申请的chunk的大小，并将该值赋给变量sz</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> checked_request2size(req, sz)\</span></span><br><span class="line">  <span class="keyword">if</span> (REQUEST_OUT_OF_RANGE (req)) &#123;      \</span><br><span class="line">      __set_errno (ENOMEM);      \</span><br><span class="line">      <span class="keyword">return</span> <span class="number">0</span>;      \</span><br><span class="line">      &#125;      \</span><br><span class="line">  (sz) = request2size (req);</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> REQUEST_OUT_OF_RANGE(req)                                 \</span></span><br><span class="line">  ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (req) &gt;=      \</span><br><span class="line">  (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (INTERNAL_SIZE_T) (<span class="number">-2</span> * MINSIZE))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>bin_at(m, i)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取arena上的bins数组中，对应索引的bin地址</li>
+<li>指针m指向待使用的arena，变量i为待使用bin的索引</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* addressing -- note that bin_at(0) does not exist */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> bin_at(m, i) \</span></span><br><span class="line">(mbinptr) (((<span class="keyword">char</span> *) &amp;((m)-&gt;bins[((i) - <span class="number">1</span>) * <span class="number">2</span>]))      \</span><br><span class="line">          - offsetof (struct malloc_chunk, fd))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>first(b)</code> / <code>last(b)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取该bin的第一个chunk的地址 / 最后一个chunk的地址</li>
+<li>指针b指向待使用的chunk</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Reminders about list directionality within bins */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> first(b)     ((b)-&gt;fd)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> last(b)      ((b)-&gt;bk)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>set_inuse_bit_at_offset(p, s)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>为当前chunk的下一个相邻chunk设置<code>PREV_INUSE</code>标志位，以说明被设置<code>PREV_INUSE</code>的chunk的上一个chunk已被分配</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_inuse_bit_at_offset(p, s)      \</span></span><br><span class="line">  (((mchunkptr) (((<span class="keyword">char</span> *) (p)) + (s)))-&gt;size |= PREV_INUSE)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>check_malloced_chunk(A, P, N)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>调用函数来检测指针P指向的chunk是否异常</li>
+<li>参数A为arena地址、参数P为chunk地址、参数N为chunk的大小</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta"># <span class="meta-keyword">define</span> check_malloced_chunk(A, P, N)   do_check_malloced_chunk (A, P, N)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>chunksize(p)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回受指针p指向的chunk，其除去各种标志位后的的大小</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  Bits to mask off when extracting size</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Note: IS_MMAPPED is intentionally not masked off from size field in</span></span><br><span class="line"><span class="comment">  macros for which mmapped chunks should never be seen. This should</span></span><br><span class="line"><span class="comment">  cause helpful core dumps to occur if it is tried by accident by</span></span><br><span class="line"><span class="comment">  people extending or adapting this malloc.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SIZE_BITS (PREV_INUSE | IS_MMAPPED | NON_MAIN_ARENA)</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Get size, ignoring use bits */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> chunksize(p)         ((p)-&gt;size &amp; ~(SIZE_BITS))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>chunk_at_offset(p, s)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回chunk <code>p</code> 偏移 <code>s</code> 个单位后的地址</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Treat space at ptr + offset as a chunk */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> chunk_at_offset(p, s)  ((mchunkptr) (((char *) (p)) + (s)))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>set_head(p, s)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>设置chunk <code>p</code> 的 size成员为变量<code>s</code></li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Set size/use field */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_head(p, s)       ((p)-&gt;size = (s))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>set_foot(p, s)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>设置chunk <code>p</code> 下一个chunk 的 prev_size成员为变量<code>s</code></li>
+<li>这个设置当且仅当 <em>被设置prev_size的chunk</em> 的上一个chunk为free chunk时才有效</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Set size at footer (only when chunk is not in use) */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_foot(p, s)       (((mchunkptr) ((char *) (p) + (s)))-&gt;prev_size = (s)))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>unlink(AV, P, BK, FD)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>将该chunk从bin链上断开连接</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Take a chunk off a bin list */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> unlink(AV, P, BK, FD) &#123;                                            \</span></span><br><span class="line">    FD = P-&gt;fd;      \</span><br><span class="line">    BK = P-&gt;bk;      \</span><br><span class="line">    <span class="keyword">if</span> (__builtin_expect (FD-&gt;bk != P || BK-&gt;fd != P, <span class="number">0</span>))      \</span><br><span class="line">      malloc_printerr (check_action, <span class="string">"corrupted double-linked list"</span>, P, AV);  \</span><br><span class="line">    <span class="keyword">else</span> &#123;      \</span><br><span class="line">        FD-&gt;bk = BK;      \</span><br><span class="line">        BK-&gt;fd = FD;     \</span><br><span class="line">        <span class="keyword">if</span> (!in_smallbin_range (P-&gt;size)     \</span><br><span class="line">            &amp;&amp; __builtin_expect (P-&gt;fd_nextsize != <span class="literal">NULL</span>, <span class="number">0</span>)) &#123;      \</span><br><span class="line">      <span class="keyword">if</span> (__builtin_expect (P-&gt;fd_nextsize-&gt;bk_nextsize != P, <span class="number">0</span>)      \</span><br><span class="line">    || __builtin_expect (P-&gt;bk_nextsize-&gt;fd_nextsize != P, <span class="number">0</span>))    \</span><br><span class="line">        malloc_printerr (check_action,     \</span><br><span class="line">            <span class="string">"corrupted double-linked list (not small)"</span>,    \</span><br><span class="line">            P, AV);      \</span><br><span class="line">            <span class="keyword">if</span> (FD-&gt;fd_nextsize == <span class="literal">NULL</span>) &#123;      \</span><br><span class="line">                <span class="keyword">if</span> (P-&gt;fd_nextsize == P)      \</span><br><span class="line">                  FD-&gt;fd_nextsize = FD-&gt;bk_nextsize = FD;     \</span><br><span class="line">                <span class="keyword">else</span> &#123;      \</span><br><span class="line">                    FD-&gt;fd_nextsize = P-&gt;fd_nextsize;      \</span><br><span class="line">                    FD-&gt;bk_nextsize = P-&gt;bk_nextsize;      \</span><br><span class="line">                    P-&gt;fd_nextsize-&gt;bk_nextsize = FD;      \</span><br><span class="line">                    P-&gt;bk_nextsize-&gt;fd_nextsize = FD;     \</span><br><span class="line">                  &#125;      \</span><br><span class="line">              &#125; <span class="keyword">else</span> &#123;      \</span><br><span class="line">                P-&gt;fd_nextsize-&gt;bk_nextsize = P-&gt;bk_nextsize;      \</span><br><span class="line">                P-&gt;bk_nextsize-&gt;fd_nextsize = P-&gt;fd_nextsize;      \</span><br><span class="line">              &#125;      \</span><br><span class="line">          &#125;      \</span><br><span class="line">      &#125;      \</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>next_bin(b)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回下一个bin链的地址</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* analog of ++bin */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> next_bin(b)  ((mbinptr) ((char *) (b) + (sizeof (mchunkptr) &lt;&lt; 1)))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>idx2block(i)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>返回传入的索引对应的binmap索引</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> BINMAPSHIFT      5</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> idx2block(i)     ((i) &gt;&gt; BINMAPSHIFT)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>mark_bin(m, i)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>在arena上binmap的对应索引处设置标记，以表示当前索引的large bin非空</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> mark_bin(m, i)    ((m)-&gt;binmap[idx2block (i)] |= idx2bit (i))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>unmark_bin(m, i)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>在arena上binmap的对应索引处解除标记，以表示当前索引的large bin为空</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> unmark_bin(m, i)  ((m)-&gt;binmap[idx2block (i)] &amp;= ~(idx2bit (i)))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>get_binmap(m, i)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>获取arena上binmap对应索引的值，以获得对应bin的状态</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> get_binmap(m, i)  ((m)-&gt;binmap[idx2block (i)] &amp; idx2bit (i))</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>MINSIZE</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>一个宏常量，表示最小可配分配的chunk大小，通常为 0x10字节（32位） / 0x20字节（64位）</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* The smallest possible chunk */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MIN_CHUNK_SIZE        (offsetof(struct malloc_chunk, fd_nextsize))</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* The smallest size we can malloc is an aligned minimal chunk */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MINSIZE  \</span></span><br><span class="line">  (<span class="keyword">unsigned</span> <span class="keyword">long</span>)(((MIN_CHUNK_SIZE+MALLOC_ALIGN_MASK) &amp; ~MALLOC_ALIGN_MASK))</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>misaligned_chunk(p)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>用于校验地址是否是按 2SIZE_SZ 对齐</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> misaligned_chunk(p) \</span></span><br><span class="line">  ((<span class="keyword">uintptr_t</span>)(MALLOC_ALIGNMENT == <span class="number">2</span> * SIZE_SZ ? (p) : chunk2mem (p)) \</span><br><span class="line">  &amp; MALLOC_ALIGN_MASK)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>aligned_OK(m)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>判断当前chunk是否对齐了内存</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> aligned_OK(m)  (((unsigned long)(m) &amp; MALLOC_ALIGN_MASK) == 0)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>set_fastchunks(M)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>设置arena上关于fastbin的标志位</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> set_fastchunks(M)      catomic_and (&amp;(M)-&gt;flags, ~FASTCHUNKS_BIT)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>prev_inuse(p)</code></p>
+<ul>
+<li>
+<p>用处</p>
+<ul>
+<li>判断当前chunk是否设置了prev_inuse（即上一个chunk是否已经被分配了）</li>
+</ul>
+</li>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> prev_inuse(p)       ((p)-&gt;size &amp; PREV_INUSE)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>FASTBIN_CONSOLIDATION_THRESHOLD</code></p>
+<ul>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  FASTBIN_CONSOLIDATION_THRESHOLD is the size of a chunk in free()</span></span><br><span class="line"><span class="comment">  that triggers automatic consolidation of possibly-surrounding</span></span><br><span class="line"><span class="comment">  fastbin chunks. This is a heuristic, so the exact value should not</span></span><br><span class="line"><span class="comment">  matter too much. It is defined at half the default trim threshold as a</span></span><br><span class="line"><span class="comment">  compromise heuristic to only attempt consolidation if it is likely</span></span><br><span class="line"><span class="comment">  to lead to trimming. However, it is not dynamically tunable, since</span></span><br><span class="line"><span class="comment">  consolidation reduces fragmentation surrounding large chunks even</span></span><br><span class="line"><span class="comment">  if trimming is not used.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">  If freeing a large space, consolidate possibly-surrounding</span></span><br><span class="line"><span class="comment">  chunks. Then, if the total unused topmost memory exceeds trim</span></span><br><span class="line"><span class="comment">  threshold, ask malloc_trim to reduce top.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">  Unless max_fast is 0, we don't know if there are fastbins</span></span><br><span class="line"><span class="comment">  bordering top, so we cannot tell for sure whether threshold</span></span><br><span class="line"><span class="comment">  has been reached unless fastbins are consolidated.  But we</span></span><br><span class="line"><span class="comment">  don't want to consolidate on each free.  As a compromise,</span></span><br><span class="line"><span class="comment">  consolidation is performed if FASTBIN_CONSOLIDATION_THRESHOLD</span></span><br><span class="line"><span class="comment">  is reached.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FASTBIN_CONSOLIDATION_THRESHOLD  (65536UL)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p><code>contiguous(M)</code></p>
+<ul>
+<li>
+<p>源代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">NONCONTIGUOUS_BIT indicates that MORECORE does not return contiguous</span></span><br><span class="line"><span class="comment">regions.  Otherwise, contiguity is exploited in merging together,</span></span><br><span class="line"><span class="comment">when possible, results from consecutive MORECORE calls.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">The initial value comes from MORECORE_CONTIGUOUS, but is</span></span><br><span class="line"><span class="comment">changed dynamically if mmap is ever used as an sbrk substitute.</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> NONCONTIGUOUS_BIT     (2U)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> contiguous(M)          (((M)-&gt;flags &amp; NONCONTIGUOUS_BIT) == 0)</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ol>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/04/heap-5-heap_definitions/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Heap/" rel="tag">Heap</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/04/heap-4-_int_malloc_process/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            heap - 4 - _int_malloc的相关操作
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/04/heap-3-bins/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 3 - bins分类</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

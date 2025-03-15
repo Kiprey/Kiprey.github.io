@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="fuzz, AFL, Path Sensitive,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《CollAFL - Path Sensitive Fuzzing》论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-collafl"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《CollAFL - Path Sensitive Fuzzing》论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/collafl/" class="article-date">
+  <time datetime="2021-11-30T16:00:00.000Z" itemprop="datePublished">2021-12-01</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">9 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>现有 fuzz 大多以代码覆盖率为引导指标。以AFL为例，它使用<strong>映射至 hashmap 中的基于 edge 的覆盖率信息</strong>来引导测试。这种覆盖率信息不太准确，因为<strong>只统计至 edge 层面</strong>，同时还会<strong>产生覆盖 hash 冲突</strong>，丢失覆盖率信息，给模糊测试带来一些不良限制。</p>
+<p>这篇论文提出了一个新的方式，来达到以下三个目的：</p>
+<ul>
+<li>提供<strong>更准确的覆盖信息</strong></li>
+<li><strong>缓解</strong>路径冲突</li>
+<li>保持<strong>较低检测开销</strong></li>
+</ul>
+<p>同时，该论文还利用覆盖率信息，提出了<strong>三种新的模糊测试策略</strong>，加快了发现新路径和漏洞的速度。</p>
+<p>下图是一个完整 fuzz 的工作流程，其中黄色标注部分为论文所提出的<strong>重点思路</strong>：</p>
+<p><img src="/2021/11/collafl/image-20211201164140587.png" alt="image-20211201164140587"></p>
+<a id="more"></a>
+<h2 id="二、降低哈希碰撞策略">二、降低哈希碰撞策略</h2>
+<h3 id="1-覆盖粒度">1. 覆盖粒度</h3>
+<p>覆盖粒度大体上可分为三类：</p>
+<ul>
+<li>block coverage，块覆盖</li>
+<li>edge coverage，边覆盖</li>
+<li>path coverage，路径覆盖</li>
+</ul>
+<p>每种粒度各有利弊：</p>
+<ul>
+<li>
+<p>块覆盖：跟踪每个块的命中次数，但<strong>不跟踪块的执行顺序</strong>。</p>
+</li>
+<li>
+<p>边覆盖：与块覆盖不同，它将<strong>跟踪两个块之间的执行顺序</strong>。</p>
+<p>同时，还跟踪每条边的命中次数，但<strong>不跟踪边的执行顺序</strong>。</p>
+</li>
+<li>
+<p>路径覆盖：跟踪<strong>边的执行顺序</strong>，提供最完整的覆盖信息。但是，受限于<strong>路径长度</strong>和<strong>路径数量</strong>的规模之大，跟踪路径覆盖信息将会导致开销非常高，因此不具有可行性。</p>
+</li>
+</ul>
+<p>综上，边覆盖信息在<strong>可行性</strong>与<strong>覆盖信息</strong>之间做了一个折中。但以 AFL 为例，边覆盖信息仍然可能会受到哈希碰撞的影响而导致信息丢失。即便提高 bitmap 的大小，但这仍然无法避免哈希碰撞，并且会对 AFL 的运行带来严重性能开销（因为 AFL 会经常遍历 bitmap 以获取新的覆盖率信息）。</p>
+<p>因此接下来将说明 CollAFL 的做法，它将降低哈希碰撞问题发生的影响。</p>
+<h3 id="2-降低哈希碰撞">2. 降低哈希碰撞</h3>
+<p>先简单回忆一下 AFL 的 hash 计算方式：$cur \oplus (prev&gt;&gt;1)$。</p>
+<blockquote>
+<p>其中 cur 和 prev 为当前和上一个基础块的 ID。</p>
+<p>对 prev 做了一个右移操作是为了区分开基础块 A-&gt;B 和 B-&gt;A 的差别。</p>
+<p>具体的内容可以看看我之前做的笔记 <a href="https://kiprey.github.io/2020/07/AFL-LLVM-Mode">AFL的LLVM_Mode</a>。</p>
+</blockquote>
+<p>而 CollAFL 在原先 AFL 的 hash 计算方式上做了一些改进，它插入了一个三元组 <strong>(x,y,z)</strong> 作为 hash 计算参数（下称<strong>参数</strong>）。</p>
+<p>边 A-&gt; B 的 hash 计算方程为：$Fmul(cur, prev) = (cur &gt;&gt; x) \oplus (prev &gt;&gt; y) + z$。</p>
+<blockquote>
+<p>其中 AFL hash algorithm 是 (x=0,y=1,z=0) 的一个特例。</p>
+<p>从这也可以看出，Fmul 的计算开销与 AFL 差不多。</p>
+<p>需要注意的是，CollAFL 为每个<strong>基本块</strong>来选择参数，而不是为边选择参数。</p>
+</blockquote>
+<p>CollAFL 将通过调整参数，来<strong>确保每个通过 Fmul 方程计算出的边的 hash 是不同的</strong>。若每个基本块中使用的参数均可以使得每条边的 hash 不同，那么就可以解决 hash 碰撞问题。</p>
+<p>但需要注意的是，由于应用程序的基本块过多，因此<strong>无法遍历全部的基本块</strong>，同时也<strong>无法遍历全部的参数</strong>。因此实际上 CollAFL 在这个方程的基础之上又做了一些改进，根据以下几种不同的情况，来分别进行不同的操作，以降低 hash 碰撞的概率。</p>
+<h4 id="a-基本块有多个前驱基本块">a. 基本块有多个前驱基本块</h4>
+<h5 id="1-CalcFmul">1) CalcFmul</h5>
+<p>初始时，CollAFL 将使用上述 Fmul 方程，动态计算入边的 hash。以下是 collAFL 贪心搜索合适的参数以计算 Fmul 方程的算法：</p>
+<p><img src="/2021/11/collafl/image-20211201203136198.png" alt="image-20211201203136198"></p>
+<p>输入参数是</p>
+<ul>
+<li>具有多个前驱基本块的目标基本块集合</li>
+<li>基本块与基本块 ID 的映射关系</li>
+<li>每个目标基本块的前驱基本块集合</li>
+</ul>
+<p>如果部分基本块，在有限的 xyz 参数集合中无法找到<strong>不会哈希碰撞的参数</strong>后，那么该基本块将被放入 Unsolve 集合中；如果能搜索到合适的参数，则目标基本块将放入 Solve 集合中，且搜索到的参数放入 Params 映射里。</p>
+<p>最终，calcFmul 函数将输出以下四个：</p>
+<ul>
+<li>已经解决的基本块集合 Solv</li>
+<li>尚未解决的基本块集合 Unsol</li>
+<li>已经解决的基本块集合与参数的映射关系 Params：$BacicBlock \to &lt;x,y,z&gt;$</li>
+<li>此时的 hash 表</li>
+</ul>
+<p>需要注意的是 Fmul 无法保证通过选择适当的参数来达到<strong>防止任何哈希冲突</strong>，因此 calcFmul 算法会将可能导致哈希碰撞的基本块单独保存，并使用其他方式处理。calcFmul 能保证的是，<strong>calcFmul 解决的基本块中不会产生任何哈希碰撞</strong>。</p>
+<p><strong>Fmul 的哈希值必须在运行时计算得出</strong>。</p>
+<h5 id="2-CalcFhash">2) CalcFhash</h5>
+<p>接下来，collAFL 将会处理那些通过 calcFmul 算法求解后会产生哈希碰撞的基本块。对于这些无法通过 $Fmul$ 方程解决的基本块，其新的 hash 将被称为 $Fhash$，Fhash 的获取算法如下所示：</p>
+<p><img src="/2021/11/collafl/image-20211201204328429.png" alt="image-20211201204328429"></p>
+<p>可以看到，对于这些<strong>剩余未解决</strong>的基本块来说，<strong>随机给每个基本块的每个入边分配一个 hash 值</strong>，即是 Fhash 的求解方式。求解完成后，输出此时的哈希表以及剩余尚未分配完成的哈希。</p>
+<p>之后，在运行时，Fhash 的值便可以通过查询先前生成的 <strong>HaspMap</strong> 表得到：$Fhash(cur, prev) = hash_table_lookup(cur, prev)$。</p>
+<p>由于哈希表的查找比 Fmul 的算数计算慢的多，因此 Unsol 集合里的基本块数量必须尽可能地小。</p>
+<h4 id="b-基本块只有一个前驱基本块">b. 基本块<strong>只有一个前驱基本块</strong></h4>
+<p>若当前遍历到的基本块只有一个基本块，则在该边的结束块中，<strong>直接</strong>为该边分配一个不与其他 hash 冲突的新 hash 值：$Fsingle(cur, prev) = c$，其中 c 是一个与其他 hash 不同的常量。</p>
+<p>这里的 hash 分配，<strong>将在给其他基础块计算完 Fmul 和 Fhash 后再来执行</strong>，以尽可能地避免哈希碰撞。</p>
+<p>由于这里的哈希分配与运行时的基本块前后信息无关（因为此时基本块只有一个前驱基本块），因此可以直接在插桩时便硬编码进入，无需运行时再计算 hash。</p>
+<blockquote>
+<p>由于有大概 60% 以上的基本块只有一条前驱边，因此这样的 hash 分配将会节省 fuzz 的很多开销。</p>
+</blockquote>
+<h4 id="c-整体解决方案">c. 整体解决方案</h4>
+<p>首先。<strong>确保哈希值空间大小大于边的数量</strong>，否则将无法避免哈希碰撞。</p>
+<p>之后，根据上面所介绍的算法与步骤，执行以下操作：</p>
+<p><img src="/2021/11/collafl/image-20211201205839792.png" alt="image-20211201205839792"></p>
+<h3 id="3-开销分析">3. 开销分析</h3>
+<p>不同哈希算法的开销如下：$cost(Fhash) &gt; cost(Fmul) &gt; cost(Fsingle) \approx 0$</p>
+<p>其中，根据经验所示，大部分基础块都只有一个入边，并且 unsol 基础块的数量非常的少：</p>
+<p>$num(Fsingle) &gt; num(Fmul) &gt;&gt; num(Fhash) \approx 0$</p>
+<p>因此，整体上 collAFL 降低哈希碰撞的方式的实用性是比较高的。</p>
+<h3 id="4-对间接调用的处理">4. 对间接调用的处理</h3>
+<p>受限于静态分析的精度，一些<strong>被间接调用</strong>的基本块，可能会被错误归类为<strong>只有单个或者没有</strong>前驱基本块，影响实际使用效果。</p>
+<blockquote>
+<p>即被间接调用的基本块，可能在调用图上没有明显的调用入边。</p>
+</blockquote>
+<p>因此实际实现时，CollAFL 将会把<strong>没有被任何调用点直接调用</strong>的函数入口，标记为<strong>有多个前驱基本块</strong>的入口基本块，即按照有多个前驱基本块的方式（Fmul + Fhash）来计算 hash，强制不走 Fsingle 的这条路。</p>
+<p>同时，CollAFL 还会将多个间接调用指令，展开为直接调用指令集合和一条间接调用指令，与 gcc 中的<strong>去虚拟化技术</strong>类似。</p>
+<blockquote>
+<p>gcc 的去虚拟化技术，指的是通过一系列的分析，最终将一些<strong>不确定的虚拟调用点</strong>，与<strong>确定的虚函数</strong>绑定，从而<strong>转化成了普通的直接函数调用</strong>，去除了间接虚拟调用。</p>
+</blockquote>
+<p>经过上述两步操作后，CollAFL将会减少那些 **被识别为只有单个前驱基本块（或没有前驱基本块）**的基本块数量。</p>
+<p>CollAFL 的哈希碰撞降低技术只确保<strong>消除已知边的碰撞</strong>，因此受限于静态分析技术，仍然可能存在哈希碰撞。</p>
+<h2 id="三、种子变异策略">三、种子变异策略</h2>
+<p>该论文提出了以下种子变异观点：</p>
+<ul>
+<li>如果某条路径有许多<strong>未探索过的相邻分支</strong>，或者<strong>未探索过的相邻后继节点</strong>，则该路径的变异可能可以探索出新的路径</li>
+<li>如果某条路径上<strong>存在较多内存访问操作</strong>，则该路径<strong>有一定概率来触发潜在内存漏洞</strong>，而对该路径的<strong>突变也有可能触发</strong>漏洞。</li>
+</ul>
+<p>并根据上述观点，给出三个评估种子权重的方程：</p>
+<ul>
+<li>
+<p>探索<strong>未探索过的相邻分支</strong>策略：</p>
+<p>$$Weight_Br(T) = \sum_{bb\in Path(T) \and &lt;bb, bb_i&gt;\in EDGES}IsUntouched(&lt;bb, bb_i&gt;) $$</p>
+</li>
+<li>
+<p>探索<strong>未探索过的相邻后继节点</strong>策略：</p>
+<p>$$Weight_Desc(T)=\sum_{bb\in Path(T) \and IsUntouched(&lt;bb, bb_i&gt;)} NumDesc(bb_i)$$</p>
+<p>$$NumDesc(bb) = \sum_{&lt;bb, bb_i&gt;\in EDGES} NumDesc(bb_i)$$</p>
+</li>
+<li>
+<p>探索<strong>存在较多内存访问操作的节点</strong>策略：<br>
+$$Weight_Mem(T) = \sum_{bb\in Path(T)} NumMemInstr(bb)$$</p>
+</li>
+</ul>
+<h2 id="四、评估">四、评估</h2>
+<p>评估分为两部分，分别是评估 CollAFL 降低哈希碰撞策略的效果，以及种子变异策略的效果。</p>
+<h3 id="1-降低哈希碰撞">1. 降低哈希碰撞</h3>
+<p>首先给出 AFL fuzz 不同项目的哈希碰撞效果，可以看到，碰撞比率还是比较高的：<br>
+<img src="/2021/11/collafl/image-20211201214452781.png" alt="image-20211201214452781"></p>
+<p>接下来再给出 CollAFL 哈希的效果，可以看到相比于 AFL，CollAFL 更好的利用了哈希空间，极大的降低了碰撞比率：</p>
+<p><img src="/2021/11/collafl/image-20211201214607544.png" alt="image-20211201214607544"></p>
+<h3 id="2-种子变异">2. 种子变异</h3>
+<p>这是 CollAFL 分别使用三种种子变异策略运行200小时后的效果：</p>
+<p><img src="/2021/11/collafl/image-20211201214812985.png" alt="image-20211201214812985"></p>
+<p>可以看到，这三种变异策略均跑出了更多的 crash，取得了不错的效果。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/collafl/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/AFL/" rel="tag">AFL</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/12/coop/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            《Counterfeit Object-oriented Programming》 论文笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《VScape - Assessing and Escaping Virtual Call Protections》 论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

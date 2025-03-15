@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, fuzz, protobuf,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    使用 protobuf &amp; AFLplusplus 进行简易 CTF 自动化 fuzz |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-protobuf_ctf_fuzz"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  使用 protobuf &amp; AFLplusplus 进行简易 CTF 自动化 fuzz
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/09/protobuf_ctf_fuzz/" class="article-date">
+  <time datetime="2021-09-26T05:39:22.000Z" itemprop="datePublished">2021-09-26</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">14 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>看 <a href="https://github.com/google/fuzzing/blob/master/docs/structure-aware-fuzzing.md" target="_blank" rel="noopener">fuzz 的结构感知</a> 时遇到了 protobuf，觉得很有意思，于是尝试使用 protobuf 来进行快速简易的 CTF fuzz。</p>
+<p>以下以 <a href="https://ctftime.org/task/16415" target="_blank" rel="noopener">TCTF2021-babyheap2021</a> 为例，来简单说明一下自动化步骤。</p>
+<p>这里主要用到以下项目：</p>
+<ul>
+<li><a href="https://github.com/AFLplusplus/AFLplusplus" target="_blank" rel="noopener">AFL++</a>，其中的 qemu mode + qasan</li>
+<li><a href="https://github.com/thebabush/afl-libprotobuf-mutator" target="_blank" rel="noopener">afl-libprotobuf-mutator</a></li>
+</ul>
+<p>需要注意的是，该 fuzz 目前处于实验性版本，可能不太稳定，仅作为学习研究使用。</p>
+<a id="more"></a>
+<h2 id="二、操作流程">二、操作流程</h2>
+<h3 id="1-下载依赖">1. 下载依赖</h3>
+<p>git clone 下 AFL++ 和 afl-libprotobuf-mutator （链接在上面）即可。</p>
+<h3 id="2-配置-afl-libprotobuf-mutator">2. 配置 afl-libprotobuf-mutator</h3>
+<ul>
+<li>
+<p>首先，用 ida64 打开 babyheap2021, F5阅读伪代码并总结其输入模板，最后用 protobuf 描述输入结构：</p>
+<blockquote>
+<p>这类菜单题的输入模板大体上比较固定，下面的代码随便改改就能换一道题目用用。</p>
+</blockquote>
+<p>代码编写完成后，覆盖保存至 <code>afl-libprotobuf-mutator/gen/out.proto</code>。注意<strong>路径必须完成一致</strong>，若遇到重名文件 out.proto 则直接替换。</p>
+<blockquote>
+<p>如果不会写 protobuf 描述的话，可以看看这个 <a href="https://developers.google.com/protocol-buffers/docs/tutorials" target="_blank" rel="noopener">Protocol Buffers Tutorials</a>。</p>
+</blockquote>
+<figure class="highlight protobuf"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// out.proto</span></span><br><span class="line">syntax = <span class="string">"proto2"</span>;</span><br><span class="line"><span class="keyword">package</span> menuctf;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">AllocChoice</span> </span>&#123;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> choice_id = <span class="number">1</span> [default=<span class="number">1</span>];</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> size = <span class="number">2</span>;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">string</span> content = <span class="number">3</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">UpdateChoice</span> </span>&#123;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> choice_id = <span class="number">1</span> [default=<span class="number">2</span>];</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> idx = <span class="number">2</span>;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> size = <span class="number">3</span>;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">string</span> content = <span class="number">4</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">DeleteChoice</span> </span>&#123;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> choice_id = <span class="number">1</span> [default=<span class="number">3</span>];</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> idx = <span class="number">2</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">ViewChoice</span> </span>&#123;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> choice_id = <span class="number">1</span> [default=<span class="number">4</span>];</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> idx = <span class="number">2</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">ExitChoice</span> </span>&#123;</span><br><span class="line">  <span class="keyword">required</span> <span class="built_in">int32</span> choice_id = <span class="number">1</span> [default=<span class="number">5</span>];</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// Our address book file is just one of these.</span></span><br><span class="line"><span class="class"><span class="keyword">message</span> <span class="title">ChoiceList</span> </span>&#123;</span><br><span class="line">  <span class="class"><span class="keyword">message</span> <span class="title">Choice</span> </span>&#123;</span><br><span class="line">    <span class="keyword">oneof</span> the_choice&#123;</span><br><span class="line">      AllocChoice alloc_choice = <span class="number">1</span>;</span><br><span class="line">      UpdateChoice update_choice = <span class="number">2</span>;</span><br><span class="line">      DeleteChoice delete_choice = <span class="number">3</span>;</span><br><span class="line">      ViewChoice view_choice = <span class="number">4</span>;</span><br><span class="line">      ExitChoice exit_choice = <span class="number">5</span>;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">repeated</span> Choice choice = <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>到了这里，我们需要理一理思路。对于CTF题来说，大多都是直接从 stdin 中获取输入的<strong>文本数据</strong>。因此首先，我们需要编写 <code>Protobuf::Message</code> 转<strong>常规输入字符串</strong>的代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">ProtoToDataHelper</span><span class="params">(<span class="built_in">std</span>::<span class="built_in">stringstream</span> &amp;out, <span class="keyword">const</span> google::protobuf::Message &amp;msg)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">const</span> google::protobuf::Descriptor *desc = msg.GetDescriptor();</span><br><span class="line">  <span class="keyword">const</span> google::protobuf::Reflection *refl = msg.GetReflection();</span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">unsigned</span> fields = desc-&gt;field_count();</span><br><span class="line">  <span class="comment">// std::cout &lt;&lt; msg.DebugString() &lt;&lt; std::endl;</span></span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">unsigned</span> i = <span class="number">0</span>; i &lt; fields; ++i) &#123;</span><br><span class="line">    <span class="keyword">const</span> google::protobuf::FieldDescriptor *field = desc-&gt;field(i);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 对于单个 choice</span></span><br><span class="line">    <span class="keyword">if</span> (field-&gt;cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_MESSAGE) &#123;</span><br><span class="line">      <span class="comment">// 如果当前是 choice list</span></span><br><span class="line">      <span class="keyword">if</span> (field-&gt;is_repeated()) &#123;</span><br><span class="line">        <span class="keyword">const</span> google::protobuf::RepeatedFieldRef&lt;google::protobuf::Message&gt; &amp;ptr = refl-&gt;GetRepeatedFieldRef&lt;google::protobuf::Message&gt;(msg, field);</span><br><span class="line">        <span class="comment">// 将每个 choice 打出来</span></span><br><span class="line">        <span class="keyword">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;child : ptr) &#123;</span><br><span class="line">          ProtoToDataHelper(out, child);</span><br><span class="line">          out &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">        &#125;</span><br><span class="line">      <span class="comment">// 如果当前是某个子 choice</span></span><br><span class="line">      &#125; <span class="keyword">else</span> <span class="keyword">if</span> (refl-&gt;HasField(msg, field)) &#123;</span><br><span class="line">        <span class="keyword">const</span> google::protobuf::Message &amp;child = refl-&gt;GetMessage(msg, field);</span><br><span class="line">        ProtoToDataHelper(out, child);</span><br><span class="line">      &#125;</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="comment">// 对于单个 field</span></span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (field-&gt;cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_INT32) &#123;</span><br><span class="line">      out &lt;&lt; refl-&gt;GetInt32(msg, field);</span><br><span class="line">      <span class="keyword">if</span>(i &lt; fields - <span class="number">1</span>) </span><br><span class="line">        out &lt;&lt; <span class="string">" "</span>;</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (field-&gt;cpp_type() == google::protobuf::FieldDescriptor::CPPTYPE_STRING) &#123;</span><br><span class="line">      out &lt;&lt; refl-&gt;GetString(msg, field);</span><br><span class="line">      <span class="keyword">if</span>(i &lt; fields - <span class="number">1</span>) </span><br><span class="line">        out &lt;&lt; <span class="string">" "</span>;</span><br><span class="line">    &#125; </span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="built_in">abort</span>();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后，参照 AFL++ 的 <a href="https://github.com/AFLplusplus/AFLplusplus/blob/dev/docs/custom_mutators.md" target="_blank" rel="noopener">Custom Mutators in AFL++</a>，完成一些必要的 custom mutate 函数。</p>
+<p>这里我们需要完成以下几种函数：</p>
+<ul>
+<li><code>void *afl_custom_init(void *afl, unsigned int seed)</code>：在执行 custom mutate 前需要执行的初始化操作，这里只需初始化一下随机种子。</li>
+<li><code>size_t afl_custom_fuzz(void *data, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size)</code> ：变异逻辑，在该代码中编写自己的变异逻辑。</li>
+<li><code>size_t afl_custom_post_process(void* data, uint8_t *buf, size_t buf_size, uint8_t **out_buf)</code>：将 protobuf::Message 格式的二进制数据转换成 target 可读的数据。</li>
+<li><code>void afl_custom_deinit(void *data)</code>：变异完成后需要做的事情，目前没有什么事情需要在这里进行处理。</li>
+<li><code>int32_t afl_custom_init_trim(void *data, uint8_t *buf, size_t buf_size)</code>：自定义 trim 逻辑的初始化。为了<strong>防止 trim 逻辑破坏 protobuf::Message 的二进制数据</strong>，影响正常的 Parse 过程，这里可以让该函数直接返回0，跳过每次的 trim 阶段。</li>
+<li><code>size_t afl_custom_trim(void *data, uint8_t **out_buf)</code>：自定义 trim 逻辑。由于<code>afl_custom_init_trim</code>函数返回0，因此实际上该函数不会被调用，但我们仍然必须声明该函数以启用自定义 trim 逻辑。</li>
+</ul>
+<blockquote>
+<p>需要注意的是，这一整个 <code>extern &quot;C&quot;</code> 的代码以及内部用到的 <code>ProtoToDataHelper</code> 函数的代码，必须全部放在 <code>afl-libprotobuf-mutator/src/mutate.cc</code> 中。</p>
+<p>由于 afl-libprotobuf-mutator 较为久远，因此大部分 AFL++ 相关的接口需要修改亿下。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// AFLPlusPlus interface</span></span><br><span class="line"><span class="keyword">extern</span> <span class="string">"C"</span> &#123;</span><br><span class="line">  <span class="keyword">static</span> <span class="built_in">std</span>::default_random_engine engine_pro;</span><br><span class="line">  <span class="function"><span class="keyword">static</span> <span class="built_in">std</span>::uniform_int_distribution&lt;<span class="keyword">unsigned</span> <span class="keyword">int</span>&gt; <span class="title">dis</span><span class="params">(<span class="number">0</span>, UINT32_MAX)</span></span>;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">void</span> *<span class="title">afl_custom_init</span><span class="params">(<span class="keyword">void</span> *afl, <span class="keyword">unsigned</span> <span class="keyword">int</span> seed)</span> </span>&#123;</span><br><span class="line">    <span class="meta">#<span class="meta-keyword">pragma</span> unused (afl)</span></span><br><span class="line">    engine_pro.seed(seed);</span><br><span class="line">    <span class="keyword">return</span> <span class="literal">nullptr</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  </span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">afl_custom_deinit</span><span class="params">(<span class="keyword">void</span> *data)</span> </span>&#123;</span><br><span class="line">    assert(!data);</span><br><span class="line">  &#125;</span><br><span class="line">  </span><br><span class="line">  <span class="comment">// afl_custom_fuzz</span></span><br><span class="line">  <span class="function"><span class="keyword">size_t</span> <span class="title">afl_custom_fuzz</span><span class="params">(<span class="keyword">void</span> *data, <span class="keyword">unsigned</span> <span class="keyword">char</span> *buf, <span class="keyword">size_t</span> buf_size, <span class="keyword">unsigned</span> <span class="keyword">char</span> **out_buf, </span></span></span><br><span class="line"><span class="function"><span class="params">                         <span class="keyword">unsigned</span> <span class="keyword">char</span> *add_buf, <span class="keyword">size_t</span> add_buf_size, <span class="keyword">size_t</span> max_size)</span> </span>&#123;</span><br><span class="line">    <span class="meta">#<span class="meta-keyword">pragma</span> unused (data)</span></span><br><span class="line">    <span class="meta">#<span class="meta-keyword">pragma</span> unused (add_buf)</span></span><br><span class="line">    <span class="meta">#<span class="meta-keyword">pragma</span> unused (add_buf_size)</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">static</span> <span class="keyword">uint8_t</span> *saved_buf = <span class="literal">nullptr</span>;</span><br><span class="line"></span><br><span class="line">    assert(buf_size &lt;= max_size);</span><br><span class="line">    </span><br><span class="line">    <span class="keyword">uint8_t</span> *new_buf = (<span class="keyword">uint8_t</span> *) <span class="built_in">realloc</span>((<span class="keyword">void</span> *)saved_buf, max_size);</span><br><span class="line">    <span class="keyword">if</span> (!new_buf) &#123;</span><br><span class="line">      *out_buf = buf;</span><br><span class="line">      <span class="keyword">return</span> buf_size;</span><br><span class="line">    &#125;</span><br><span class="line">    saved_buf = new_buf;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">memcpy</span>(new_buf, buf, buf_size);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">size_t</span> new_size = LLVMFuzzerCustomMutator(</span><br><span class="line">      new_buf,</span><br><span class="line">      buf_size,</span><br><span class="line">      max_size,</span><br><span class="line">      dis(engine_pro)</span><br><span class="line">    );</span><br><span class="line">    *out_buf = new_buf;</span><br><span class="line">    <span class="keyword">return</span> new_size;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">size_t</span> <span class="title">afl_custom_post_process</span><span class="params">(<span class="keyword">void</span>* data, <span class="keyword">uint8_t</span> *buf, <span class="keyword">size_t</span> buf_size, <span class="keyword">uint8_t</span> **out_buf)</span> </span>&#123;</span><br><span class="line">    <span class="meta">#<span class="meta-keyword">pragma</span> unused (data)</span></span><br><span class="line">    <span class="comment">// new_data is never free'd by pre_save_handler</span></span><br><span class="line">    <span class="comment">// I prefer a slow but clearer implementation for now</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">static</span> <span class="keyword">uint8_t</span> *saved_buf = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">    menuctf::ChoiceList msg;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">stringstream</span> stream;</span><br><span class="line">    <span class="comment">// 如果加载成功</span></span><br><span class="line">    <span class="keyword">if</span> (protobuf_mutator::libfuzzer::LoadProtoInput(<span class="literal">true</span>, buf, buf_size, &amp;msg)) &#123;</span><br><span class="line">      ProtoToDataHelper(stream, msg);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span> &#123;</span><br><span class="line">      <span class="comment">// printf("[afl_custom_post_process] LoadProtoInput Error\n");   </span></span><br><span class="line">      <span class="comment">// std::ofstream err_bin("err.bin");</span></span><br><span class="line">      <span class="comment">// err_bin.write((char*)buf, buf_size);</span></span><br><span class="line"></span><br><span class="line">      <span class="comment">// abort();</span></span><br><span class="line"></span><br><span class="line">      <span class="comment">// 如果加载失败，则返回 Exit Choice</span></span><br><span class="line">      <span class="comment">/// <span class="doctag">NOTE:</span> 错误的变异 + 错误的 trim 将会导致 post process 加载失败，尤其是 trim 逻辑。</span></span><br><span class="line">      <span class="comment">/// <span class="doctag">TODO:</span> 由于默认的 trim 会破坏样例，因此需要手动实现一个 trim，这里实现了一个空 trim，不进行任何操作</span></span><br><span class="line">      ProtoToDataHelper(stream, menuctf::ExitChoice());</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span> str = stream.str();</span><br><span class="line"></span><br><span class="line">    <span class="keyword">uint8_t</span> *new_buf = (<span class="keyword">uint8_t</span> *) <span class="built_in">realloc</span>((<span class="keyword">void</span> *)saved_buf, str.size());</span><br><span class="line">    <span class="keyword">if</span> (!new_buf) &#123;</span><br><span class="line">      *out_buf = buf;</span><br><span class="line">      <span class="keyword">return</span> buf_size;</span><br><span class="line">    &#125;</span><br><span class="line">    *out_buf = saved_buf = new_buf;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">memcpy</span>((<span class="keyword">void</span> *)new_buf, str.c_str(), str.size());</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> str.size();</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">int32_t</span>  <span class="title">afl_custom_init_trim</span><span class="params">(<span class="keyword">void</span> *data, <span class="keyword">uint8_t</span> *buf, <span class="keyword">size_t</span> buf_size)</span> </span>&#123;</span><br><span class="line">    <span class="comment">/// <span class="doctag">NOTE:</span> disable trim</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  </span><br><span class="line">  <span class="function"><span class="keyword">size_t</span> <span class="title">afl_custom_trim</span><span class="params">(<span class="keyword">void</span> *data, <span class="keyword">uint8_t</span> **out_buf)</span> </span>&#123;</span><br><span class="line">    <span class="comment">/// <span class="doctag">NOTE:</span> unreachable</span></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当然，编写上面的代码需要做一次又一次的测试，这里放上笔者的测试代码片段。这部分测试代码位于 <code>afl-libprotobuf-mutator/src/dump.cc</code>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">inline</span> <span class="built_in">std</span>::<span class="built_in">string</span> <span class="title">slurp</span><span class="params">(<span class="keyword">const</span> <span class="built_in">std</span>::<span class="built_in">string</span>&amp; path)</span> </span>&#123;</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">ostringstream</span> buf; </span><br><span class="line">  <span class="function"><span class="built_in">std</span>::ifstream <span class="title">input</span> <span class="params">(path.c_str())</span></span>; </span><br><span class="line">  buf &lt;&lt; input.rdbuf(); </span><br><span class="line">  <span class="keyword">return</span> buf.str();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">extern</span> <span class="string">"C"</span> &#123;</span><br><span class="line">  <span class="function"><span class="keyword">void</span> *<span class="title">afl_custom_init</span><span class="params">(<span class="keyword">void</span> *afl, <span class="keyword">unsigned</span> <span class="keyword">int</span> seed)</span></span>;</span><br><span class="line">  <span class="function"><span class="keyword">size_t</span> <span class="title">afl_custom_fuzz</span><span class="params">(<span class="keyword">void</span> *data, <span class="keyword">unsigned</span> <span class="keyword">char</span> *buf, <span class="keyword">size_t</span> buf_size, <span class="keyword">unsigned</span> <span class="keyword">char</span> **out_buf, </span></span></span><br><span class="line"><span class="function"><span class="params">                         <span class="keyword">unsigned</span> <span class="keyword">char</span> *add_buf, <span class="keyword">size_t</span> add_buf_size, <span class="keyword">size_t</span> max_size)</span></span>;</span><br><span class="line">  <span class="function"><span class="keyword">size_t</span> <span class="title">afl_custom_post_process</span><span class="params">(<span class="keyword">void</span>* data, <span class="keyword">uint8_t</span> *buf, <span class="keyword">size_t</span> buf_size, <span class="keyword">uint8_t</span> **out_buf)</span></span>;</span><br><span class="line">  <span class="function"><span class="keyword">void</span> <span class="title">afl_custom_deinit</span><span class="params">(<span class="keyword">void</span> *data)</span></span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> *argv[])</span> </span>&#123;</span><br><span class="line">  menuctf::ChoiceList msg;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (argc == <span class="number">2</span>) &#123;</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">string</span> data = slurp(argv[<span class="number">1</span>]);</span><br><span class="line">    <span class="keyword">if</span>(!protobuf_mutator::libfuzzer::LoadProtoInput(<span class="literal">true</span>, (<span class="keyword">const</span> <span class="keyword">uint8_t</span> *)data.c_str(), data.size(), &amp;msg)) &#123;</span><br><span class="line">      <span class="built_in">printf</span>(<span class="string">"[afl_custom_post_process] LoadProtoInput Error\n"</span>);   </span><br><span class="line">      <span class="built_in">abort</span>();</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 测试变异逻辑</span></span><br><span class="line">    <span class="keyword">void</span>* init_data = afl_custom_init(<span class="literal">nullptr</span>, time(<span class="literal">NULL</span>));</span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; <span class="number">30</span>; i++) &#123;</span><br><span class="line">      <span class="keyword">uint8_t</span> *out_buf = <span class="literal">nullptr</span>;</span><br><span class="line">      <span class="keyword">size_t</span> new_size = afl_custom_fuzz(init_data, (<span class="keyword">uint8_t</span>*)data.c_str(), data.size(),</span><br><span class="line">                                                  &amp;out_buf,  <span class="literal">nullptr</span>, <span class="number">0</span>, data.size() + <span class="number">100</span>);</span><br><span class="line">      <span class="keyword">uint8_t</span> *new_str = <span class="literal">nullptr</span>;</span><br><span class="line">      <span class="keyword">size_t</span> new_str_size = afl_custom_post_process(init_data, out_buf, new_size, &amp;new_str);</span><br><span class="line">      <span class="function"><span class="built_in">std</span>::<span class="built_in">string</span> <span class="title">new_str_str</span><span class="params">((<span class="keyword">char</span>*)new_str, new_str_size)</span></span>;</span><br><span class="line">      <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; i &lt;&lt; <span class="string">": "</span> &lt;&lt; new_str_str &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    afl_custom_deinit(init_data);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="comment">// alloc 12 "[menuctf::AllocChoice]"</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">auto</span> choice = <span class="keyword">new</span> menuctf::AllocChoice();</span><br><span class="line">      choice-&gt;set_size(<span class="number">12</span>);</span><br><span class="line">      choice-&gt;set_content(<span class="string">"[menuctf::AllocChoice]"</span>);</span><br><span class="line"></span><br><span class="line">      msg.add_choice()-&gt;set_allocated_alloc_choice(choice);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// update 2 20 "[menuctf::UpdateChoice]"</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">auto</span> choice = <span class="keyword">new</span> menuctf::UpdateChoice();</span><br><span class="line">      choice-&gt;set_idx(<span class="number">2</span>);</span><br><span class="line">      choice-&gt;set_size(<span class="number">20</span>);</span><br><span class="line">      choice-&gt;set_content(<span class="string">"[menuctf::UpdateChoice]"</span>);</span><br><span class="line"></span><br><span class="line">      msg.add_choice()-&gt;set_allocated_update_choice(choice);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// DeleteChoice 3</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">auto</span> choice = <span class="keyword">new</span> menuctf::DeleteChoice();</span><br><span class="line">      choice-&gt;set_idx(<span class="number">3</span>);</span><br><span class="line"></span><br><span class="line">      msg.add_choice()-&gt;set_allocated_delete_choice(choice);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ViewChoice 4</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">auto</span> choice = <span class="keyword">new</span> menuctf::ViewChoice();</span><br><span class="line">      choice-&gt;set_idx(<span class="number">4</span>);</span><br><span class="line"></span><br><span class="line">      msg.add_choice()-&gt;set_allocated_view_choice(choice);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// ExitChoice</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">auto</span> choice = <span class="keyword">new</span> menuctf::ExitChoice();</span><br><span class="line"></span><br><span class="line">      msg.add_choice()-&gt;set_allocated_exit_choice(choice);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="built_in">std</span>::ofstream <span class="title">output_file</span><span class="params">(<span class="string">"output.bin"</span>, <span class="built_in">std</span>::ios::binary)</span></span>;</span><br><span class="line">    <span class="comment">// 这里保存的 Serialize 必须使用 Partial 保存，</span></span><br><span class="line">    msg.SerializePartialToOstream(&amp;output_file);</span><br><span class="line">    output_file.close();</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// std::cout &lt;&lt; "msg DebugString: " &lt;&lt; msg.DebugString() &lt;&lt; std::endl;</span></span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">stringstream</span> stream;</span><br><span class="line">  ProtoToDataHelper(stream, msg);</span><br><span class="line">  <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; stream.str() &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>接下来只需在 <code>afl-libprotobuf-mutator</code> 文件夹下执行 <code>./build.sh &amp;&amp; make</code>即可，完成后，在当前工作路径下将会生成 <code>dumper</code>、<code>libmutator.so</code>以及<code>mutator</code>三个文件。我们可以利用 dumper 对上面的代码进行测试，<a href="http://libmutator.so" target="_blank" rel="noopener">libmutator.so</a> 用于 afl++ 中的自定义变异。</p>
+</li>
+</ul>
+<h3 id="3-配置-AFL">3. 配置 AFL++</h3>
+<p>现在压力来到了 AFL++ 这里（笑），我们先试试看能不能马上跑起来。</p>
+<p>尝试执行以下命令来构建 AFL++：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 构建 AFLplusplus</span></span><br><span class="line"><span class="comment"># 1. 安装依赖项</span></span><br><span class="line">sudo apt-get update</span><br><span class="line">sudo apt-get install -y ninja-build build-essential python3-dev automake git flex bison libglib2.0-dev libpixman-1-dev python3-setuptools</span><br><span class="line"><span class="comment"># try to install llvm 11 and install the distro default if that fails</span></span><br><span class="line">sudo apt-get install -y lld-11 llvm-11 llvm-11-dev clang-11 || sudo apt-get install -y lld llvm llvm-dev clang </span><br><span class="line">sudo apt-get install -y gcc-$(gcc --version|head -n1|sed <span class="string">'s/.* //'</span>|sed <span class="string">'s/\..*//'</span>)-plugin-dev libstdc++-$(gcc --version|head -n1|sed <span class="string">'s/.* //'</span>|sed <span class="string">'s/\..*//'</span>)-dev</span><br><span class="line"><span class="comment"># 2. 开始构建</span></span><br><span class="line"><span class="built_in">cd</span> AFLplusplus</span><br><span class="line">make distrib <span class="comment"># 这一步要等一段时间</span></span><br><span class="line"><span class="comment"># sudo make install # 将 AFL++ 安装至本机</span></span><br><span class="line"><span class="comment"># 如果不需要了可以使用 sudo make uninstall 卸载</span></span><br></pre></td></tr></table></figure>
+<h3 id="4-运行">4. 运行</h3>
+<p>执行以下命令运行 AFL++：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># AFL++ 构建完成后，进入 workdir 配置语料</span></span><br><span class="line">mkdir workdir</span><br><span class="line">[配置语料等等...]</span><br><span class="line"></span><br><span class="line"><span class="comment"># 设置相关环境变量</span></span><br><span class="line"><span class="built_in">export</span> AFL_CUSTOM_MUTATOR_ONLY=1 <span class="comment"># 禁用除自定义 mutator 以外的其他自带 mutator</span></span><br><span class="line"><span class="built_in">export</span> AFL_CUSTOM_MUTATOR_LIBRARY=../afl-libprotobuf-mutator/libmutator.so <span class="comment"># 指定自定义路径</span></span><br><span class="line"><span class="built_in">export</span> AFL_USE_QASAN=1  <span class="comment"># 启用 QASAN</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 运行 AFL++</span></span><br><span class="line">AFLplusplus/afl-fuzz -i workdir/fuzz_input -o workdir/fuzz_output -Q -- ./babyheap</span><br></pre></td></tr></table></figure>
+<p>别忘记在 workdir 中放点输入语料，语料可以通过 <code>afl-libprotobuf-mutator/dumper</code> 来随便生成一点。</p>
+<p>运行时如果遇到 <code>afl-quemu-trace</code> 不存在，则单独执行<code>AFLplusplus/qemu_mode/build_qemu_support.sh</code> 构建即可。</p>
+<h2 id="三、源代码">三、源代码</h2>
+<p>相关源代码以及构建方式已开源至 <a href="https://github.com/Kiprey/protobuf_ctf_fuzz" target="_blank" rel="noopener">github</a> 上。</p>
+<h2 id="四、可改进的地方">四、可改进的地方</h2>
+<ol>
+<li>libprotobuf-mutator 的变异效果一般，最好手动改进一下</li>
+<li>需要实现一下 trim 逻辑，空的 trim 逻辑可能会产生 <strong>样例爆炸</strong></li>
+</ol>
+<h2 id="五、一些需要注意的点">五、一些需要注意的点</h2>
+<p>如果在运行 AFL++ 后，发现 fuzz 始终无法发现新路径，即路径始终只有一个，那么就必须考虑<strong>目标CTF文件是否可执行</strong>。以当前的 babyheap2021 为例，笔者在测试时初始 AFL++ 状态如下：</p>
+<p><img src="/2021/09/protobuf_ctf_fuzz/image-20210927082401830.png" alt="image-20210927082401830"></p>
+<p>尝试直接执行 babyheap，发现 <code>Permission Denied</code>无法执行。但即便赋以 excutable 权限，仍然无法执行，报错 <code>no such file or directory</code>：</p>
+<p><img src="/2021/09/protobuf_ctf_fuzz/image-20210927082630107.png" alt="image-20210927082630107"></p>
+<p>这一看，要么是架构问题，要么是 <a href="http://libc.so" target="_blank" rel="noopener">libc.so</a> / <a href="http://ld.so" target="_blank" rel="noopener">ld.so</a> 的问题。因此执行以下命令以更新 babyheap 所使用的 <a href="http://libc.so" target="_blank" rel="noopener">libc.so</a> &amp; <a href="http://ld.so" target="_blank" rel="noopener">ld.so</a>，之后便可以正常执行。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">patchelf --<span class="built_in">set</span>-interpreter /lib64/ld-linux-x86-64.so.2 ./babyheap</span><br><span class="line">patchelf --replace-needed libc.so libc.so.6 ./babyheap</span><br></pre></td></tr></table></figure>
+<p>跑起来效果，还行？（不是很懂.jpg）</p>
+<p><img src="/2021/09/protobuf_ctf_fuzz/image-20210927112534183.png" alt="image-20210927112534183"></p>
+<h2 id="六、补充说明">六、补充说明</h2>
+<blockquote>
+<p>补充于 2022/8/25 晚。</p>
+</blockquote>
+<p>发现这篇文章好像有挺多人看的，而且还动手实践了（震惊）。之前想的是做一个 toy 出来玩玩，没想到有挺多人有这方面的需求。既然看的人多，那我得补充一些说明上去。</p>
+<ul>
+<li>
+<p>第一点，也是最重要的一点，我当初选择这个 babyheap 作为例子是一个<strong>非常错误</strong>的想法。babyheap 本身有一些坑，例如上面说的要执行一些命令来修正；还有内部 mmap 定向内存分配在 qemu 中是无法满足的，prctl 调用也会失败，会被直接 exit 掉，需要做一些 patch 操作，详情可查看评论区。</p>
+</li>
+<li>
+<p>第二点，喂入 AFL 的 testcase 必须是 protobuf bin 格式的数据。即需要事先用 <code>afl-libprotobuf-mutator/dumper</code> 将明文输入转换为 protobuf bin 格式的数据，再来喂给 AFL；直接把用户的明文数据喂入 AFL 会导致异常。</p>
+</li>
+<li>
+<p>第三点，AFLplusplus 的更新频率比我想象的要快很多。我当时使用的版本为 <strong>2021年10月</strong>的，现在过了这么久，很多接口和代码都发生了变动，需要注意这点！</p>
+</li>
+<li>
+<p>第四点，有好几个师傅反应这个变异效果，有那么忆点点拉跨呀。这是因为 libprotobuf-mutator 的源码中内置了两种变异，一种是自己本身的变异逻辑，再一种是使用 libfuzzer 的变异逻辑。但关键是 libfuzzer 的变异逻辑的实现是空的，变异函数返回一个0…</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// https://github.com/google/libprotobuf-mutator/blob/e5869dd9690c3f4dfb842fb90bd07a5a9ee32172/src/libfuzzer/libfuzzer_mutator.cc#L55</span></span><br><span class="line"></span><br><span class="line">LIB_PROTO_MUTATOR_WEAK_DEF(<span class="keyword">size_t</span>, LLVMFuzzerMutate, <span class="keyword">uint8_t</span>*, <span class="keyword">size_t</span>, <span class="keyword">size_t</span>) &#123;</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但 protobuf fuzzer 用的就是 libfuzzer 的变异逻辑，因此得改一下代码。在每次变异之前，变异器会先获取 mutator，但这个 mutator 效果拉跨，因此需要修改这一句代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// https://github.com/google/libprotobuf-mutator/blob/e5869dd9690c3f4dfb842fb90bd07a5a9ee32172/src/libfuzzer/libfuzzer_macro.cc#L126</span></span><br><span class="line"></span><br><span class="line"><span class="function">Mutator* <span class="title">GetMutator</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">static</span> Mutator mutator;  <span class="comment">// &lt;---</span></span><br><span class="line">  <span class="keyword">return</span> &amp;mutator;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>现在用的是派生类的 Mutator，得把它换成<a href="https://github.com/google/libprotobuf-mutator/blob/e5869dd9690c3f4dfb842fb90bd07a5a9ee32172/src/mutator.h#L45" target="_blank" rel="noopener">基类 Mutator</a>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Randomly makes incremental change in the given protobuf.</span></span><br><span class="line"><span class="comment">// Usage example:</span></span><br><span class="line"><span class="comment">//    protobuf_mutator::Mutator mutator(1);</span></span><br><span class="line"><span class="comment">//    MyMessage message;</span></span><br><span class="line"><span class="comment">//    message.ParseFromString(encoded_message);</span></span><br><span class="line"><span class="comment">//    mutator.Mutate(&amp;message, 10000);</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// Class implements very basic mutations of fields. E.g. it just flips bits for</span></span><br><span class="line"><span class="comment">// integers, floats and strings. Also it increases, decreases size of</span></span><br><span class="line"><span class="comment">// strings only by one. For better results users should override</span></span><br><span class="line"><span class="comment">// protobuf_mutator::Mutator::Mutate* methods with more useful logic, e.g. using</span></span><br><span class="line"><span class="comment">// library like libFuzzer.</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Mutator</span> &#123;</span></span><br><span class="line"> <span class="keyword">public</span>:</span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+<p>一直以为基类这个变异器才是 protobuf 变异的正统，那个派生变异器是个啥…</p>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/09/protobuf_ctf_fuzz/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/10/kernel_pwn_introduction/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Kernel pwn CTF 入门
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/09/pwnable-tw-2/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Pwnable.tw 部分题解-2</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="linux, 源码阅读, canary,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    浅析 Linux 程序的 Canary 机制 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-thread_canary"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  浅析 Linux 程序的 Canary 机制
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/08/thread_canary/" class="article-date">
+  <time datetime="2022-08-24T16:00:00.000Z" itemprop="datePublished">2022-08-25</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.5k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">14 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>一直都比较好奇 Canary 在 Linux 中的实现，但没什么心思去具体了解它的实现。这种好奇心在得知<strong>可以通过修改子线程的线程局部存储来达到篡改 canary 目的</strong>时达到了高峰，于是想好好去研究一下。</p>
+<p>太久没写博客了，这里就简单记录一下。</p>
+<a id="more"></a>
+<h2 id="二、什么是-Canary">二、什么是 Canary</h2>
+<p>Canary 是一种栈保护机制，用于在函数返回时检测当前栈是否被破坏。当函数调用压入新栈帧时，编译器会在新栈帧的栈底放一个随机值，并在函数返回退出栈帧时检查这个随机值是否被破坏。如果被破坏则说明当前存在栈溢出，程序退出：</p>
+<p><img src="/2022/08/thread_canary/image-20220824202737514.png" alt="image-20220824202737514"></p>
+<p>有意思的是，为了防止 canary 被 printf 等字符串输出函数泄露，<strong>canary 的最低位始终为 <code>/x00</code></strong>。</p>
+<p>当 Canary 验证失败时，<strong>编译器</strong>会要求调用 <code>__stack_chk_fail</code> 函数。应用层在触发 canary 异常时所调用的 <code>__stack_chk_fail</code> 函数实现在 glibc 中，该函数会打印一些信息并终止程序。由于该函数在输出信息时会根据 <code>argv[0]</code> 来输出程序路径，因此如果栈溢出长度可控的话，则攻击者可以控制栈底的 <code>argv[0]</code> 指针，利用 <code>__stack_chk_fail</code> 的触发来泄露信息。</p>
+<p>注意 Canary 在 Linux 内核中也有应用，若在执行 Linux 内核代码时触发了栈溢出，则控制流将调用位于内核的 <code>__stack_chk_fail</code> 函数，该函数实际调用 panic 以终止内核执行。不过内核的 canary 使用已经有了现成的文章，因此这里不再赘述。</p>
+<h2 id="三、深入-glibc">三、深入 glibc</h2>
+<p>这里参考的是 glibc-2.23，虽然版本偏老但是原理还是不变的。</p>
+<p>先一步一步来分析。</p>
+<h3 id="1-Canary-来源">1. Canary 来源</h3>
+<p>在 <code>csu\libc-start.c</code> 中的 <code>__libc_start_main</code> 函数中，可以找到 Canary 的赋值语句：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">  <span class="comment">/* Set up the stack checker's canary.  */</span></span><br><span class="line">  <span class="keyword">uintptr_t</span> stack_chk_guard = _dl_setup_stack_chk_guard (_dl_random);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">ifdef</span> THREAD_SET_STACK_GUARD</span></span><br><span class="line">  THREAD_SET_STACK_GUARD (stack_chk_guard);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">else</span></span></span><br><span class="line">  __stack_chk_guard = stack_chk_guard;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+<p>其中，<code>_dl_random</code> 是一个<strong>存放来自内核的随机数</strong>的地址：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Random data provided by the kernel.  */</span></span><br><span class="line"><span class="keyword">void</span> *_dl_random;</span><br></pre></td></tr></table></figure>
+<p>这个内核的随机数如果要细究初始化的时间点的话， 那只能说是在<strong>加载动态链接器</strong>之前（一个特别早的时间点）完成，其栈回溯如下：</p>
+<ol>
+<li>
+<p><strong>elf\rtld.c: RTLD_START 宏</strong>：动态链接器主入口。</p>
+</li>
+<li>
+<p><strong>sysdeps\x86_64\dl-machine.h: RTLD_START 宏具体 asm 定义</strong>：动态链接器的实现涉及汇编，因此需要根据对应的架构来实现不同汇编代码的动态链接器。 从注释和代码中可以得知，动态链接器会先调用 <code>_dl_start_user</code>来做一些初始化，之后将控制流跳转至用户程序的 ELF entry 地址：</p>
+ <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Initial entry point code for the dynamic linker.</span></span><br><span class="line"><span class="comment">  The C function `_dl_start' is the real entry point;</span></span><br><span class="line"><span class="comment">  its return value is the user program's entry point.  */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> RTLD_START asm (<span class="meta-string">"\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">.text\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  .align 16\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">.globl _start\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">.globl _dl_start_user\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">_start:\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  movq %rsp, %rdi\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  call _dl_start\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">_dl_start_user:\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string"></span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  ...</span></span></span><br><span class="line"><span class="meta"><span class="meta-string"></span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  # And make sure %rsp points to argc stored on the stack.\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  movq %r13, %rsp\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  # Jump to the user's entry point.\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">  jmp *%r12\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">.previous\n\</span></span></span><br><span class="line"><span class="meta"><span class="meta-string">"</span>);</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><strong>elf\rtld.c: _dl_start -&gt; _dl_start_final -&gt; _dl_sysdep_start 函数</strong>：_dl_sysdep_start 函数会调用一些平台依赖函数来做初始化等等，并调用 <code>dl_main</code> 函数来获取具体的用户程序 entry 地址。不过这个函数我们的重点不在于刚刚说的那些操作，而是这个 for 循环：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">ElfW(Addr)</span><br><span class="line">_dl_sysdep_start (<span class="keyword">void</span> **start_argptr,</span><br><span class="line">     <span class="keyword">void</span> (*dl_main) (<span class="keyword">const</span> ElfW(Phdr) *phdr, ElfW(Word) phnum,</span><br><span class="line">          ElfW(Addr) *user_entry, ElfW(<span class="keyword">auxv_t</span>) *auxv))</span><br><span class="line">&#123;</span><br><span class="line">  ...</span><br><span class="line">  DL_FIND_ARG_COMPONENTS (start_argptr, _dl_argc, _dl_argv, _environ,</span><br><span class="line">         GLRO(dl_auxv));</span><br><span class="line">  <span class="keyword">for</span> (av = GLRO(dl_auxv); av-&gt;a_type != AT_NULL; set_seen (av++))</span><br><span class="line">    ...</span><br><span class="line">   <span class="keyword">case</span> AT_RANDOM:</span><br><span class="line">   _dl_random = (<span class="keyword">void</span> *) av-&gt;a_un.a_val;</span><br><span class="line">   <span class="keyword">break</span>;</span><br><span class="line">    ...</span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>start_argptr</code> 是一个指向调用动态链接器 <code>argc</code>, <code>argv</code>, <code>env</code>, <code>auxv</code> 数据的指针，而<code>DL_FIND_ARG_COMPONENTS</code>宏就是把这些数据一个个分门别类放到对应的变量 <code>_dl_argc</code>、<code>_dl_argv</code>、<code>_environ</code>、<code>_dl_auxv</code> 上去。即可以得知该动态链接器被调用的参数除了我们最熟悉的三个以外，还多了一个 <code>auxv</code>。</p>
+<p>这个多出来的 auxiliary vector 参数是一个存放辅助程序执行的数据数组，至关重要。该参数里存放了很多有用的信息。这里我们只关心 <code>AT_RANDOM</code>，即来自内核的随机数。这个随机数就是在这里被赋值给 <code>_dl_random</code> 变量用于生成 canary 。</p>
+</li>
+</ol>
+<p>回到 <code>__libc_start_main</code> 函数，在获取到随机数变量后，实际生成 canary 的逻辑如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\unix\sysv\linux\dl-osinfo.h</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">inline</span> <span class="keyword">uintptr_t</span> __attribute__ ((always_inline))</span><br><span class="line">_dl_setup_stack_chk_guard (<span class="keyword">void</span> *dl_random)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">union</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="keyword">uintptr_t</span> num;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">char</span> bytes[<span class="keyword">sizeof</span> (<span class="keyword">uintptr_t</span>)];</span><br><span class="line">  &#125; ret;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/* We need in the moment only 8 bytes on 32-bit platforms and 16</span></span><br><span class="line"><span class="comment">     bytes on 64-bit platforms.  Therefore we can use the data</span></span><br><span class="line"><span class="comment">     directly and not use the kernel-provided data to seed a PRNG.  */</span></span><br><span class="line">  <span class="built_in">memcpy</span> (ret.bytes, dl_random, <span class="keyword">sizeof</span> (ret));</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> BYTE_ORDER == LITTLE_ENDIAN</span></span><br><span class="line">  ret.num &amp;= ~(<span class="keyword">uintptr_t</span>) <span class="number">0xff</span>;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">elif</span> BYTE_ORDER == BIG_ENDIAN</span></span><br><span class="line">  ret.num &amp;= ~((<span class="keyword">uintptr_t</span>) <span class="number">0xff</span> &lt;&lt; (<span class="number">8</span> * (<span class="keyword">sizeof</span> (ret) - <span class="number">1</span>)));</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">error</span> <span class="meta-string">"BYTE_ORDER unknown"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line">  <span class="keyword">return</span> ret.num;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>可以看到，canary 的值与 <code>dl_random</code> 的值相近，不同的是会在低字节处强制置为 <code>\x00</code> 防止泄露， 而该逻辑也与我们之前观察得到的结论相符。</p>
+<h3 id="2-Canary-保存">2. Canary 保存</h3>
+<p>我们还是先从 <code>__libc_start_init</code> 函数出发：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">  <span class="comment">/* Set up the stack checker's canary.  */</span></span><br><span class="line">  <span class="keyword">uintptr_t</span> stack_chk_guard = _dl_setup_stack_chk_guard (_dl_random);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">ifdef</span> THREAD_SET_STACK_GUARD</span></span><br><span class="line">  THREAD_SET_STACK_GUARD (stack_chk_guard);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">else</span></span></span><br><span class="line">  __stack_chk_guard = stack_chk_guard;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+<p>如果设置了 <code>THREAD_SET_STACK_GUARD</code> 宏，即启用了线程栈保护，那么这个 canary 值就会设置进<strong>线程局部存储</strong>里：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\x86_64\nptl\tls.h</span></span><br><span class="line"><span class="comment">/* Set the stack guard field in TCB head.  */</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> THREAD_SET_STACK_GUARD(value) \</span></span><br><span class="line">    THREAD_SETMEM (THREAD_SELF, header.stack_guard, value)</span><br></pre></td></tr></table></figure>
+<p>其中，<strong>THREAD_SELF</strong> 指的是当前线程的<strong>线程控制块</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\x86_64\nptl\tls.h</span></span><br><span class="line"><span class="comment">/* Return the thread descriptor for the current thread.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">   The contained asm must *not* be marked volatile since otherwise</span></span><br><span class="line"><span class="comment">   assignments like</span></span><br><span class="line"><span class="comment">  pthread_descr self = thread_self();</span></span><br><span class="line"><span class="comment">   do not get optimized away.  */</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> THREAD_SELF \</span></span><br><span class="line">  (&#123; struct pthread *__self;                  \</span><br><span class="line">     <span class="keyword">asm</span> (<span class="string">"mov %%fs:%c1,%0"</span> : <span class="string">"=r"</span> (__self)           \</span><br><span class="line">    : <span class="string">"i"</span> (offsetof (struct pthread, header.self)));        \</span><br><span class="line">     __self;&#125;)</span><br></pre></td></tr></table></figure>
+<p>而 <code>pthread</code> 结构体的声明如下，根据注释可以得知 <code>pthread</code> 结构体就是<strong>线程控制块结构</strong>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Thread descriptor data structure.  */</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">pthread</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">  <span class="keyword">union</span></span><br><span class="line">  &#123;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> !TLS_DTV_AT_TP</span></span><br><span class="line">    <span class="comment">/* This overlaps the TCB as used for TLS without threads (see tls.h).  */</span></span><br><span class="line">    <span class="keyword">tcbhead_t</span> header;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">else</span></span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span></span></span><br><span class="line"><span class="class">    &#123;</span></span><br><span class="line">      ...</span><br><span class="line">    &#125; header;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/* This extra padding has no special purpose, and this structure layout</span></span><br><span class="line"><span class="comment">       is private and subject to change without affecting the official ABI.</span></span><br><span class="line"><span class="comment">       We just have it here in case it might be convenient for some</span></span><br><span class="line"><span class="comment">       implementation-specific instrumentation hack or suchlike.  */</span></span><br><span class="line">    <span class="keyword">void</span> *__padding[<span class="number">24</span>];</span><br><span class="line">  &#125;;</span><br><span class="line"></span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>由于在 <code>x86_64</code> 架构下，<code>TLS_DTV_AT_TP</code>宏定义为 0：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\x86_64\nptl\tls.h</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* The TCB can have any size and the memory following the address the</span></span><br><span class="line"><span class="comment">   thread pointer points to is unspecified.  Allocate the TCB there.  */</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> TLS_TCB_AT_TP  1</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> TLS_DTV_AT_TP  0</span></span><br></pre></td></tr></table></figure>
+<p>因此 <code>pthread</code> 结构的首个字段为 <code>tcbhead_t header</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\x86_64\nptl\tls.h</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">  <span class="keyword">void</span> *tcb;    <span class="comment">/* Pointer to the TCB.  Not necessarily the</span></span><br><span class="line"><span class="comment">         thread descriptor used by libpthread.  */</span></span><br><span class="line">  <span class="keyword">dtv_t</span> *dtv;</span><br><span class="line">  <span class="keyword">void</span> *self;   <span class="comment">/* Pointer to the thread descriptor.  */</span></span><br><span class="line">  <span class="keyword">int</span> multiple_threads;</span><br><span class="line">  <span class="keyword">int</span> gscope_flag;</span><br><span class="line">  <span class="keyword">uintptr_t</span> sysinfo;</span><br><span class="line">  <span class="keyword">uintptr_t</span> stack_guard;</span><br><span class="line">  <span class="keyword">uintptr_t</span> pointer_guard;</span><br><span class="line">  </span><br><span class="line">  ... </span><br><span class="line">&#125; <span class="keyword">tcbhead_t</span>;</span><br></pre></td></tr></table></figure>
+<p>在结构体 <code>tcbhead_t</code> 中，我们可以看到熟悉的 <code>stack_guard</code> 字段，单个线程的 canary 值就存放在这里。而 <code>tcb</code> 指针和 <code>self</code> 指针，实际指向的都是同一个地址，即 <code>struct pthread</code> 结构体（亦或者是 <code>struct tcbhead_t</code> 本身，这两个结构体地址相同）。</p>
+<p>回顾 <code>THREAD_SELF</code> 宏定义，我们不难推断出 <code>%fs</code> 寄存器存放的是 <code>struct pthread</code> 结构体的地址，而 <code>%fs:28h</code> 引用的就是 <code>pthread::tcbhead_t::stack_guard</code> 的地方，与之前 IDA 中显示的一致。</p>
+<blockquote>
+<p>不过不知道为什么要获取 <code>struct pthread</code> 地址得绕这么大弯，得获取其 head 的 self 指针…</p>
+</blockquote>
+<p>这里需要说一下 <code>%fs</code> 寄存器为什么存放的是<code>struct pthread</code> 结构体的地址。看看这个宏定义：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Code to initially initialize the thread pointer.  This might need</span></span><br><span class="line"><span class="comment">   special attention since 'errno' is not yet available and if the</span></span><br><span class="line"><span class="comment">   operation can cause a failure 'errno' must not be touched.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">   We have to make the syscall for both uses of the macro since the</span></span><br><span class="line"><span class="comment">   address might be (and probably is) different.  */</span></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> TLS_INIT_TP(thrdescr) \</span></span><br><span class="line">  (&#123; <span class="keyword">void</span> *_thrdescr = (thrdescr);                \</span><br><span class="line">     <span class="keyword">tcbhead_t</span> *_head = _thrdescr;               \</span><br><span class="line">     <span class="keyword">int</span> _result;                 \</span><br><span class="line">                        \</span><br><span class="line">     _head-&gt;tcb = _thrdescr;                   \</span><br><span class="line">     <span class="comment">/* For now the thread descriptor is at the same address.  */</span>       \</span><br><span class="line">     _head-&gt;self = _thrdescr;                  \</span><br><span class="line">                        \</span><br><span class="line">     <span class="comment">/* It is a simple syscall to set the %fs value for the thread.  */</span>       \</span><br><span class="line">     <span class="keyword">asm</span> <span class="keyword">volatile</span> (<span class="string">"syscall"</span>                  \</span><br><span class="line">       : <span class="string">"=a"</span> (_result)               \</span><br><span class="line">       : <span class="string">"0"</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">int</span>) __NR_arch_prctl),           \</span><br><span class="line">         <span class="string">"D"</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span> <span class="keyword">int</span>) ARCH_SET_FS),         \</span><br><span class="line">         <span class="string">"S"</span> (_thrdescr)                \</span><br><span class="line">       : <span class="string">"memory"</span>, <span class="string">"cc"</span>, <span class="string">"r11"</span>, <span class="string">"cx"</span>);             \</span><br><span class="line">                        \</span><br><span class="line">    _result ? <span class="string">"cannot set %fs base address for thread-local storage"</span> : <span class="number">0</span>;     \</span><br><span class="line">  &#125;)</span><br><span class="line"></span><br><span class="line"><span class="meta"># <span class="meta-keyword">define</span> TLS_DEFINE_INIT_TP(tp, pd) void *tp = (pd)</span></span><br></pre></td></tr></table></figure>
+<p>宏定义 <code>TLS_INIT_TP</code> 会调用 SYS_ARCH_SET_FS 系统调用，将 <code>%fs</code> 寄存器的值设置为传入的 <code>pthread</code> 结构体地址。这里也可以看到该宏定义会同步将线程控制块的地址设置进 <code>tcb</code> 指针和 <code>self</code> 指针字段中。</p>
+<p>那么何时会调用 <code>TLS_INIT_TP</code> 宏来设置主线程的 TCB 至 <code>%fs</code> 中呢？有两种情况：</p>
+<ol>
+<li>在执行 <code>dl_main</code> 函数时，满足某种条件需要提前使用 TLS，于是提早初始化。</li>
+<li>在执行 <code>__libc_start_main</code> 函数时，执行其中的 <code>__pthread_initialize_minimal -&gt; __libc_setup_tls</code> 函数调用链。</li>
+</ol>
+<p>无论哪种可能，这两种情况都会在创建 canary 前完成。尤其是第二种，几乎贴着创建 canary 步骤。那么这一整个逻辑就都串起来了：</p>
+<ol>
+<li>动态链接器在执行 <code>dl_main</code> 函数前，先初始化 <code>_dl_random</code> 随机数。</li>
+<li>控制流在创建 Canary 前，执行<code>TLS_INIT_TP</code> 宏，将 <code>%fs</code> 寄存器设置为主线程的线程控制块地址。</li>
+<li>控制流在执行 <code>__libc_start_main</code>之中使用 <code>_dl_random</code> 随机数，生成 canary 值，并将其存放在 <code>%fs</code> 寄存器所指定的<strong>线程控制块中用于存放 canary 的字段</strong>。</li>
+</ol>
+<h3 id="3-Canary-读取">3. Canary 读取</h3>
+<p>Canary 写入主线程 TLS 的流程有了，那么要如何读取呢？在 <code>sysdeps\x86_64\stackguard-macros.h</code> 中有着这样的一段宏定义:</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> STACK_CHK_GUARD \</span></span><br><span class="line">  (&#123; <span class="keyword">uintptr_t</span> x;           \   </span><br><span class="line">     <span class="keyword">asm</span> (<span class="string">"mov %%fs:%c1, %0"</span> : <span class="string">"=r"</span> (x)     \</span><br><span class="line">    : <span class="string">"i"</span> (offsetof (<span class="keyword">tcbhead_t</span>, stack_guard))); x; &#125;)</span><br></pre></td></tr></table></figure>
+<p>因此只要使用 <code>STACK_CHK_GUARD</code> 宏就能读取出当前线程的 canary 值，例如：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (stack_chk_guard_copy != STACK_CHK_GUARD)</span><br><span class="line">&#123;</span><br><span class="line">    <span class="built_in">puts</span> (<span class="string">"STACK_CHK_GUARD changed between constructor and do_test"</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果关闭了 <code>THREAD_SET_STACK_GUARD</code>  宏，即关闭线程栈保护，那么计算出来的 canary 值会被保留进全局变量 <code>__stack_chk_guard</code> 中：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// __libc_start_main 函数片段</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">/* Set up the stack checker's canary.  */</span></span><br><span class="line">  <span class="keyword">uintptr_t</span> stack_chk_guard = _dl_setup_stack_chk_guard (_dl_random);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">ifdef</span> THREAD_SET_STACK_GUARD</span></span><br><span class="line">  THREAD_SET_STACK_GUARD (stack_chk_guard);</span><br><span class="line"><span class="meta"># <span class="meta-keyword">else</span></span></span><br><span class="line">  <span class="comment">// 这里!</span></span><br><span class="line">  __stack_chk_guard = stack_chk_guard;</span><br><span class="line"><span class="meta"># <span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+<p>仍然可以通过 <code>STACK_CHK_GUARD</code> 宏来获取：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sysdeps\generic\stackguard-macros.h</span></span><br><span class="line">    </span><br><span class="line"><span class="keyword">extern</span> <span class="keyword">uintptr_t</span> __stack_chk_guard;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> STACK_CHK_GUARD __stack_chk_guard</span></span><br></pre></td></tr></table></figure>
+<p><code>STACK_CHK_GUARD</code> 宏在 glibc 中几乎找不到使用点，推测这个宏是为 gcc 编译时加入<strong>读取 canary 值的操作</strong>所做的准备。</p>
+<h3 id="4-TCB-位置">4. TCB 位置</h3>
+<h4 id="a-主线程">a. 主线程</h4>
+<p>主线程的 TCB 的内存分配过程过于复杂：</p>
+<ul>
+<li>一种是在 <code>__libc_start_main -&gt; __pthread_initialize_minimal -&gt; __libc_setup_tls</code> 函数调用链中，调用 <code>__sbrk</code> 函数在堆内存上分配 TLS。</li>
+<li>再一种是在 <code>rtld</code> 的 <code>_dl_allocate_tls_storage</code> 函数中调用 <code>mmap</code> 函数来分配 TLS。</li>
+</ul>
+<p>不过看上去大部分程序的 TCB 内存分配都会在 rtld 中提前进行，而不会等到走进 <code>user entry</code> 后才开始。随手写了个程序调试了一下，发现主线程 TLS 果然是通过 mmap 函数创建的：</p>
+<p><img src="/2022/08/thread_canary/image-20220825083934721.png" alt="image-20220825083934721"></p>
+<p>gdb 无法直接读取 <code>%fs</code> 寄存器的值，会读取到一个 0：</p>
+<p><img src="/2022/08/thread_canary/image-20220825084033723.png" alt="image-20220825084033723"></p>
+<p>因此需要用 gdb 调用 <code>pthread_self</code> 函数来获取当前线程的 TCB 位置，这个函数较为简单：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pthread_t</span></span><br><span class="line">__pthread_self (<span class="keyword">void</span>)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">return</span> (<span class="keyword">pthread_t</span>) THREAD_SELF;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里可以看到用户程序从 <code>%fs:28h</code> 处取出的 Canary 与主线程 TCB 中存放的 Canary 一致，验证之前的分析：</p>
+<p><img src="/2022/08/thread_canary/image-20220825084443810.png" alt="image-20220825084443810"></p>
+<p>结论：主线程 TLS 位置<strong>较为随机</strong>，想通过修改主线程 TLS 来改主线程 canary 几乎是不可能的。</p>
+<h4 id="b-子线程">b. 子线程</h4>
+<p>要看子线程的 TCB 与 Canary 逻辑，那就得移步进 <code>pthread_create</code> 函数的实现。这个函数位于 <code>nptl\pthread_create.c</code> 中，有 <code>__pthread_create_2_0</code> 和 <code>__pthread_create_2_1</code> 两个实现版本，不过 2.0 是 2.1 的 wrapper，因此我们将目光放在 2.1 版本的实现上。</p>
+<p>这里只看有趣的代码片段：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">  <span class="class"><span class="keyword">struct</span> <span class="title">pthread</span> *<span class="title">pd</span> = <span class="title">NULL</span>;</span></span><br><span class="line">  <span class="keyword">int</span> err = ALLOCATE_STACK (iattr, &amp;pd);</span><br><span class="line"></span><br><span class="line">  [...]</span><br><span class="line"></span><br><span class="line">  <span class="comment">/* Initialize the TCB.  All initializations with zero should be</span></span><br><span class="line"><span class="comment">   performed in 'get_cached_stack'.  This way we avoid doing this if</span></span><br><span class="line"><span class="comment">   the stack freshly allocated with 'mmap'.  */</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> TLS_TCB_AT_TP</span></span><br><span class="line">  <span class="comment">/* Reference to the TCB itself.  */</span></span><br><span class="line">  pd-&gt;header.self = pd;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/* Self-reference for TLS.  */</span></span><br><span class="line">  pd-&gt;header.tcb = pd;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br><span class="line"></span><br><span class="line">  [...]</span><br><span class="line">      </span><br><span class="line">  <span class="comment">/* Copy the stack guard canary.  */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">ifdef</span> THREAD_COPY_STACK_GUARD</span></span><br><span class="line">  THREAD_COPY_STACK_GUARD (pd);</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+<p>首先，<code>pthread_create</code> 会创建线程栈（每个线程都有一个独立的栈），这个栈可以是用先前的缓存（例如重用被终止线程的栈），也可以是 mmap 出的一个新的栈。有趣的是，<strong>新线程的 TCB 会在这个线程栈上创建</strong>，那这就使得子线程的 TCB 地址对用户来说<strong>不再是随机</strong>的，因此<strong>可以通过子线程的栈溢出来覆写子线程 TCB 的 Canary</strong>。</p>
+<p>需要注意的是，在 <code>allocate_stack</code> 这个为子线程分配栈的函数中，TCB（<code>pthread</code> 结构体）将会被放置在整个线程栈的<strong>栈底</strong>，即线程栈的最最最最底部（也就是最最高地址处）存放的是 TCB。</p>
+<p>这个可以验证一下，从网上 CV 了一个 pthread 样例稍微改了下，编译调试：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span><span class="meta-string">&lt;pthread.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span><span class="meta-string">&lt;stdio.h&gt;</span></span></span><br><span class="line"><span class="comment">// a simple pthread example </span></span><br><span class="line"><span class="comment">// compile with -lpthreads</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// create the function to be executed as a thread</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> *<span class="title">thread</span><span class="params">(<span class="keyword">void</span> *ptr)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// tell complier to enable stack canary detection.</span></span><br><span class="line">    <span class="keyword">char</span> ch[<span class="number">0x20</span>];</span><br><span class="line">    <span class="built_in">scanf</span>(<span class="string">"%s"</span>, ch);</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"%s"</span>, ch);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">char</span> **argv)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// create the thread objs</span></span><br><span class="line">    <span class="keyword">pthread_t</span> thread1;</span><br><span class="line">    <span class="comment">// start the threads</span></span><br><span class="line">    pthread_create(&amp;thread1, <span class="literal">NULL</span>, *thread, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="comment">// wait for threads to finish</span></span><br><span class="line">    pthread_join(thread1, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>下个断点在 <code>thread</code> 函数上，然后开跑切换至子线程。此时的线程栈和 TCB 地址如下，可以看到非常的贴近，而且都在同一个内存段上：</p>
+<p><img src="/2022/08/thread_canary/image-20220825091309716.png" alt="image-20220825091309716"></p>
+<p>之后在线程栈底部找到了这个 Canary，偏移量是 <code>0x878</code>（属实是有点远）：</p>
+<p><img src="/2022/08/thread_canary/image-20220825091534174.png" alt="image-20220825091534174"></p>
+<p>除了线程栈分配较为有趣以外，下边还有一个 <code>THREAD_COPY_STACK_GUARD</code>宏调用，这个调用会把当前线程的 canary 复制一份进新线程的 TCB 中。注意控制流的基本单位是线程，虽然每个线程的 canary 值都相同，但在验证 canary 时，只会去获取当前 TCB 上存储的 canary 值。也就是说如果以非法手段将子线程的 canary 值改变，那么这种改变不影响其他线程的执行。</p>
+<p>整个关于用户层 Canary 机制差不多就是分析的这些内容，这个机制还是比较有趣的。</p>
+<h2 id="四、参考">四、参考</h2>
+<ul>
+<li>
+<p><a href="https://zhuanlan.zhihu.com/p/435667117" target="_blank" rel="noopener">Linux内核态是如何使用GS寄存器引用进程的stack canary的？ - 知乎</a></p>
+</li>
+<li>
+<p><a href="https://my.oschina.net/macwe/blog/610357" target="_blank" rel="noopener">解读 Linux 安全机制之栈溢出保护 - oschina</a></p>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/08/thread_canary/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/linux/" rel="tag">linux</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/08/defcon30quals_constricted/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Defcon-30-Quals rust-pwn constricted 复盘笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/04/dirty-pipe/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Linux Dirty Pipe CVE-2022-0847 漏洞分析</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

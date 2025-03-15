@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="chromium, v8,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    下拉&amp;编译 chromium&amp;v8 代码 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-fetch-chromium"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  下拉&amp;编译 chromium&amp;v8 代码
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/11/fetch-chromium/" class="article-date">
+  <time datetime="2020-11-19T16:00:00.000Z" itemprop="datePublished">2020-11-20</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/chrome/">chrome</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">7 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、背景">一、背景</h2>
+<ul>
+<li>
+<p>由于chromium的多线程、多进程机制较为复杂，因此调试起来较为麻烦，通过源代码层面打log来调试显得十分必要，而且源码级调试可以大幅度降低调试难度。</p>
+</li>
+<li>
+<p>同时，倘若需要某个特定版本的chromium时，委托他人代为编译也较为不便，</p>
+</li>
+<li>
+<p>因此，手动编译chromium是十分必要的。在这篇文章中，笔者将自己下拉代码&amp;编译代码的步骤列入其中，仅供参考。</p>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="二、前置操作">二、前置操作</h2>
+<ul>
+<li>
+<p>由于国内神奇的网络环境，我们需要设置一下代理服务</p>
+</li>
+<li>
+<p>首先在linux端下载shadowsocksr</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">git <span class="built_in">clone</span> git@github.com:shadowsocksrr/shadowsocksr.git</span><br></pre></td></tr></table></figure>
+<p>修改<code>shadowsocksr/user-config.json</code>的内容</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"server"</span>: <span class="string">"&lt;server IP&gt;"</span>,          <span class="comment">// 服务器IP</span></span><br><span class="line">    <span class="attr">"server_ipv6"</span>: <span class="string">"::"</span>,</span><br><span class="line">    <span class="attr">"server_port"</span>: &lt;server Port&gt;,     <span class="comment">// 服务器的ssr端口</span></span><br><span class="line">    <span class="attr">"local_address"</span>: <span class="string">"127.0.0.1"</span>,     <span class="comment">// 本地地址，这里无需修改</span></span><br><span class="line">    <span class="attr">"local_port"</span>: <span class="number">52001</span>,              <span class="comment">// 本地用于监听socks5的端口，ssr开启后请求将转发至该端口</span></span><br><span class="line"></span><br><span class="line">    <span class="attr">"password"</span>: <span class="string">"&lt;server Password&gt;"</span>,  <span class="comment">// 服务器端的ssr密码</span></span><br><span class="line">    <span class="attr">"method"</span>: <span class="string">"rc4-md5"</span>,              <span class="comment">// 加密方式</span></span><br><span class="line">    <span class="attr">"protocol"</span>: <span class="string">"auth_aes128_md5"</span>,    <span class="comment">// 协议</span></span><br><span class="line">    <span class="attr">"protocol_param"</span>: <span class="string">""</span>,</span><br><span class="line">    <span class="attr">"obfs"</span>: <span class="string">"tls1.2_ticket_auth"</span>,     <span class="comment">// obfs</span></span><br><span class="line">    <span class="attr">"obfs_param"</span>: <span class="string">""</span>,</span><br><span class="line">    <span class="attr">"speed_limit_per_con"</span>: <span class="number">0</span>,</span><br><span class="line">    <span class="attr">"speed_limit_per_user"</span>: <span class="number">0</span>,</span><br><span class="line"></span><br><span class="line">    <span class="attr">"additional_ports"</span> : &#123;&#125;, <span class="comment">// only works under multi-user mode</span></span><br><span class="line">    <span class="attr">"additional_ports_only"</span> : <span class="literal">false</span>, <span class="comment">// only works under multi-user mode</span></span><br><span class="line">    <span class="attr">"timeout"</span>: <span class="number">120</span>,</span><br><span class="line">    <span class="attr">"udp_timeout"</span>: <span class="number">60</span>,</span><br><span class="line">    <span class="attr">"dns_ipv6"</span>: <span class="literal">false</span>,</span><br><span class="line">    <span class="attr">"connect_verbose_info"</span>: <span class="number">0</span>,</span><br><span class="line">    <span class="attr">"redirect"</span>: <span class="string">""</span>,</span><br><span class="line">    <span class="attr">"fast_open"</span>: <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>然后进入<code>shadowsocksr/shadowsocks/</code>，执行<code>local.py</code>以启动本地socks5</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo python local.py</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>还有一个server.py文件，主要用于服务器端建立ssr结点。这里我们不涉及这个，因此忽略该文件。</p>
+</blockquote>
+<p>之后，在本地的<code>local port</code>端口处（按照上面的配置信息，这里应该是52001端口），将会建立一个socks5监听端口。所有发送至该端口的数据将会被转发至远程ssr结点</p>
+<blockquote>
+<p>使用命令<code>netstat -ntlp</code>可以查看端口信息。</p>
+</blockquote>
+</li>
+<li>
+<p>socks5建立完成后，我们需要设置http/https代理转发，使得http/https数据可以被转发至socks5中。</p>
+<p>因此我们需要下载<code>privoxy</code>，之后在其配置文件中追加一句指令开启代理转发，最后启动该服务。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">sudo apt-get install privoxy</span><br><span class="line"><span class="built_in">echo</span> <span class="string">"forward-socks5 / 127.0.0.1:52001 ."</span> &gt;&gt; /etc/privoxy/config</span><br><span class="line">sudo service privoxy start</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>代理服务已经启动完成，现在我们需要设置curl和git使用代理来访问网络。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">export</span> http_proxy=http://127.0.0.1:8118</span><br><span class="line"><span class="built_in">export</span> https_proxy=https://127.0.0.1:8118</span><br><span class="line">git config --global http.proxy http://127.0.0.1:8118</span><br><span class="line">git config --global https.proxy https://127.0.0.1:8118</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>git代理已经设置完成，现在我们来下载最重要的工具<code>depot_tools</code>，这个工具用于下拉chromium/v8代码</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># clone depot_tools，并且把depot_tools的目录加到PATH环境变量</span></span><br><span class="line"><span class="comment"># 因为git加了代理所以第一个命令可以成功clone了</span></span><br><span class="line">git <span class="built_in">clone</span> https://chromium.googlesource.com/chromium/tools/depot_tools.git</span><br><span class="line"><span class="comment"># /path/to/depot_tools改成depot_tools的目录</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">'export PATH=$PATH:"/path/to/depot_tools"'</span> &gt;&gt; ~/.bashrc</span><br><span class="line"><span class="comment"># 重新加载.bashrc配置文件</span></span><br><span class="line"><span class="built_in">source</span> ~/.bashrc</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="三、chromium代码下拉及编译">三、chromium代码下拉及编译</h2>
+<ul>
+<li>
+<p>chromium的代码下拉只要一句命令，非常简便，但必须使用git代理</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fetch chromium</span><br></pre></td></tr></table></figure>
+<p>所有代码差不多有24G左右，下拉代码的过程中，最重要的是<strong>网络一定要好</strong>！由于git clone不支持断点续传，<strong>一旦下拉代码的过程中存在网络波动导致连接中断，那就功亏一篑了。</strong></p>
+<blockquote>
+<p>下拉chromium的代码只有这一条途径，别想着先下github上的代码再整依赖，这是无用的。</p>
+</blockquote>
+</li>
+<li>
+<p>代码下拉好后，安装一下代码编译所需要的依赖</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">sudo src/build/install-build-deps.sh</span><br></pre></td></tr></table></figure>
+<p>如果该脚本不适用于当前linux版本，则直接尝试编译代码也可以，只不过有时候会提示某个命令无法执行而中断编译，此时只需要手动安装一下对应软件即可。</p>
+</li>
+<li>
+<p>之后设置git分支</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 切换分支，如果编译最新版的话，就不用这行命令</span></span><br><span class="line"><span class="comment"># 如果是要调洞的话，就要在这里切到有漏洞的那个commit</span></span><br><span class="line">git reset --hard [commit <span class="built_in">hash</span> with vulnerability]</span><br><span class="line"><span class="comment"># 下载依赖</span></span><br><span class="line">gclient sync</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>开始尝试编译</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 生成配置文件</span></span><br><span class="line">  <span class="comment"># 其中 is_debug = true将会使得在编译chromium时，完整保留调试信息</span></span><br><span class="line">  <span class="comment"># is_component_build = true将会使得编译时产生拆分的众多.so/.dll文件，这样可以降低链接所需要消耗的时间</span></span><br><span class="line">  <span class="comment"># is_asan = true 编译时启动asan</span></span><br><span class="line">gn gen out/asan_debug --args=<span class="string">"is_debug=true is_component_build=true is_asan = true"</span></span><br><span class="line"><span class="comment"># 开始编译，预计耗时4个小时</span></span><br><span class="line">autoninja -C out/asan_debug chrome</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>编译完成后，即可启动chromium</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">./out/asan_debug/chrome</span><br></pre></td></tr></table></figure>
+<p>笔者启动chromium时，asan提示<code>odr-violation</code>报错</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># Kiprey @ Kipwn in /usr/class/chromium [14:19:24] C:1</span></span><br><span class="line">$ ./src/out/asan_debug/chrome</span><br><span class="line">=================================================================</span><br><span class="line">==189815==ERROR: AddressSanitizer: odr-violation (0x7f44b9504700):</span><br><span class="line">  [1] size=40 <span class="string">'vtable for media::VaapiDmaBufVideoFrameMapper'</span> ../../media/gpu/vaapi/vaapi_dmabuf_video_frame_mapper.cc</span><br><span class="line">  [2] size=40 <span class="string">'vtable for media::VaapiDmaBufVideoFrameMapper'</span> ../../media/gpu/vaapi/vaapi_dmabuf_video_frame_mapper.cc</span><br><span class="line">These globals were registered at these points:</span><br><span class="line">  [1]:</span><br><span class="line">    <span class="comment">#0 0x55f8a95f810d in __asan_register_globals /b/s/w/ir/cache/builder/src/third_party/llvm/compiler-rt/lib/asan/asan_globals.cpp:360:3</span></span><br><span class="line">    <span class="comment">#1 0x7f4471d6895b in asan.module_ctor (/usr/class/chromium/src/out/asan_debug/libservice.so+0x2b5595b)</span></span><br><span class="line"></span><br><span class="line">  [2]:</span><br><span class="line">    <span class="comment">#0 0x55f8a95f810d in __asan_register_globals /b/s/w/ir/cache/builder/src/third_party/llvm/compiler-rt/lib/asan/asan_globals.cpp:360:3</span></span><br><span class="line">    <span class="comment">#1 0x7f44b87abe7b in asan.module_ctor (/usr/class/chromium/src/out/asan_debug/libmedia_gpu.so+0x335e7b)</span></span><br><span class="line"></span><br><span class="line">==189815==HINT: <span class="keyword">if</span> you don<span class="string">'t care about these errors you may set ASAN_OPTIONS=detect_odr_violation=0</span></span><br><span class="line"><span class="string">SUMMARY: AddressSanitizer: odr-violation: global '</span>vtable <span class="keyword">for</span> media::VaapiDmaBufVideoFrameMapper<span class="string">' at ../../media/gpu/vaapi/vaapi_dmabuf_video_frame_mapper.cc</span></span><br><span class="line"><span class="string">==189815==ABORTING</span></span><br></pre></td></tr></table></figure>
+<p><code>odr-violation</code>这类错误我们忽略即可，因此我们需要设置一下环境变量<code>ASAN_OPTIONS</code></p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">export</span> ASAN_OPTIONS=detect_odr_violation=0</span><br></pre></td></tr></table></figure>
+<p>之后即可正常执行chrome。</p>
+</li>
+</ul>
+<h2 id="四、v8代码下拉及编译">四、v8代码下拉及编译</h2>
+<ul>
+<li>
+<p>v8的代码下拉也很简单，一条命令即可，同样必须使用git代理。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">fetch v8</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后就和编译chromium一样，先设置git分支，再设置编译参数，最后开始编译</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">cd</span> v8</span><br><span class="line"><span class="comment"># 如果编译最新版的话，就不用这行命令</span></span><br><span class="line"><span class="comment"># 如果是要调洞的话，就要在这里切到有漏洞的那个commit</span></span><br><span class="line">git reset --hard [commit <span class="built_in">hash</span> with vulnerability]</span><br><span class="line"><span class="comment"># gclient sync 用来下载一些其他需要的东西，</span></span><br><span class="line"><span class="comment"># 这个还需要curl的代理，之前也已经在环境变量配置了</span></span><br><span class="line">gclient sync</span><br><span class="line"><span class="comment"># 设置编译参数</span></span><br><span class="line">tools/dev/v8gen.py x64.debug</span><br><span class="line"><span class="comment"># 编译</span></span><br><span class="line">ninja -C out.gn/x64.debug</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>如果需要切换特定版本，则使用以下命令</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 这里的&lt;TagName&gt;指的就是version</span></span><br><span class="line"><span class="comment"># 查看对应version/tag是否存在</span></span><br><span class="line">git tag | grep <span class="string">"&lt;TagName&gt;"</span></span><br><span class="line"><span class="comment"># 切换至目标version/tag</span></span><br><span class="line">git checkout &lt;TagName&gt;</span><br><span class="line"><span class="comment"># 下载对应依赖项</span></span><br><span class="line">gclient sync</span><br></pre></td></tr></table></figure>
+</blockquote>
+</li>
+<li>
+<p>编译完成后即可执行v8</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">./out.gn/x64.debug/d8</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>v8 还自带了gdb插件，可以让我们更加方便的使用gdb来调试v8。</p>
+<p>在<code>~/.gdbinit</code>内添加以下两行即可使用：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">source</span> /path/to/v8/tools/gdbinit</span><br><span class="line"><span class="built_in">source</span> /path/to/v8/tools/gdb-v8-support.py</span><br></pre></td></tr></table></figure>
+<p>有兴趣的话还可以简单阅读一下这两个文件，这样可以更好的了解 v8 插件的使用方式。</p>
+</li>
+</ul>
+<h2 id="五、参考">五、参考</h2>
+<ul>
+<li>
+<p><a href="https://mem2019.github.io/jekyll/update/2019/07/18/V8-Env-Config.html" target="_blank" rel="noopener">V8环境搭建，100%成功版</a></p>
+</li>
+<li>
+<p><a href="https://chromium.googlesource.com/chromium/src/+/master/docs/linux/build_instructions.md" target="_blank" rel="noopener">Checking out and building Chromium on Linux</a></p>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/11/fetch-chromium/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/chrome/" rel="tag">chrome</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/v8/" rel="tag">v8</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/12/CodeQL-setup/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CodeQL初入
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/10/CVE-2020-6541/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CVE-2020-6541分析</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

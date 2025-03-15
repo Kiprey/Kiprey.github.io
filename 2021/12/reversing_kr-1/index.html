@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="reverse,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Reversing.kr 刷题笔记 - 1 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-reversing_kr-1"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Reversing.kr 刷题笔记 - 1
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/12/reversing_kr-1/" class="article-date">
+  <time datetime="2021-12-11T16:00:00.000Z" itemprop="datePublished">2021-12-12</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.8k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">8 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="0-简介">0. 简介</h2>
+<p>这里将记录一些笔者学习 <a href="http://reversing.kr" target="_blank" rel="noopener">reversing.kr</a> 中的逆向题所留下的笔记。</p>
+<p>这篇笔记所记录的题目分值为 100-120。</p>
+<a id="more"></a>
+<h2 id="1-Easy-Crack">1. Easy Crack</h2>
+<p>IDA 32 位打开，通过交叉引用：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209225604780.png" alt="image-20211209225604780"></p>
+<p>至</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209225615397.png" alt="image-20211209225615397"></p>
+<p>很容易找到目标函数，并定位关键判断语句：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209225657036.png" alt="image-20211209225657036"></p>
+<p>因此可以很容易得出 flag 为： <code>Ea5yR3versing</code></p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209230836059.png" alt="image-20211209230836059"></p>
+<h2 id="2-Easy-Keygen">2. Easy Keygen</h2>
+<p>下下来一个压缩包，ReadMe.txt 中写道：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">Find the Name when the Serial is 5B134977135E7D13</span><br></pre></td></tr></table></figure>
+<p>同时打开程序，窗口提示输入 name：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209231245555.png" alt="image-20211209231245555"></p>
+<p>看来这题应该是要我们根据 Serial 来反推输入的 Name。</p>
+<p>IDA 打开，发现一个简易的映射算法：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209231510613.png" alt="image-20211209231510613"></p>
+<p>于是我们可以根据该算法来编写一个简易的解密算法：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> _CRT_SECURE_NO_WARNINGS</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;iostream&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="built_in">string</span> serial = <span class="string">"5B134977135E7D13"</span>;</span><br><span class="line">    <span class="keyword">char</span> key[<span class="number">3</span>] = &#123; <span class="number">16</span>, <span class="number">32</span>, <span class="number">48</span> &#125;;</span><br><span class="line">    <span class="keyword">int</span> hex_val;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">int</span> i = <span class="number">0</span>; i &lt; serial.size(); i += <span class="number">2</span>) &#123;</span><br><span class="line">        <span class="built_in">sscanf</span>(serial.substr(i, <span class="number">2</span>).c_str(), <span class="string">"%x"</span>, &amp;hex_val);</span><br><span class="line">        <span class="built_in">cout</span> &lt;&lt; (<span class="keyword">char</span>)(hex_val ^ key[(i/<span class="number">2</span>) % <span class="number">3</span>]);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>解出 flag：<code>K3yg3nm3</code></p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209233454523.png" alt="image-20211209233454523"></p>
+<h2 id="3-Easy-ELF">3. Easy_ELF</h2>
+<p>确实很 Easy。程序首先会读取一个字符串，之后对字符串进行以下判断：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211209234452851.png" alt="image-20211209234452851"></p>
+<p>将该判断逆向一下，就可得到 flag：<code>L1NUX</code></p>
+<h2 id="4-Easy-Unpack">4. Easy Unpack</h2>
+<p>看上去这是一个需要脱壳的程序，但根据 IDA 反编译结果来看，应该是一个压缩壳。直接从 main 函数的反汇编列表往下拉到最底下，最后的那个 jmp 指令跳转的位置就是 OEP。</p>
+<p>跳转前：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211210001019055.png" alt="image-20211210001019055"></p>
+<p>跳转后（该部分代码是 _start 函数的反汇编代码）：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211210001149346.png" alt="image-20211210001149346"></p>
+<p>因此 OEP 为 <code>00401150</code>，而这也正是要提交的 flag。</p>
+<h2 id="5-ImagePrc">5. ImagePrc</h2>
+<p>首先查看 WinMain 逻辑：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212115326564.png" alt="image-20211212115326564"></p>
+<p>我们可以很容易的找到事件处理例程，并通过字符串交叉对比，找到真正的校验位置：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212121036289.png" alt="image-20211212121036289"></p>
+<p>位图大小为 <code>200 x 150</code>，若有 90000 个像素相同则正确。而 <code>*v13</code> 和 <code>v13[v14]</code> 应该指向的是<strong>两块不同的位图</strong>，要是能dump下来看看，估计就能看出结果。</p>
+<blockquote>
+<p>位图大小总像素点个数：200x150x3 = 90000，RGB 格式。</p>
+</blockquote>
+<p>别的也看不出什么了，在调试时先随手画个 A 留个标记，之后尝试用 ida dump 内存出来看看。</p>
+<p>dump 脚本：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> idaapi</span><br><span class="line">start_address = <span class="number">0x2FA0048</span></span><br><span class="line">data_length = <span class="number">200</span>*<span class="number">150</span>*<span class="number">3</span></span><br><span class="line">data = idaapi.dbg_read_memory(start_address , data_length)</span><br><span class="line">fp = open(<span class="string">'./dump.bin'</span>, <span class="string">'wb'</span>)</span><br><span class="line">fp.write(data)</span><br><span class="line">fp.close()</span><br></pre></td></tr></table></figure>
+<p>用 Python 处理一下 dump 出来的内存：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#! python3</span></span><br><span class="line"><span class="comment"># `pip3 install pillow` to enable PIL</span></span><br><span class="line"><span class="keyword">from</span> PIL <span class="keyword">import</span> Image, ImageDraw</span><br><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"></span><br><span class="line">im = Image.new(<span class="string">"RGB"</span>, (<span class="number">200</span>, <span class="number">150</span>))</span><br><span class="line"></span><br><span class="line"><span class="keyword">with</span> open(<span class="string">"./dump.bin"</span>, <span class="string">"rb"</span>) <span class="keyword">as</span> f:</span><br><span class="line">    <span class="keyword">for</span> j <span class="keyword">in</span> range(<span class="number">150</span>):</span><br><span class="line">        <span class="keyword">for</span> i <span class="keyword">in</span> range(<span class="number">200</span>):</span><br><span class="line">            r = int.from_bytes(f.read(<span class="number">1</span>), <span class="string">'little'</span>)</span><br><span class="line">            g = int.from_bytes(f.read(<span class="number">1</span>), <span class="string">'little'</span>)</span><br><span class="line">            b = int.from_bytes(f.read(<span class="number">1</span>), <span class="string">'little'</span>)</span><br><span class="line">            im.putpixel((i, j), (r,g,b))</span><br><span class="line"></span><br><span class="line"><span class="comment"># im.save("dump.png")</span></span><br><span class="line">im.show()</span><br></pre></td></tr></table></figure>
+<p>v13 对应的图像如下：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212145026054.png" alt="image-20211212145026054"></p>
+<p>可以看到刚好 dump 出来的图片是<strong>上下倒置</strong>的。</p>
+<p>接着我们就如法炮制，将 <code>v13[v14]</code> 的图片也 dump 出来：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212145155253.png" alt="image-20211212145155253"></p>
+<p>即 flag 为 <code>GOT</code>。</p>
+<h2 id="6-Ransomware">6. Ransomware</h2>
+<p>压缩包解压，根据 readme 的描述，可以看到要求我们解密 file 文件。</p>
+<p>把目标文件拖到 Exeinfo 里一看，加了个 UPX压缩壳：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212155306762.png" alt="image-20211212155306762">s</p>
+<p>因此直接用脱壳机脱壳：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212155515369.png" alt="image-20211212155515369"></p>
+<p>之后用 IDA 打开看看：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212155709684.png" alt="image-20211212155709684"></p>
+<p>可以发现在 main 函数中存在超大量无用指令，使得 IDA 无法进行反汇编，提高分析难度，因此我们需要尝试去掉这些指令：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line">data = <span class="literal">None</span></span><br><span class="line"><span class="keyword">with</span> open(<span class="string">"./run.exe"</span>, <span class="string">"rb"</span>) <span class="keyword">as</span> f:</span><br><span class="line">    data = f.read()</span><br><span class="line"><span class="string">'''</span></span><br><span class="line"><span class="string">UPX0:0044A73D 60                                      pusha</span></span><br><span class="line"><span class="string">UPX0:0044A73E 61                                      popa</span></span><br><span class="line"><span class="string">UPX0:0044A73F 90                                      nop</span></span><br><span class="line"><span class="string">UPX0:0044A740 50                                      push    eax</span></span><br><span class="line"><span class="string">UPX0:0044A741 58                                      pop     eax</span></span><br><span class="line"><span class="string">UPX0:0044A742 53                                      push    ebx</span></span><br><span class="line"><span class="string">UPX0:0044A743 5B                                      pop     ebx</span></span><br><span class="line"><span class="string">'''</span></span><br><span class="line">new_data = data.replace(<span class="string">b"\x60\x61\x90\x50\x58\x53\x5b"</span>, <span class="string">b"\x90"</span> * <span class="number">7</span>)</span><br><span class="line"><span class="keyword">with</span> open(<span class="string">"./run_dump_patch.exe"</span>, <span class="string">"wb"</span>) <span class="keyword">as</span> f:</span><br><span class="line">    f.write(new_data)</span><br></pre></td></tr></table></figure>
+<p>而且在 <code>sub_401000</code> 函数中，整个函数体全部充斥着这类指令，即该函数是一个空函数体。为了防止混淆，我们将 <code>sub_401000</code> 函数名称修改为 <code>nop_func</code>。</p>
+<p>接着非常悲剧的发现，main 函数还是因为函数太大无法被反汇编…</p>
+<p>莫得办法了，只能将函数头的</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="symbol">UPX0:</span>004135E0 <span class="number">55</span>                                      <span class="keyword">push</span>    <span class="built_in">ebp</span></span><br><span class="line"><span class="symbol">UPX0:</span>004135E1 8B EC                                   <span class="keyword">mov</span>     <span class="built_in">ebp</span>, <span class="built_in">esp</span></span><br><span class="line"><span class="symbol">UPX0:</span>004135E3 <span class="number">83</span> EC <span class="number">24</span>                                <span class="keyword">sub</span>     <span class="built_in">esp</span>, <span class="number">24h</span></span><br><span class="line"><span class="symbol">UPX0:</span>004135E6 <span class="number">53</span>                                      <span class="keyword">push</span>    <span class="built_in">ebx</span></span><br><span class="line"><span class="symbol">UPX0:</span>004135E7 <span class="number">56</span>                                      <span class="keyword">push</span>    <span class="built_in">esi</span></span><br><span class="line"><span class="symbol">UPX0:</span>004135E8 <span class="number">57</span>                                      <span class="keyword">push</span>    <span class="built_in">edi</span></span><br></pre></td></tr></table></figure>
+<p>移动到末尾：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212154417401.png" alt="image-20211212154417401"></p>
+<p>然后修改一下函数的起始位置：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212154503604.png" alt="image-20211212154503604"></p>
+<p>之后就可以照常反编译了，以下是经过简化的反汇编代码。</p>
+<blockquote>
+<p>不过需要注意的是，这里修改函数的起始地址，指的是<strong>IDA 静态分析</strong>的起始地址。实际上函数调用 main 时仍然会跳转回原先的地址。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> __cdecl <span class="title">main</span><span class="params">(<span class="keyword">int</span> argc, <span class="keyword">const</span> <span class="keyword">char</span> **argv, <span class="keyword">const</span> <span class="keyword">char</span> **envp)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  [...]</span><br><span class="line">  <span class="built_in">printf</span>(<span class="string">"Key : "</span>);</span><br><span class="line">  <span class="built_in">scanf</span>(<span class="string">"%s"</span>, key);</span><br><span class="line">  v3 = <span class="built_in">strlen</span>(key);</span><br><span class="line">  v7 = <span class="number">0</span>;</span><br><span class="line">  Stream = fopen(<span class="string">"file"</span>, <span class="string">"rb"</span>);</span><br><span class="line">  <span class="keyword">if</span> (!Stream)</span><br><span class="line">      ;<span class="comment">/* exit */</span></span><br><span class="line">  fseek(Stream, <span class="number">0</span>, <span class="number">2</span>);</span><br><span class="line">  v6 = ftell(Stream);    <span class="comment">// 获取文件长度</span></span><br><span class="line">  rewind(Stream);</span><br><span class="line">  <span class="keyword">while</span> (!feof(Stream))  <span class="comment">// 将文件数据读入 buf</span></span><br><span class="line">  &#123;</span><br><span class="line">    buf[v7] = fgetc(Stream);</span><br><span class="line">    ++v7;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">for</span> ( i = <span class="number">0</span>; i &lt; v6; ++i ) <span class="comment">// 尝试加密</span></span><br><span class="line">  &#123;</span><br><span class="line">    buf[i] ^= key[i % v3];</span><br><span class="line">    buf[i] = ~buf[i];</span><br><span class="line">  &#125;</span><br><span class="line">  fclose(Stream);</span><br><span class="line">  v5 = fopen(<span class="string">"file"</span>, <span class="string">"wb"</span>);</span><br><span class="line">  <span class="keyword">for</span> ( j = <span class="number">0</span>; j &lt; v6; ++j )</span><br><span class="line">  &#123;</span><br><span class="line">    fputc(buf[j], v5);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="built_in">printf</span>(asc_44C1E8);</span><br><span class="line">  <span class="keyword">return</span> getch();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>最核心的就是这部分加密算法：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// v6 为文件数据长度</span></span><br><span class="line"><span class="keyword">for</span> ( i = <span class="number">0</span>; i &lt; v6; ++i ) <span class="comment">// 尝试加密</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="comment">// v3 为 key 长度</span></span><br><span class="line">    buf[i] ^= key[i % v3];</span><br><span class="line">    buf[i] = ~buf[i];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>而 readme.txt 的描述是这样的：<code>Decrypt File (EXE)</code>。也就是说那个 file 文件实际上就是加密后的 exe 文件。</p>
+<p><strong>在已有明文、密文并了解加密算法</strong>的情况下，我们便可以很容易的将密钥解出来。需要注意的是这里选取的是两个 exe 文件（一个加密前一个加密后）的<strong>前30 字节</strong>，因为应该所有 exe 文件的前30个字节都相同。</p>
+<p>以下是暴力枚举密钥的算法：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">#include &lt;iostream&gt;</span></span><br><span class="line">using namespace std;</span><br><span class="line"></span><br><span class="line">int main() &#123;</span><br><span class="line">    // hexdump -n <span class="number">30</span> run.exe.bak -e <span class="string">'30/1 "\\x%x"'</span></span><br><span class="line">    const char* origin_text = <span class="string">"\x4d\x5a\x90\x0\x3\x0\x0\x0\x4\x0\x0\x0\xff\xff\x0\x0\xb8\x0\x0\x0\x0\x0\x0\x0\x40\x0\x0\x0\x0\x0"</span>;</span><br><span class="line">    // hexdump -n <span class="number">30</span> file -e <span class="string">'30/1 "\\x%x"'</span></span><br><span class="line">    const char* cipher_text = <span class="string">"\xde\xc0\x1b\x8c\x8c\x93\x9e\x86\x98\x97\x9a\x8c\x73\x6c\x9a\x8b\x34\x8f\x93\x9e\x86\x9c\x97\x9a\xcc\x8c\x93\x9a\x8b\x8c"</span>;</span><br><span class="line">    <span class="keyword">for</span> (size_t i = <span class="number">0</span>; i &lt; strlen(cipher_text); i++) &#123;</span><br><span class="line">        int key;</span><br><span class="line">        <span class="keyword">for</span> (key = <span class="number">0</span>; key &lt; <span class="number">255</span>; key++) &#123;</span><br><span class="line">            <span class="keyword">if</span> ((origin_text[i] ^ key) == (~cipher_text[i])) &#123;</span><br><span class="line">                cout &lt;&lt; (char)key;</span><br><span class="line">                <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">if</span> (key == <span class="number">0xff</span>)</span><br><span class="line">            abort();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>输出密钥为 <code>letsplaychess</code>：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212164923948.png" alt="image-20211212164923948"></p>
+<p>因此再解密一下 file 文件：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> _CRT_SECURE_NO_WARNINGS</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> <span class="built_in">std</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    FILE* cipher_file = fopen(<span class="string">"C:\\Users\\Kiprey\\Desktop\\rever\\ransomware\\file"</span>, <span class="string">"rb"</span>);</span><br><span class="line">    FILE* output_file = fopen(<span class="string">"C:\\Users\\Kiprey\\Desktop\\rever\\ransomware\\flag.exe"</span>, <span class="string">"wb"</span>);</span><br><span class="line">       </span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span>* key = <span class="string">"letsplaychess"</span>;</span><br><span class="line"></span><br><span class="line">    fseek(cipher_file, <span class="number">0</span>, SEEK_END);</span><br><span class="line">    <span class="keyword">size_t</span> cipher_len = ftell(cipher_file);    <span class="comment">// 获取文件长度</span></span><br><span class="line">    rewind(cipher_file);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">size_t</span> i = <span class="number">0</span>; i &lt; cipher_len; ++i) <span class="comment">// 尝试加密</span></span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">unsigned</span> <span class="keyword">char</span> buf = fgetc(cipher_file);</span><br><span class="line">        buf = ~buf;</span><br><span class="line">        buf ^= key[i % <span class="built_in">strlen</span>(key)];</span><br><span class="line">        fputc(buf, output_file);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    fclose(cipher_file);</span><br><span class="line">    fclose(output_file);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>解出一个 <code>flag.exe</code>，运行下看看：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212165915247.png" alt="image-20211212165915247"></p>
+<p>晕，从别处拷了一些 DLL 过来，终于解出来了…</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212170048738.png" alt="image-20211212170048738"></p>
+<p>flag为 <code>Colle System</code>。</p>
+<h2 id="7-CSHOP">7. CSHOP</h2>
+<p>程序打开后没有任何可交互部分。拖进 IDA 发现是个 <code>.NET</code> 程序，直接用 dnSpy x86 打开（不得不说 dnSpy 的界面是真的好看）：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212173934346.png" alt="image-20211212173934346"></p>
+<p>简单通读了一下代码，该窗口有 10 个 Label 和 1 个 Button，当 Button 被按下后，这10个 label 将显示出对应的文字（应该是 flag）。但问题是， <strong>Button 的 size 为 (0,0)</strong>，因此正常情况下我们无法点击该 Button。</p>
+<p>不过我们可以尝试修改这个 IL：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212174305594.png" alt="image-20211212174305594"></p>
+<p>这两个值改大一点，然后 <code>File -&gt; Save Module</code>：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212174327671.png" alt="image-20211212174327671"></p>
+<p>重新打开被 patch 后的程序，并点击按钮，即可出现 flag：</p>
+<p><img src="/2021/12/reversing_kr-1/image-20211212175001051.png" alt="image-20211212175001051"></p>
+<p>flag 为 <code>P4W6RP6SES</code>。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/12/reversing_kr-1/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/reverse/" rel="tag">reverse</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/12/vmware_macos/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Win10 Vmware Workstation 16 安装 macOS 记录
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/12/coop/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《Counterfeit Object-oriented Programming》 论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

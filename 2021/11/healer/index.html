@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="kernel, fuzz,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    《HEALER - Relation Learning Guided Kernel Fuzzing》 论文笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-healer"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  《HEALER - Relation Learning Guided Kernel Fuzzing》 论文笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/11/healer/" class="article-date">
+  <time datetime="2021-11-28T16:00:00.000Z" itemprop="datePublished">2021-11-29</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.5k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">8 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>Healer 是受 Syzkaller 启发的 kernel fuzz。</p>
+<p>与 Syzkaller 类似，Healer 使用 <a href="https://github.com/google/syzkaller/blob/master/docs/syscall_descriptions.md" target="_blank" rel="noopener">Syzlang</a> 描述所提供的 syscall 信息来生成确认参数结构约束和部分语义约束的系统调用序列，并通过不断执行生成的调用序列来发现内核错误，导致内核崩溃。</p>
+<p>与 Syzkaller 不同，Healer 不使用 choise table，而是通过动态移除<strong>最小化调用序列</strong>中的调用并观察覆盖范围变化来检测<strong>不同系统调用之间的内部关系</strong>，并利用内部关系来指导调用序列的生成和变异。此外，Healer 还使用了与 Syzkaller 不同的架构设计。</p>
+<p>论文地址：<a href="http://www.wingtecher.com/themes/WingTecherResearch/assets/papers/healer-sosp21.pdf" target="_blank" rel="noopener">HEALER: Relation Learning Guided Kernel Fuzzing</a></p>
+<p>项目地址：<a href="https://github.com/SunHao-0/healer" target="_blank" rel="noopener">github</a></p>
+<a id="more"></a>
+<h2 id="二、概述">二、概述</h2>
+<p>先上一张概述图：</p>
+<p><img src="/2021/11/healer/image-20211129200131315.png" alt="image-20211129200131315"></p>
+<p>初始时，Syscall 描述 + 语料将被喂入 healer中，并在其中通过 Relation Learning 来获取出不同 syscall 之间的内部关系，之后可以通过生成的内部关系来达到更好的变异与生成效果。</p>
+<blockquote>
+<p><code>Relation</code>，在这篇论文中，指代不同 syscall 之间的内部关系。</p>
+</blockquote>
+<p>Healer 会将 testcase 放入 Executor 中执行，并获取执行的覆盖范围信息来更好的运行 Relation Learning 中的 Dynamic Learning。</p>
+<p>该论文虽然特别的长，但实际上核心思想较为简单，只分为三部分，分别是</p>
+<ul>
+<li>Relation Learning 中的 <strong>Static Learning</strong> 和 <strong>Dynamic Learning</strong></li>
+<li>以及 Healer 如何使用 Relation 来进行<strong>变异</strong>。</li>
+</ul>
+<h2 id="三、Relation-Learning">三、Relation Learning</h2>
+<h3 id="1-定义">1. 定义</h3>
+<p>Healer 使用 Relatino learning 来动态感知 syscall 之间的内部关系。其中这里有个定义：</p>
+<blockquote>
+<p>若某个 syscall $C_i$ 的执行可以影响到另一个 syscall $C_j$ 的<strong>执行路径</strong>（例如 $C_i$ 修改了<strong>内核的内部状态</strong>），则我们称 $C_i$ 对 $C_j$ <strong>产生了影响</strong>。</p>
+</blockquote>
+<p>Healer 使用<strong>二维表$R^{n \times n}$</strong> （Relation Table，关系表）来记录任意 n 个 syscall 中的内部关系：</p>
+<ul>
+<li>若 $R_{ij}$ 为1，则说明 syscall $C_i$ 可以对 $C_j$ 的执行路径产生影响。</li>
+<li>反之，$R_{ij}$ 为0则说明不产生影响。</li>
+</ul>
+<blockquote>
+<p>初始时，healer 没有记录下任何 syscall 之间的内部关系，因此该表格初始时全为 0。</p>
+</blockquote>
+<p>接下来，Relation Learning 分为两部分</p>
+<ul>
+<li>Static Learning：根据 syscall 描述的<strong>输入参数类型</strong>和<strong>返回类型</strong>来获取 Relation。</li>
+<li>Dynamic Learning：用于找到 syscall 描述无法表达的 Relation。</li>
+</ul>
+<h3 id="2-Static-Learning">2. Static Learning</h3>
+<p>初始时，Static Learning 将会根据 Syzlang 描述所提供的信息来初始化 Relation Table。其中，参数类型和返回值类型对静态分析至关重要。</p>
+<p>当同时满足以下两个条件时，static learning 将认为 syscall $C_i$ 对 $C_j$ 产生影响，并设置 Relation Table 中的 $R_{ij} = 1$：</p>
+<ol>
+<li>
+<p>$C_i$的返回值类型是<strong>一种 resource 类型</strong> $r_0$ ，或者$C_i$ 中的任何一个参数是一个<strong>具有向外数据流方向</strong>的指针。</p>
+<blockquote>
+<p>这一条其实相当好理解，主要是限制 $C_i$ 的作用是产生向外数据流。</p>
+</blockquote>
+</li>
+<li>
+<p>$C_j$ 中至少有一个参数的类型是 <strong>具有向内数据流的 resource 类型</strong> $r_0$或与 $r_0$相兼容的类型 $r_1$。  由于 syzlang 支持类型嵌套（或者类型兼容），因此类型 $r_1$ 也是符合要求的。</p>
+</li>
+</ol>
+<p>这两个条件显示约束了数据流方向，必须从$C_i\to C_j$ ，这是静态学习中所能得知的 Relation。</p>
+<p><strong>可以将静态学习理解成捕获两个系统调用之间的直接关系</strong>（例如数据流关系）。</p>
+<h3 id="3-Dynamic-Learning">3. Dynamic Learning</h3>
+<p>动态学习可以使用 syzlang 无法表达的信息来更好的更新和细化关系表，以便于生成更高质量的测试用例。</p>
+<p>初始时， healer 会先单独收集 syscall 序列中的每个 syscall 的覆盖范围，并存储其触发的基本块和边的标识符序列，<strong>以便于在接下来的测试中发现新的覆盖范围信息</strong>。</p>
+<p>之后，Dynamic Learning 将会使用 minimization 算法，获取到<strong>尽可能小且覆盖范围不变</strong>的系统调用序列。</p>
+<blockquote>
+<p>这一步操作是为了过滤掉那些对新覆盖范围无用的系统调用，并加强分析效果。</p>
+<p>minimization 算法将<strong>反向遍历</strong>系统调用序列，提取出那些<strong>没有被包含在其他最小序列中</strong>（防止重复）且<strong>生成了新覆盖范围信息</strong>（有新覆盖才有用）的系统调用。</p>
+</blockquote>
+<p>该算法的核心思想较为简单，先上图：</p>
+<p><img src="/2021/11/healer/image-20211129204151676.png" alt="image-20211129204151676"></p>
+<p>简单概括一下，该算法的输入有两个，分别是</p>
+<ol>
+<li>系统调用序列 p（即测试样例）</li>
+<li>序列 p 中每个 syscall 所生成的<strong>新</strong>覆盖范围（注意<strong>新</strong>字）</li>
+</ol>
+<p>之后，尝试从后向前依次遍历每个系统调用，</p>
+<ul>
+<li>若某个系统调用不产生<strong>新的</strong>覆盖范围，则直接丢弃（因为不产生新覆盖所以肯定没用）</li>
+<li>若某个系统调用之前被丢弃过，则也一并丢弃</li>
+<li>之后循环从后向前遍历系统调用序列，并多次尝试丢弃一些系统调用。若丢弃某个系统调用后，覆盖范围没有发生改变，则该系统调用是无用的，可以被丢弃，否则则必须保留。</li>
+</ul>
+<blockquote>
+<p>这一步的操作只是为了删除不影响覆盖范围的系统调用。</p>
+</blockquote>
+<p>在完成 minimization 算法后，Dynamic Learning 将会在最小系统调用序列中，逐渐的移出单个 syscall 并检测每个移出操作对<strong>下一个 syscall</strong> 的影响，这是其具体算法描述：</p>
+<p><img src="/2021/11/healer/image-20211129205500333.png" alt="image-20211129205500333"></p>
+<p>其实也很简单，简单概括一下就是，</p>
+<blockquote>
+<p>在给定的最小系统调用序列中，依次遍历该序列中的所有 syscall。</p>
+<p>设当前遍历到了系统调用 $C_j$，且 $C_i$ 是 $C_j$ 的<strong>前一个</strong>系统调用（previous）。</p>
+<p>若将 $C_i$ 从系统调用序列中删除，且该删除将会影响到 $C_j$ 的覆盖范围信息，则说明 $C_i$ 对 $C_j$ 产生了影响，因此可以设置 $R_{ij} = 1$。</p>
+</blockquote>
+<p>这里有个关键点需要注意一下：对于系统调用序列 $[C_0, C_1, C_2]$ 来说，若 $C_1$ 的移除影响到 $C_2$ 的覆盖范围，则我们可以确定 $C_1 \to C_2$ 存在影响关系。但是，若 $C_0$ 的移除导致了 $C_2$ 的覆盖范围发生改变，则<strong>不能</strong>说明  $C_0 \to C_2$。这是因为，$C_0$ 的移出可能导致 $C_1$ 覆盖范围的变化，进而间接影响到 $C_2$ 覆盖范围的变化。</p>
+<p>通过上述的两个算法，healer 成功通过覆盖范围信息来指导建立起系统调用之间的内部关系信息。</p>
+<p><strong>可以将动态学习理解成捕获两个系统调用之间的间接关系</strong>（例如内核内部的状态改变关系）。</p>
+<h2 id="四、变异与生成">四、变异与生成</h2>
+<p>当 Relation Table 通过上面的算法逐步建成后，该信息将会被用于指导变异和生成。抛开那些常用的变异手法（例如随机插入 syscall 或者变异参数类型等方法），这里只讲一下 <strong>healer 如何利用 Relation table 来进行变异</strong>。</p>
+<p>首先，Healer 对语料库现有的系统调用序列执行变异，在选择了某个变异目标后，healer 将</p>
+<ol>
+<li>随机在系统调用序列中选择一个插入点</li>
+<li>将插入点前面的子序列用作输入，执行<strong>变异算法</strong>，将该算法选择的系统调用插入至该位置。</li>
+</ol>
+<p>变异算法具体描述如下：</p>
+<p><img src="/2021/11/healer/image-20211129211440619.png" alt="image-20211129211440619"></p>
+<p>通俗的说，就是</p>
+<ul>
+<li>如果概率小于 $1-\alpha$，则直接随机返回一个系统调用。</li>
+<li>否则，遍历传入的子序列 S，并将子序列中每个 syscall 可能产生影响的新 syscall 加入候选队列中。如果之前已经加入过一次，则增加其权重。</li>
+<li>最后随机通过权重来选择一个候选 syscall。</li>
+</ul>
+<p>需要注意的是，在 healer 初始启动时，Relation Table 中并没有太多的数据可以用于指导变异和生成，此时<strong>若过度使用信息不足的关系表则可能会降低测试用例的多样性</strong>；但另一方面，要是完全不使用 Relation Table，则测试用例的质量就不会太高（而且完全不使用的话，上面的工作就白做了）。</p>
+<p><strong>因此实际上该变异算法中的 $\alpha$ 是用来平衡这两者的一个关键</strong>：若在使用学习到的 Relations 时覆盖率信息增加，则$\alpha$也将同步增加，进一步提高使用非随机变异策略的概率。</p>
+<h2 id="五、评估">五、评估</h2>
+<p>在24小时中的 fuzz 过程里，healer 可以获得比 syzkaller 更广的覆盖率：</p>
+<p><img src="/2021/11/healer/image-20211130095845117.png" alt="image-20211130095845117"></p>
+<p>需要注意的是，初始时 healer 和 syzkaller 的覆盖率曲线是重合的，这是因为此时 healer 还没有建立完备的 Relation Table，使用的仍然是随机变异。</p>
+<p>下图显示的是建立 Relation 的全过程（图中的<strong>每个点</strong>表示<strong>不同的 syscall</strong>，<strong>有向边</strong>表示<strong>影响关系</strong>）：</p>
+<p><img src="/2021/11/healer/image-20211130101056881.png" alt="image-20211130101056881"></p>
+<p>初始时，Relation 是根据静态分析所得出的关系，因此此时在关系图中<strong>存在非常多的子图</strong>。</p>
+<p>随着时间的推移，更多的隐式关系被找出，不同的子图开始慢慢相连。并到最后形成巨大的关系图。</p>
+<p>除此之外，还发现了一些 syzkaller 没发现的新漏洞。</p>
+<h2 id="六、局限性">六、局限性</h2>
+<p>syzlang 描述本身在大多数情况下是人工编写生成的，人工成本较大，且描述的正确性和完整性也不能保证。</p>
+<p>一个可能的解决方案是自动将 C 头文件中的定义转换为Syzlang描述，保存原始的结构定义。</p>
+<h2 id="七、随笔">七、随笔</h2>
+<p>这篇论文整体思路上并不复杂，但它确确实实能捕获到系统调用之间的关系，而且在各个思路与细节方法均考虑的十分周全，是一篇相当不错的论文。</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/11/healer/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/fuzz/" rel="tag">fuzz</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/kernel/" rel="tag">kernel</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/11/VScape_Assessing_and_Escaping_Virtual_Call_Protections/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            《VScape - Assessing and Escaping Virtual Call Protections》 论文笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/11/syzkaller_1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">syzkaller 环境搭建</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

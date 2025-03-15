@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="Tailscale, tools,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    浅探 Tailscale DERP 中转服务 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-tailscale-derp"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  浅探 Tailscale DERP 中转服务
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2023/11/tailscale-derp/" class="article-date">
+  <time datetime="2023-11-13T16:00:00.000Z" itemprop="datePublished">2023-11-14</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/Tools/">Tools</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">10.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">44 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>tailscale 是一个很好用的工具，它包含了多种高级特性（例如 Magic DNS）来方便用户的使用，主要用于异地组网。</p>
+<blockquote>
+<p>这也是本人抛弃 Zerotier 选择 Tailscale 的缘故，高级特性很多用的很方便。</p>
+</blockquote>
+<p>tailscale 的底层机制与 zerotier 不同。</p>
+<ul>
+<li>zerotier 会让每个客户端在<strong>启动时立即尝试与其他客户端的打洞</strong>，并一直维持这个连接。
+<ul>
+<li>优点：创建链接时可以非常快速。要么早已打洞完成，要么就是百分百确定走中继节点。</li>
+<li>缺点：需要维护与所有对等节点的打洞链接，占用资源。节点一多则维护打洞的开销就比较大。</li>
+</ul>
+</li>
+<li>tailscale 只会在<strong>需要与 peer 建立连接的时候才会尝试打洞</strong>，而且最开始的流量一定是会经过 DERP 中转服务器。（非常的 Lazy…）
+<ul>
+<li>优点：懒加载机制无需预先维护与其他节点的任何打洞连接，无需预先维护任何状态。</li>
+<li>缺点：每次通过 tailscale 创建虚拟连接时，<strong>初始所创建的连接其延迟很高</strong>，这会极大的影响使用体验；<strong>tailscale 极其依赖中继节点</strong>。</li>
+</ul>
+</li>
+</ul>
+<p>而在 P2P VPN 中，<strong>自建中继节点</strong>是相当重要的。一方面自建中继节点可以比地理位置较远的官方中继节点<strong>更好的观察和协调本地两台对等机的 p2p 过程</strong>，另一方面可以在打洞失败后<strong>快速中继和转发流量</strong>。</p>
+<p>本人先前的文章已经介绍了 Zerotier 搭建中继节点 Moon 的原理和过程。Zerotier 会在特定 Primary Port 9993 上监听 UDP 连接来中继数据，因此在实际搭建的过程中<strong>只需将这一个 UDP 端口暴露至公网即可</strong>，要求极低。而暴露端口有多种方式可以实现，例如内网穿透 FRP 等等，也因此 <em>moon 节点甚至都不需要有一个属于自己 IP 地址</em>。</p>
+<blockquote>
+<p>注：Zerotier 不支持自建 TCP 中继，moon 节点实际上只是一个 UDP 中继节点。</p>
+</blockquote>
+<p>而 Tailscale 的中继服务器（称为 DERP 服务）的搭建与 zerotier 相比存在一点困难，而网络上的搭建教程真是参差不齐（跟我之前找 Zerotier Moon 的搭建过程一样难顶，这点要狠狠吐槽一下）。那么接下来，我们来尝试找到一种最简便的方式来构建 tailscale DERP 服务器，顺带学习一下 DERP 服务的一些原理。</p>
+<blockquote>
+<p>Tailscale 的中继 DERP 服务就是一个 <strong>TCP</strong> 中继节点，与 Zerotier 完全相反。</p>
+</blockquote>
+<p><strong>TL,DR</strong>: 如想跳过前置内容，直接快速了解搭建过程，请直接跳转至本文最后一节的<strong>总结部分</strong>。</p>
+<p>看完本文，你将了解到<strong>无需公网机器、无需域名、无需证书、无需修改源代码、无需自托管 HeadScale 服务</strong>的情况下，<strong>只需1-2个端口</strong>，来快速构建 Tailscale-DERP 服务。</p>
+<blockquote>
+<p>需要注意的是本篇文章只考虑 tailscale 而不考虑 headscale，因为我希望使用的过程中能够尽可能简便，不想单独部署一个 headscale 控制服务器。</p>
+</blockquote>
+<a id="more"></a>
+<h2 id="二、初探-DERP-服务的初始要求">二、初探 DERP 服务的初始要求</h2>
+<p><a href="https://tailscale.com/kb/1118/custom-derp-servers/#why-run-your-own-derp-server" target="_blank" rel="noopener">Tailscale 官方文档</a>说明了 DERP 服务器需要满足一些要求：</p>
+<ol>
+<li>
+<p><strong>需要能够公网访问</strong>。这是为了让各个 Tailscale 节点可以直接访问到该 DERP 服务器，以此来便于进行后续的流量转发等操作。这个要求非常正常。</p>
+</li>
+<li>
+<p><strong>需要运行 HTTPS 服务</strong>。本质上是为了在传输数据给 DERP 服务器时数据可以通过 TLS 加密。</p>
+<blockquote>
+<p>HTTPS 服务通常需要 <strong>带有一个 TLS 证书</strong>。DERP 服务器只认 <em>Let‘ s Encrypt</em> 这家服务商颁发的证书，但该服务商不会给纯 IP 的服务器颁发证书。这实际上就隐含了一个条件：<strong>还需要一个公共域名</strong>。</p>
+</blockquote>
+<blockquote>
+<p>这里的 TLS 加密和 Tailscale P2P 加密不同，前者是加密 peer to server 的流量，后者是加密 peer to peer 的流量。换句话说，TLS 要加密的数据中会包含（已经被 tailscale peer 加密过的）<em>待中继加密流量</em>。</p>
+</blockquote>
+</li>
+<li>
+<p><strong>必须分配 80 端口来运行 HTTP 服务</strong>。这个要求很强烈，限制死了端口。</p>
+</li>
+<li>
+<p><strong>需要额外暴露两个端口来运行 HTTPS 和 STUN 服务</strong>。</p>
+</li>
+<li>
+<p><strong>必须允许 ICMP 流量的出入</strong>。Tailscale Document 中用的是 <em>must</em> 来指定其重要性，但个人感觉应该是不需要这个要求。</p>
+</li>
+</ol>
+<p>上面从文档中总结出来的几点要求可能不太准确，因为网络中有部分文章介绍了搭建纯 IP DERP 服务器的过程（但是还是什么介绍都没有，看了跟没看没什么两样……）。不过从我阅读代码得到的经验看来<strong>官方文档上这方面内容很有可能已经过时，实际应该不需要这么强的要求</strong>。</p>
+<p>需要注意的是 DERP 服务要求服务器上需要携带 TLS 证书主要还是出于数据加密的目的；但在 Tailscale 节点中，两个节点在传输数据前会使用各个节点事先已经上传至 Tailscale 中心节点（即协调服务器）里的公钥来做加密。因此，DERP服务器要求的 TLS 证书的实际作用是为了<strong>隐藏数据转发的这个行为本身</strong>。由于本人自建节点主要是自己使用，因此这个隐藏就显得比较无所谓。</p>
+<p>那么这样一来就有一个有意思的问题：</p>
+<blockquote>
+<p>能否在<strong>最少操作、最少要求</strong>的情况下来做 DERP 中继？</p>
+</blockquote>
+<p>那这就要深入到 DERP 的实现原理了。</p>
+<h2 id="三、初探-DERP-原理">三、初探 DERP 原理</h2>
+<blockquote>
+<p>当前使用的 tailscale 版本为 v1.52.1 (2023/11/11)，git commit 为 <a href="https://github.com/tailscale/tailscale/commit/86c8ab7502a38b4de05308355fe0c847e4e78167" target="_blank" rel="noopener">86c8ab75.</a></p>
+</blockquote>
+<h3 id="1-DERP-配置相关">1. DERP 配置相关</h3>
+<p>DERP 的顶层实现主要由两个文件组成</p>
+<ul>
+<li><a href="https://github.com/tailscale/tailscale/blob/86c8ab75/cmd/derper/derper.go" target="_blank" rel="noopener">cmd/derper/derper.go</a>：DERP 服务器的顶层入口，包括监听 STUN 服务的过程逻辑全在这里</li>
+<li><a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go" target="_blank" rel="noopener">derp/derp_server.go</a>：中继转发数据的相关操作类代码</li>
+</ul>
+<p>从 DERP 服务器的代码中可以收获一些有意思的东西：</p>
+<ol>
+<li>
+<p>DERP 服务器可以同时运行两个服务，一个是使用 <strong>HTTP/HTTPS</strong>（TCP 协议）的 DERP 数据中转服务；另一个是使用 UDP 协议的 STUN 打洞服务。</p>
+<blockquote>
+<p>这俩服务刚好使用了不同的运输层协议，所以应该可以把 Zerotier 那套机制拿过来用。</p>
+</blockquote>
+</li>
+<li>
+<p>所绑定的 IP、HTTP/HTTPS（DERP 服务） 监听端口、选择指定 HTTP 还是 HTTPS 协议、以及 STUN 监听端口都是可配置的，灵活性很好。</p>
+</li>
+<li>
+<p>可以指定参数 <code>verify-clients</code> 来限制使用当前 DERP 服务的只能是自己的 tailscale 节点，防止白嫖。不过启用该服务需要当前 DERP 服务器本身就是一个 tailscale 节点，或者存在 socket 文件 <code>/var/run/tailscale/tailscaled.sock</code>。</p>
+</li>
+</ol>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// cmd/derper/derper.go</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">var</span> (</span><br><span class="line">	dev        = flag.Bool(<span class="string">"dev"</span>, <span class="literal">false</span>, <span class="string">"run in localhost development mode (overrides -a)"</span>)</span><br><span class="line">	addr       = flag.String(<span class="string">"a"</span>, <span class="string">":443"</span>, <span class="string">"server HTTP/HTTPS listen address, in form \":port\", \"ip:port\", or for IPv6 \"[ip]:port\". If the IP is omitted, it defaults to all interfaces. Serves HTTPS if the port is 443 and/or -certmode is manual, otherwise HTTP."</span>)</span><br><span class="line">	httpPort   = flag.Int(<span class="string">"http-port"</span>, <span class="number">80</span>, <span class="string">"The port on which to serve HTTP. Set to -1 to disable. The listener is bound to the same IP (if any) as specified in the -a flag."</span>)</span><br><span class="line">	stunPort   = flag.Int(<span class="string">"stun-port"</span>, <span class="number">3478</span>, <span class="string">"The UDP port on which to serve STUN. The listener is bound to the same IP (if any) as specified in the -a flag."</span>)</span><br><span class="line">	configPath = flag.String(<span class="string">"c"</span>, <span class="string">""</span>, <span class="string">"config file path"</span>)</span><br><span class="line">	certMode   = flag.String(<span class="string">"certmode"</span>, <span class="string">"letsencrypt"</span>, <span class="string">"mode for getting a cert. possible options: manual, letsencrypt"</span>)</span><br><span class="line">	certDir    = flag.String(<span class="string">"certdir"</span>, tsweb.DefaultCertDir(<span class="string">"derper-certs"</span>), <span class="string">"directory to store LetsEncrypt certs, if addr's port is :443"</span>)</span><br><span class="line">	hostname   = flag.String(<span class="string">"hostname"</span>, <span class="string">"derp.tailscale.com"</span>, <span class="string">"LetsEncrypt host name, if addr's port is :443"</span>)</span><br><span class="line">	runSTUN    = flag.Bool(<span class="string">"stun"</span>, <span class="literal">true</span>, <span class="string">"whether to run a STUN server. It will bind to the same IP (if any) as the --addr flag value."</span>)</span><br><span class="line">	runDERP    = flag.Bool(<span class="string">"derp"</span>, <span class="literal">true</span>, <span class="string">"whether to run a DERP server. The only reason to set this false is if you're decommissioning a server but want to keep its bootstrap DNS functionality still running."</span>)</span><br><span class="line"></span><br><span class="line">	meshPSKFile    = flag.String(<span class="string">"mesh-psk-file"</span>, defaultMeshPSKFile(), <span class="string">"if non-empty, path to file containing the mesh pre-shared key file. It should contain some hex string; whitespace is trimmed."</span>)</span><br><span class="line">	meshWith       = flag.String(<span class="string">"mesh-with"</span>, <span class="string">""</span>, <span class="string">"optional comma-separated list of hostnames to mesh with; the server's own hostname can be in the list"</span>)</span><br><span class="line">	bootstrapDNS   = flag.String(<span class="string">"bootstrap-dns-names"</span>, <span class="string">""</span>, <span class="string">"optional comma-separated list of hostnames to make available at /bootstrap-dns"</span>)</span><br><span class="line">	unpublishedDNS = flag.String(<span class="string">"unpublished-bootstrap-dns-names"</span>, <span class="string">""</span>, <span class="string">"optional comma-separated list of hostnames to make available at /bootstrap-dns and not publish in the list"</span>)</span><br><span class="line">	verifyClients  = flag.Bool(<span class="string">"verify-clients"</span>, <span class="literal">false</span>, <span class="string">"verify clients to this DERP server through a local tailscaled instance."</span>)</span><br><span class="line"></span><br><span class="line">	acceptConnLimit = flag.Float64(<span class="string">"accept-connection-limit"</span>, math.Inf(+<span class="number">1</span>), <span class="string">"rate limit for accepting new connection"</span>)</span><br><span class="line">	acceptConnBurst = flag.Int(<span class="string">"accept-connection-burst"</span>, math.MaxInt, <span class="string">"burst limit for accepting new connection"</span>)</span><br><span class="line">)</span><br></pre></td></tr></table></figure>
+<p>这些信息说明 DERP 的可配置性很高，且对 TLS 的要求是可选的。不过<strong>只知道 DERP 服务可以选择开启 HTTP 协议还不够用，我们还需要看看各个客户端节点是如何配置与使用 DERP 服务的，因为假如客户端节点强制启用 TLS 访问 DERP 服务，那即便关掉 DERP 服务的 TLS 也无济于事</strong>。</p>
+<blockquote>
+<p>http-port 参数只会在启用了 HTTPS 服务后，才会尝试监听新的 HTTP 服务（<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/cmd/derper/derper.go#L284" target="_blank" rel="noopener">cmd/derper/derper.go#L284</a>）。这意味着 <strong>HTTP 服务实际上不是必须的</strong>，官方文档里所提出的要求存在冗余。</p>
+</blockquote>
+<h3 id="2-DERP-Client-配置相关">2. DERP Client 配置相关</h3>
+<p>代码 <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/tailcfg/derpmap.go#L112" target="_blank" rel="noopener">tailcfg/derpmap.go</a> 展现了下发至 client 上关于 derp 服务的配置信息：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// tailcfg/derpmap.go</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// DERPNode describes a DERP packet relay node running within a DERPRegion.</span></span><br><span class="line"><span class="keyword">type</span> DERPNode <span class="keyword">struct</span> &#123;</span><br><span class="line">	<span class="comment">// Name is a unique node name (across all regions).</span></span><br><span class="line">	<span class="comment">// It is not a host name.</span></span><br><span class="line">	<span class="comment">// It's typically of the form "1b", "2a", "3b", etc. (region</span></span><br><span class="line">	<span class="comment">// ID + suffix within that region)</span></span><br><span class="line">	Name <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// RegionID is the RegionID of the DERPRegion that this node</span></span><br><span class="line">	<span class="comment">// is running in.</span></span><br><span class="line">	RegionID <span class="keyword">int</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// HostName is the DERP node's hostname.</span></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	<span class="comment">// It is required but need not be unique; multiple nodes may</span></span><br><span class="line">	<span class="comment">// have the same HostName but vary in configuration otherwise.</span></span><br><span class="line">	HostName <span class="keyword">string</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// CertName optionally specifies the expected TLS cert common</span></span><br><span class="line">	<span class="comment">// name. If empty, HostName is used. If CertName is non-empty,</span></span><br><span class="line">	<span class="comment">// HostName is only used for the TCP dial (if IPv4/IPv6 are</span></span><br><span class="line">	<span class="comment">// not present) + TLS ClientHello.</span></span><br><span class="line">	CertName <span class="keyword">string</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// IPv4 optionally forces an IPv4 address to use, instead of using DNS.</span></span><br><span class="line">	<span class="comment">// If empty, A record(s) from DNS lookups of HostName are used.</span></span><br><span class="line">	<span class="comment">// If the string is not an IPv4 address, IPv4 is not used; the</span></span><br><span class="line">	<span class="comment">// conventional string to disable IPv4 (and not use DNS) is</span></span><br><span class="line">	<span class="comment">// "none".</span></span><br><span class="line">	IPv4 <span class="keyword">string</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// IPv6 optionally forces an IPv6 address to use, instead of using DNS.</span></span><br><span class="line">	<span class="comment">// If empty, AAAA record(s) from DNS lookups of HostName are used.</span></span><br><span class="line">	<span class="comment">// If the string is not an IPv6 address, IPv6 is not used; the</span></span><br><span class="line">	<span class="comment">// conventional string to disable IPv6 (and not use DNS) is</span></span><br><span class="line">	<span class="comment">// "none".</span></span><br><span class="line">	IPv6 <span class="keyword">string</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// Port optionally specifies a STUN port to use.</span></span><br><span class="line">	<span class="comment">// Zero means 3478.</span></span><br><span class="line">	<span class="comment">// To disable STUN on this node, use -1.</span></span><br><span class="line">	STUNPort <span class="keyword">int</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// STUNOnly marks a node as only a STUN server and not a DERP</span></span><br><span class="line">	<span class="comment">// server.</span></span><br><span class="line">	STUNOnly <span class="keyword">bool</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// DERPPort optionally provides an alternate TLS port number</span></span><br><span class="line">	<span class="comment">// for the DERP HTTPS server.</span></span><br><span class="line">	<span class="comment">//</span></span><br><span class="line">	<span class="comment">// If zero, 443 is used.</span></span><br><span class="line">	DERPPort <span class="keyword">int</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// InsecureForTests is used by unit tests to disable TLS verification.</span></span><br><span class="line">	<span class="comment">// It should not be set by users.</span></span><br><span class="line">	InsecureForTests <span class="keyword">bool</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// STUNTestIP is used in tests to override the STUN server's IP.</span></span><br><span class="line">	<span class="comment">// If empty, it's assumed to be the same as the DERP server.</span></span><br><span class="line">	STUNTestIP <span class="keyword">string</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line"></span><br><span class="line">	<span class="comment">// CanPort80 specifies whether this DERP node is accessible over HTTP</span></span><br><span class="line">	<span class="comment">// on port 80 specifically. This is used for captive portal checks.</span></span><br><span class="line">	CanPort80 <span class="keyword">bool</span> <span class="string">`json:",omitempty"`</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们既可以指定客户端在连接 DERP 服务器时所使用<strong>关于 DERP 服务和 STUN 服务的监听端口</strong>，也可以通过测试用的参数来让客户端在连接 DERP 服务器时<strong>指定是否启用 TLS 验证（即指定是否使用 TLS 证书）</strong>。管中窥豹，看上去好像客户端这块可配置性也比较强。</p>
+<blockquote>
+<p>不过注意：从 DERP Client 的配置文件只能看出<strong>可以尝试用 TLS-Insecure 来连接 DERP 服务器的 HTTPS 服务</strong>，<strong>并没有说明可以直接连接 DERP 服务器的 HTTP 服务</strong>。这个需要继续探究。</p>
+</blockquote>
+<h3 id="3-DERP-服务连接逻辑">3. DERP 服务连接逻辑</h3>
+<p>那么 tailscale 节点是如何实际与 DERP 服务器进行交互的呢？需要关注这三个文件，层次依次从高到低：</p>
+<ul>
+<li><a href="https://github.com/tailscale/tailscale/blob/86c8ab75/wgengine/magicsock/magicsock.go" target="_blank" rel="noopener">wgengine/magicsock/magicsock.go</a>：关键函数 <code>sendAddr</code> 支持向 DERP 服务器或直连 peer 发送单个数据包。该文件整体上提供了更新 endpoints、维护网络状态、发送与接收数据包的顶层实现、打洞路径探索等更为高层的功能特性。</li>
+<li><a href="https://github.com/tailscale/tailscale/blob/86c8ab75/wgengine/magicsock/derp.go#L256" target="_blank" rel="noopener">wgengine/magicsock/derp.go</a>：该文件中的关键主要函数为 <code>derpWriteChanOfAddr</code>，创建与单个 DERP 服务器的复杂连接，并进行信息(message) 处理。</li>
+<li><a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derphttp/derphttp_client.go" target="_blank" rel="noopener">derp/derphttp/derphttp_client.go</a>：实现了底层与 DERP 服务器实际监听、连接、发送与接收数据(data) 等底层操作。</li>
+</ul>
+<blockquote>
+<p>这些文件里面内容较多，就不细讲了，自己看看会更能感受到其中的内在精妙。</p>
+</blockquote>
+<p>我们主要关注的是最后一个文件，因为底层操作才是影响我们能否用 non-TLS 协议创建连接的关键位置（即 HTTP 协议，毕竟要是能走 HTTP，那就没必要走<strong>关闭证书验证的伪 HTTPS 协议</strong>） 。</p>
+<p>正常情况下，tailscale 都只会与同个 Region 中的其中一个节点进行连接和通信，即便单个 Region 里存在多个冗余节点，tailscale 也只会连接其中一个：</p>
+<ol>
+<li>
+<p>客户端<strong>尝试创建</strong> DERP Region Client：derpWriteChanOfAddr 函数 - <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/wgengine/magicsock/derp.go#L321" target="_blank" rel="noopener">wgengine/magicsock/derp.go#L321</a></p>
+</li>
+<li>
+<p><strong>实际创建</strong> DERP Region 的 Client 结构体：NewRegionClient 函数 - <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derphttp/derphttp_client.go#L109" target="_blank" rel="noopener">derp/derphttp/derphttp_client.go#L109</a></p>
+</li>
+<li>
+<p>客户端向 DERP Region 发起连接，<strong>获取 TCP 连接（注意不是 TLS 连接）</strong>：dialRegion 函数 - <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derphttp/derphttp_client.go#L570" target="_blank" rel="noopener">derp/derphttp/derphttp_client.go#L570</a></p>
+</li>
+<li>
+<p>在获取 DERP Region 的 TCP 连接后，根据条件判断选择是否使用 HTTPS 协议：<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derphttp/derphttp_client.go#L392" target="_blank" rel="noopener">derp/derphttp/derphttp_client.go#L392</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derphttp/derphttp_client.go#L426" target="_blank" rel="noopener">derp/derphttp/derphttp_client.go#L426</a></p>
+<blockquote>
+<p>以下代码先走 switch-case 的 <strong>default 分支</strong>，之后进入 <code>c.useHTTPS()</code> 语句判断当前是否使用 HTTPS 协议进行连接。</p>
+</blockquote>
+ <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Client)</span> <span class="title">connect</span><span class="params">(ctx context.Context, caller <span class="keyword">string</span>)</span> <span class="params">(client *derp.Client, connGen <span class="keyword">int</span>, err error)</span></span> &#123;</span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">	<span class="keyword">var</span> node *tailcfg.DERPNode <span class="comment">// nil when using c.url to dial</span></span><br><span class="line">	<span class="keyword">switch</span> &#123;</span><br><span class="line">	<span class="keyword">case</span> useWebsockets():</span><br><span class="line">		...</span><br><span class="line">	<span class="keyword">case</span> c.url != <span class="literal">nil</span>:</span><br><span class="line">		c.logf(<span class="string">"%s: connecting to %v"</span>, caller, c.url)</span><br><span class="line">		tcpConn, err = c.dialURL(ctx)</span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		c.logf(<span class="string">"%s: connecting to derp-%d (%v)"</span>, caller, reg.RegionID, reg.RegionCode)</span><br><span class="line">		tcpConn, node, err = c.dialRegion(ctx, reg)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, <span class="number">0</span>, err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">	<span class="keyword">var</span> httpConn net.Conn        <span class="comment">// a TCP conn or a TLS conn; what we speak HTTP to</span></span><br><span class="line">	<span class="keyword">var</span> serverPub key.NodePublic <span class="comment">// or zero if unknown (if not using TLS or TLS middlebox eats it)</span></span><br><span class="line">	<span class="keyword">var</span> serverProtoVersion <span class="keyword">int</span></span><br><span class="line">	<span class="keyword">var</span> tlsState *tls.ConnectionState</span><br><span class="line">	<span class="keyword">if</span> c.useHTTPS() &#123;</span><br><span class="line">		tlsConn := c.tlsClient(tcpConn, node)</span><br><span class="line">		httpConn = tlsConn</span><br><span class="line"></span><br><span class="line">		<span class="comment">// Force a handshake now (instead of waiting for it to</span></span><br><span class="line">		<span class="comment">// be done implicitly on read/write) so we can check</span></span><br><span class="line">		<span class="comment">// the ConnectionState.</span></span><br><span class="line">		<span class="keyword">if</span> err := tlsConn.Handshake(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">nil</span>, <span class="number">0</span>, err</span><br><span class="line">		&#125;</span><br><span class="line">		...</span><br><span class="line">	&#125;</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ol>
+<p><code>Client.useHTTPS</code> 函数就是客户端用来判断连接 DERP 服务器时是否需要使用 HTTPS 协议，从下面的代码中可以得知，当客户端连接 DERP 服务器时，<strong>它几乎一定会使用 HTTPS 协议</strong>。很简单，因为 <strong>DERP Region Client 的 url 字段是空的</strong>，除非启动调试参数，否则它就会使用 HTTPS。</p>
+<blockquote>
+<p>手动在运行 DERP 服务时启用调试参数/修改源代码是比较 dirty 的，个人不太倾向这种操作，尽量能不改代码就尽量不改代码。因此这里我选择启用 HTTPS 协议算了。</p>
+</blockquote>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// derp/derphttp/derphttp_client.go</span></span><br><span class="line"><span class="comment">// --------------------------------</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// Client is a DERP-over-HTTP client.</span></span><br><span class="line"><span class="comment">//</span></span><br><span class="line"><span class="comment">// It automatically reconnects on error retry. That is, a failed Send or</span></span><br><span class="line"><span class="comment">// Recv will report the error and not retry, but subsequent calls to</span></span><br><span class="line"><span class="comment">// Send/Recv will completely re-establish the connection (unless Close</span></span><br><span class="line"><span class="comment">// has been called).</span></span><br><span class="line"><span class="keyword">type</span> Client <span class="keyword">struct</span> &#123;</span><br><span class="line">	...</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Either url or getRegion is non-nil:</span></span><br><span class="line">	url       *url.URL</span><br><span class="line">	getRegion <span class="function"><span class="keyword">func</span><span class="params">()</span> *<span class="title">tailcfg</span>.<span class="title">DERPRegion</span></span></span><br><span class="line"></span><br><span class="line">	...</span><br><span class="line">&#125;</span><br><span class="line">...</span><br><span class="line"></span><br><span class="line"><span class="comment">// debugDERPUseHTTP tells clients to connect to DERP via HTTP on port</span></span><br><span class="line"><span class="comment">// 3340 instead of HTTPS on 443.</span></span><br><span class="line"><span class="keyword">var</span> debugUseDERPHTTP = envknob.RegisterBool(<span class="string">"TS_DEBUG_USE_DERP_HTTP"</span>)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(c *Client)</span> <span class="title">useHTTPS</span><span class="params">()</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> c.url != <span class="literal">nil</span> &amp;&amp; c.url.Scheme == <span class="string">"http"</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> debugUseDERPHTTP() &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>那么现在下结论：<strong>在正常情况下，DERP 中继服务一定走（可以不经过 TLS 验证的）HTTPS 协议</strong>。</p>
+<p>顺带讲一下 <code>derphttp.Client</code> 中 url 字段能否为 <code>http</code>。唯一一个<strong>创建带有 url 字段 Client 结构的函数</strong>的调用点如下，从中可以看到，URL 的 scheme 已经被限制死为 <strong>https</strong> 了，这个功能应该是给 tailscale 官方域名使用，因此对我们来讲用处其实不大：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// cmd/derper/mesh.go</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">startMeshWithHost</span><span class="params">(s *derp.Server, host <span class="keyword">string</span>)</span> <span class="title">error</span></span> &#123;</span><br><span class="line">	logf := logger.WithPrefix(log.Printf, fmt.Sprintf(<span class="string">"mesh(%q): "</span>, host))</span><br><span class="line">	c, err := derphttp.NewClient(s.PrivateKey(), <span class="string">"https://"</span>+host+<span class="string">"/derp"</span>, logf)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="4-WebSocket">4. WebSocket</h3>
+<p>我在阅读 DERP 代码时，发现它也支持中继 websocket 流量，这引起了我的好奇。</p>
+<p>在最初的时候，我以为 DERP 是通过 HTTPS 的 websocket 来中继流量。但经过一番消息查阅和代码阅读，发现事情其实并非这样，而是 <strong>tailscale 也支持 p2p 的 websocket 通信</strong>。</p>
+<p>开发者尝试让 Tailscale 可以运行在浏览器中，这个就有点意思了。那么目前有哪些有意思的浏览器项目可以和 Tailscale 结合呢？我发现了这个 - <a href="https://labs.leaningtech.com/blog/webvm-virtual-machine-with-networking-via-tailscale" target="_blank" rel="noopener">How we added full networking to WebVM via Tailscale</a></p>
+<p>一句话描述：<strong>WebVM 是一个运行在浏览器中的小且精的 Linux VM，tailscale 和 WebVM 一拍即合使得我们可以在浏览器中通过 WebVM 直接访问我们的 tailscale 网络</strong>。</p>
+<p>这个东西极大的引起了我的好奇心，因为我一直在想要不要单独给机器暴露一个端口用来搭建 Web ssh，以便于在陌生机器上仍然能够访问我的 tailscale 网络。</p>
+<p>而现在，我便可以通过浏览器上的 WebVM，使用 ssh 连接进远程机器进行操作，完美满足我的要求，非常的 nice。</p>
+<p>截一个使用示例，非常的有趣。WebVM 地址为 <a href="https://webvm.io/" target="_blank" rel="noopener">https://webvm.io/</a></p>
+<p><img src="/2023/11/tailscale-derp/Untitled.png" alt="Untitled"></p>
+<p>在 WebVM 会话存活时， tailscale 网络中会临时加入这台 VM，在该会话死亡时自动从 tailscale 网络中清除：</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%201.png" alt="Untitled"></p>
+<p>但比较悲伤的是，WebVM 中的 tailscale 还不太支持 MagicDNS，也就是说得手输入 IP 地址连接远程机器了，没法用主机名。</p>
+<h3 id="5-STUN-服务">5. STUN 服务</h3>
+<p>STUN 是用来进行 NAT 检测的服务。理论上说，将 STUN 放到与两台 peer 越近的位置越好，因为这能减少 NAT穿透的层数。但 <strong>STUN 原始协议</strong>要求 STUN server <strong>至少拥有两个公网 IP</strong> 才能做到非常完备的 NAT 协议检测，因为两个公网 IP 可以让 STUN server 有两个流量出站口，便于模拟出“两台”设备来更好的检测 peer 的 NAT 类型。</p>
+<p>但这种条件未免过于苛刻，一个公网 IP 都不太容易拿到，更何况是两个公网 IP，而且还得是<strong>两个公网 IP 都绑定在一个设备</strong>上，难上加难。不过好消息是 Tailscale 的 stun 并不需要这么高的要求，它的 STUN UDP 服务只做一件事：接受 <strong>peer 的 UDP 连接，并告诉 Peer 当前所看到 NAT 的 IP:Port 对:</strong></p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// cmd/derper/derper.go</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">serverSTUNListener</span><span class="params">(ctx context.Context, pc *net.UDPConn)</span></span> &#123;</span><br><span class="line">	...</span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="comment">// 1. 从 UDP 连接中读取 pkt</span></span><br><span class="line">		n, ua, err = pc.ReadFromUDP(buf[:])</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			...</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// 2. 将 pkt 解析成 txid，主要是防止消息错位</span></span><br><span class="line">		pkt := buf[:n]</span><br><span class="line">		...</span><br><span class="line">		txid, err := stun.ParseBindingRequest(pkt)</span><br><span class="line">		...</span><br><span class="line">		<span class="comment">// 3. 将 Server 从 UDP 连接中看到的公网 IP:Port，与 txid 打包发回给 client</span></span><br><span class="line">		addr, _ := netip.AddrFromSlice(ua.IP)</span><br><span class="line">		res := stun.Response(txid, netip.AddrPortFrom(addr, <span class="keyword">uint16</span>(ua.Port)))</span><br><span class="line">		_, err = pc.WriteTo(res, ua)</span><br><span class="line">		...</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里的 STUN 服务非常简单，它只做了整个 NAT 检测中最简单的一环，那就是<strong>告诉 client 来自 server 的公网视角</strong>。</p>
+<p>但打洞没有这么简单，<strong>Tailscale 还会基于 DERP 服务的 discovery message 旁路信道 + 其他 NAT 检测的黑科技来做 NAT 穿越</strong>。</p>
+<p>这里就得插一个 Tailscale blog 链接了，最好是点进去看：<a href="https://tailscale.com/blog/how-nat-traversal-works/" target="_blank" rel="noopener">How NAT traversal works NAT - Tailscale Blog</a>，不过我更推荐看这个译文：<a href="https://arthurchiao.art/blog/how-nat-traversal-works-zh/" target="_blank" rel="noopener">[译] NAT 穿透是如何工作的：技术原理及企业级实践（Tailscale, 2020）- arthurchiao’s blog</a>，讲的非常的通俗易懂。</p>
+<p>这里不打算介绍 Tailscale 打洞的一整套逻辑，因为关注点还是在于建立 DERP 服务，具体细节可以看上面的文章，而且因为过于黑科技以至于想简短讲完不太可能。不过在这里提到了 STUN 服务只是想说明 <strong>Tailscale 的 STUN 服务只需要一个开放的 UDP 端口即可，再没有其他苛刻的条件了</strong>。</p>
+<h2 id="四、DERP-测试搭建">四、DERP 测试搭建</h2>
+<h3 id="1-安装-derper-服务">1. <strong>安装 derper 服务</strong></h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 去 https://go.dev/dl/ 下载最新版（一定要下载版本，而非 apt-get install golang）</span></span><br><span class="line">wget https://go.dev/dl/go1.21.3.linux-amd64.tar.gz</span><br><span class="line">rm -rf /usr/<span class="built_in">local</span>/go &amp;&amp; tar -C /usr/<span class="built_in">local</span> -xzf go1.21.3.linux-amd64.tar.gz</span><br><span class="line">rm go1.21.3.linux-amd64.tar.gz</span><br><span class="line"><span class="built_in">export</span> PATH=<span class="variable">$PATH</span>:/usr/<span class="built_in">local</span>/go/bin</span><br><span class="line"></span><br><span class="line"><span class="comment"># 确定安装是否成功 </span></span><br><span class="line">go version</span><br><span class="line"><span class="comment"># 查看 GOROOT 和 GOPATH 是否不为空 &amp; 可访问</span></span><br><span class="line">go env</span><br><span class="line"></span><br><span class="line"><span class="comment"># 配置 go 代理并安装</span></span><br><span class="line">go env -w GOPROXY=https://goproxy.cn,direct</span><br><span class="line">go install tailscale.com/cmd/derper@latest</span><br><span class="line"><span class="comment"># 安装 derp probe 协助测试 derper</span></span><br><span class="line">go install tailscale.com/cmd/derpprobe@latest</span><br></pre></td></tr></table></figure>
+<h3 id="2-创建自签名证书">2. 创建自签名证书</h3>
+<p>创建自签名证书主要是糊弄 derper 用的，让它运行 HTTPS 服务；也可以改 derper 代码来绕过这个限制，但这么做后续也不方便更新 derper。</p>
+<p>创建自签名证书有几个注意点：</p>
+<ol>
+<li><strong>先随便想一个 <em>HostName</em></strong>，这里我想的是 <code>kiprey-derp</code>。但是要注意这个 HostName 一定要记住，后面证书签名包括请求访问等等都会用到。</li>
+<li>证书生成后，私钥文件和证书文件名的前缀都要改为 <em>HostName</em>。</li>
+</ol>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line">mkdir ~/certdir &amp;&amp; <span class="built_in">cd</span> ~/certdir</span><br><span class="line"><span class="comment"># 1. 生成私钥</span></span><br><span class="line">$ DERP_HOST=<span class="string">"kiprey-derp"</span></span><br><span class="line">$ openssl genpkey -algorithm RSA -out <span class="variable">$&#123;DERP_HOST&#125;</span>.key   </span><br><span class="line">...</span><br><span class="line"></span><br><span class="line"><span class="comment"># 2. 生成证书请求 (CSR)：</span></span><br><span class="line">$ openssl req -new -key <span class="variable">$&#123;DERP_HOST&#125;</span>.key -out <span class="variable">$&#123;DERP_HOST&#125;</span>.csr</span><br><span class="line"><span class="comment"># 一路放空按 enter 即可。</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 3. 生成自签名证书，设置过期期限为 100 年，防止后续再重新操作</span></span><br><span class="line">$ openssl x509 -req \</span><br><span class="line">		-days 36500 \</span><br><span class="line">		-<span class="keyword">in</span> <span class="variable">$&#123;DERP_HOST&#125;</span>.csr \</span><br><span class="line">		-signkey <span class="variable">$&#123;DERP_HOST&#125;</span>.key \</span><br><span class="line">		-out <span class="variable">$&#123;DERP_HOST&#125;</span>.crt \</span><br><span class="line">		-extfile &lt;(<span class="built_in">printf</span> <span class="string">"subjectAltName=DNS:<span class="variable">$&#123;DERP_HOST&#125;</span>"</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 4. 查看生成的证书</span></span><br><span class="line">$ openssl x509 -<span class="keyword">in</span> <span class="variable">$&#123;DERP_HOST&#125;</span>.crt -noout -text </span><br><span class="line">Certificate:</span><br><span class="line">    Data:</span><br><span class="line">        Version: 3 (0x2)</span><br><span class="line">        ...</span><br><span class="line">        Issuer: C = AU, ST = Some-State, O = Internet Widgits Pty Ltd</span><br><span class="line">        Validity</span><br><span class="line">            Not Before: Nov 12 05:17:34 2023 GMT</span><br><span class="line">            Not After : Oct 19 05:17:34 2123 GMT</span><br><span class="line">        Subject: C = AU, ST = Some-State, O = Internet Widgits Pty Ltd</span><br><span class="line">        ...</span><br><span class="line">        X509v3 extensions:</span><br><span class="line">            X509v3 Subject Alternative Name: </span><br><span class="line">                DNS:kiprey-derp</span><br><span class="line">            ...</span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+<h3 id="3-运行-derper-服务">3. <strong>运行 derper 服务</strong></h3>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 启动 derper</span></span><br><span class="line"><span class="comment"># 因为 derp 在启用 HTTPS 后会自动监听 HTTP，所以指定 HTTP PORT 为 -1 将其禁用</span></span><br><span class="line">~/go/bin/derper \</span><br><span class="line">    -c ~/.derper.key \</span><br><span class="line">    -a :8888 -http-port -1 \</span><br><span class="line">    -stun-port 8889 \</span><br><span class="line">    -hostname <span class="variable">$&#123;DERP_HOST&#125;</span> \</span><br><span class="line">    --certmode manual \</span><br><span class="line">    -certdir ~/certdir \</span><br><span class="line">    --verify-clients</span><br></pre></td></tr></table></figure>
+<h3 id="4-测试连通性">4. 测试连通性</h3>
+<p>以下是 HTTPS 协议 DERP 服务的连通性测试过程：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">unset</span> all_proxy http_proxy https_proxy</span><br><span class="line"><span class="comment"># --insecure 表示使用 TLS-Insecure</span></span><br><span class="line"><span class="comment"># --resolve 表示将 DERP_HOST 绑定至本地的  127.0.0.1</span></span><br><span class="line">$ curl --insecure --resolve <span class="string">"<span class="variable">$&#123;DERP_HOST&#125;</span>:8888:127.0.0.1"</span> <span class="string">"https://<span class="variable">$&#123;DERP_HOST&#125;</span>:8888"</span></span><br><span class="line">&lt;html&gt;&lt;body&gt;</span><br><span class="line">&lt;h1&gt;DERP&lt;/h1&gt;</span><br><span class="line">&lt;p&gt;</span><br><span class="line">  This is a</span><br><span class="line">  &lt;a href=<span class="string">"https://tailscale.com/"</span>&gt;Tailscale&lt;/a&gt;</span><br><span class="line">  &lt;a href=<span class="string">"https://pkg.go.dev/tailscale.com/derp"</span>&gt;DERP&lt;/a&gt;</span><br><span class="line">  server.</span><br><span class="line">&lt;/p&gt;</span><br><span class="line">&lt;p&gt;Debug info at &lt;a href=<span class="string">'/debug/'</span>&gt;/debug/&lt;/a&gt;.&lt;/p&gt;</span><br><span class="line"></span><br><span class="line"><span class="comment"># 测试 UD 协议 STUN 服务的连通性</span></span><br><span class="line">$ nc 127.0.0.1 8889 -v -u</span><br><span class="line">Connection to 127.0.0.1 8889 port [udp/*] succeeded!</span><br></pre></td></tr></table></figure>
+<p><strong>测试的时候一定要关闭代理！不然访问 localhost 就会走代理</strong>，导致：<br>
+<code>curl: (35) error:0A000126:SSL routines::unexpected eof while reading</code></p>
+<p><img src="/2023/11/tailscale-derp/Untitled%202.png" alt="Untitled"></p>
+<p>需要注意的是，在访问 DERP 的 HTTPS 服务时，只能用之前指定的 <em>DERP_HOST</em> 这个 HostName 来进行访问，因为 <strong>DERP 服务会对 Client 的连接进行校验，确保 Client 发送来的 ServerName 与本地证书的 HostName</strong> 一致：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// cmd/derper/derper.go</span></span><br><span class="line"><span class="comment">// --------------------</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	...</span><br><span class="line">	<span class="keyword">if</span> serveTLS &#123;</span><br><span class="line">		log.Printf(<span class="string">"derper: serving on %s with TLS"</span>, *addr)</span><br><span class="line">		<span class="keyword">var</span> certManager certProvider</span><br><span class="line">		certManager, err = certProviderByCertMode(*certMode, *certDir, *hostname)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			log.Fatalf(<span class="string">"derper: can not start cert provider: %v"</span>, err)</span><br><span class="line">		&#125;</span><br><span class="line">		httpsrv.TLSConfig = certManager.TLSConfig()</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 1. 会在 Client 连接时尝试从 Client Hello 信息中获取证书</span></span><br><span class="line">		getCert := httpsrv.TLSConfig.GetCertificate</span><br><span class="line">		httpsrv.TLSConfig.GetCertificate = <span class="function"><span class="keyword">func</span><span class="params">(hi *tls.ClientHelloInfo)</span> <span class="params">(*tls.Certificate, error)</span></span> &#123;</span><br><span class="line">			cert, err := getCert(hi)</span><br><span class="line">			<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">				<span class="keyword">return</span> <span class="literal">nil</span>, err</span><br><span class="line">			&#125;</span><br><span class="line">			cert.Certificate = <span class="built_in">append</span>(cert.Certificate, s.MetaCert())</span><br><span class="line">			<span class="keyword">return</span> cert, <span class="literal">nil</span></span><br><span class="line">		&#125;</span><br><span class="line">    ...</span><br><span class="line">	...</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// cmd/derper/cert.go</span></span><br><span class="line"><span class="comment">// ------------------</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(m *manualCertManager)</span> <span class="title">getCertificate</span><span class="params">(hi *tls.ClientHelloInfo)</span> <span class="params">(*tls.Certificate, error)</span></span> &#123;</span><br><span class="line">	<span class="comment">// 2. 在获取证书时会先判断 Client 请求的 ServerName 是否与本地指定的 hostname 一致</span></span><br><span class="line">  <span class="keyword">if</span> hi.ServerName != m.hostname &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">nil</span>, fmt.Errorf(<span class="string">"cert mismatch with hostname: %q"</span>, hi.ServerName)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Return a shallow copy of the cert so the caller can append to its</span></span><br><span class="line">	<span class="comment">// Certificate field.</span></span><br><span class="line">	certCopy := <span class="built_in">new</span>(tls.Certificate)</span><br><span class="line">	*certCopy = *m.cert</span><br><span class="line">	certCopy.Certificate = certCopy.Certificate[:<span class="built_in">len</span>(certCopy.Certificate):<span class="built_in">len</span>(certCopy.Certificate)]</span><br><span class="line">	<span class="keyword">return</span> certCopy, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>因此在测试的时候，如果是使用 curl 访问则需要指定 <code>--resolve</code> 参数，来让发往 <code>DERP_HOST</code> 的请求最终能 resolve 到本地地址：</p>
+<blockquote>
+<p>curl --insecure <code>--resolve &quot;${DERP_HOST}:8888:127.0.0.1&quot;</code> “<a href="https://$" target="_blank" rel="noopener">https://$</a>{DERP_HOST}:8888”</p>
+</blockquote>
+<p>如果我们直接用浏览器打开的话，页面还是比较简洁的：</p>
+<blockquote>
+<p>注：想用浏览器打开该 HTTPS 服务，要么做地址绑定，要么再建一个 <code>DERP_HOST=localhost</code> 的证书，此处不再赘述。</p>
+</blockquote>
+<p><img src="/2023/11/tailscale-derp/Untitled%203.png" alt="Untitled"></p>
+<p>点击 <code>/debug</code>，这将会打开一些调试用的数据页面，如果我们再进一步的点击，就可以发现在源代码里经常设置的调试字段。我们可以利用这里的字段来间接判断 DERP/STUN 是否工作正常。</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%204.png" alt="Untitled"></p>
+<p>这个非常有用，因为我们可以通过这种方式来确认 <strong>DERP 服务和 STUN 服务是可以指定同一个端口并正常工作</strong>的（因为两个服务一个使用 TCP 一个使用 UDP）：</p>
+<blockquote>
+<p>nc 上去后初始时 not_stun 值为 5，在发送三行数据后值变为了 8。</p>
+</blockquote>
+<p><img src="/2023/11/tailscale-derp/Untitled%205.png" alt="Untitled"></p>
+<blockquote>
+<p>那么 Zerotier 那一套操作就可以直接套在 Tailscale DERP 服务器上了（mix-port）。</p>
+</blockquote>
+<h3 id="5-DEBUG-防护">5. DEBUG 防护</h3>
+<p>出于安全性的考虑，我们希望在实际部署时关闭掉这个 debug 模式，那该如何操作？</p>
+<p>这个实际上已经不需要我们操心，从 <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/tsweb/tsweb.go#L53" target="_blank" rel="noopener">tsweb/tsweb.go#L53</a> 中可以看出，它只会为满足几个条件的 debug 请求放行：</p>
+<ol>
+<li>请求来源为本地回环 IP、tailscale IP 以及 TS_ALLOW_DEBUG_IP 指定的 IP。</li>
+<li>请求不为 GET 方式且携带 debugkey ，同时 debugkey 的内容与 TS_DEBUG_KEY_PATH 所指定文件的内容相同。</li>
+</ol>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// AllowDebugAccess reports whether r should be permitted to access</span></span><br><span class="line"><span class="comment">// various debug endpoints.</span></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">AllowDebugAccess</span><span class="params">(r *http.Request)</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> allowDebugAccessWithKey(r) &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> r.Header.Get(<span class="string">"X-Forwarded-For"</span>) != <span class="string">""</span> &#123;</span><br><span class="line">		<span class="comment">// TODO if/when needed. For now, conservative:</span></span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	ipStr, _, err := net.SplitHostPort(r.RemoteAddr)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	ip, err := netip.ParseAddr(ipStr)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> tsaddr.IsTailscaleIP(ip) || ip.IsLoopback() || ipStr == envknob.String(<span class="string">"TS_ALLOW_DEBUG_IP"</span>) &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">allowDebugAccessWithKey</span><span class="params">(r *http.Request)</span> <span class="title">bool</span></span> &#123;</span><br><span class="line">	<span class="keyword">if</span> r.Method != <span class="string">"GET"</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">	urlKey := r.FormValue(<span class="string">"debugkey"</span>)</span><br><span class="line">	keyPath := envknob.String(<span class="string">"TS_DEBUG_KEY_PATH"</span>)</span><br><span class="line">	<span class="keyword">if</span> urlKey != <span class="string">""</span> &amp;&amp; keyPath != <span class="string">""</span> &#123;</span><br><span class="line">		slurp, err := os.ReadFile(keyPath)</span><br><span class="line">		<span class="keyword">if</span> err == <span class="literal">nil</span> &amp;&amp; <span class="keyword">string</span>(bytes.TrimSpace(slurp)) == urlKey &#123;</span><br><span class="line">			<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>实际测试如下：</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%206.png" alt="Untitled"></p>
+<h3 id="6-编写-DERP-MAP">6. <strong>编写 DERP-MAP</strong></h3>
+<blockquote>
+<p>在本文章中，为了区分开 DERP 和 STUN 服务的不同，这两个服务<strong>暂不指定至相同的端口</strong>。</p>
+</blockquote>
+<blockquote>
+<p>DERP map 的编写可以参考官方: <a href="https://login.tailscale.com/derpmap/default" target="_blank" rel="noopener">derp-map - tailscale</a></p>
+</blockquote>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="attr">"Regions"</span>: &#123;</span><br><span class="line">      <span class="attr">"233"</span>: &#123;</span><br><span class="line">        <span class="attr">"RegionID"</span>: <span class="number">233</span>,</span><br><span class="line">        <span class="attr">"RegionCode"</span>: <span class="string">"useless-region-code"</span>,</span><br><span class="line">        <span class="attr">"Nodes"</span>: [</span><br><span class="line">          &#123;</span><br><span class="line">            <span class="attr">"Name"</span>: <span class="string">"test-derp"</span>,</span><br><span class="line">            <span class="attr">"RegionID"</span>: <span class="number">233</span>,</span><br><span class="line">            <span class="attr">"HostName"</span>: <span class="string">"kiprey-derp"</span>,</span><br><span class="line">            <span class="attr">"IPv4"</span>: <span class="string">"127.0.0.1"</span>,</span><br><span class="line">            <span class="attr">"IPv6"</span>: <span class="string">"::1"</span>,</span><br><span class="line">            <span class="attr">"DERPPort"</span>: <span class="number">8888</span>,</span><br><span class="line">            <span class="attr">"STUNPort"</span>: <span class="number">8889</span>,</span><br><span class="line">            <span class="attr">"InsecureForTests"</span>: <span class="literal">true</span></span><br><span class="line">          &#125;</span><br><span class="line">        ]</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注意：1. HostName 填写为先前确定的那一个 DERP_HOST，用于传递给 Server 校验；InsecureForTests 用于让客户端跳过证书校验。</p>
+</blockquote>
+<p>将其保存为 derp-map.json 并运行：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">$ ~/go/bin/derpprobe -derp-map file://<span class="variable">$HOME</span>/derp-map.json -once</span><br><span class="line">2023/11/12 15:01:38 Waiting <span class="keyword">for</span> all probes (may take up to 1m)</span><br><span class="line">2023/11/12 15:01:40 adding DERP TLS probe <span class="keyword">for</span> <span class="built_in">test</span>-derp ()</span><br><span class="line">2023/11/12 15:01:40 adding DERP UDP probe <span class="keyword">for</span> <span class="built_in">test</span>-derp (derp/useless-region-code/<span class="built_in">test</span>-derp/udp6)</span><br><span class="line">2023/11/12 15:01:40 adding DERP UDP probe <span class="keyword">for</span> <span class="built_in">test</span>-derp (derp/useless-region-code/<span class="built_in">test</span>-derp/udp)</span><br><span class="line">2023/11/12 15:01:40 adding DERP mesh probe <span class="keyword">for</span> <span class="built_in">test</span>-derp-&gt;<span class="built_in">test</span>-derp ()</span><br><span class="line">2023/11/12 15:01:41 probe derp/useless-region-code/<span class="built_in">test</span>-derp/tls: connecting to <span class="string">"kiprey-derp:443"</span>: dial tcp: lookup kiprey-derp on 127.0.0.53:53: server misbehaving</span><br><span class="line">2023/11/12 15:01:47 probe derp/useless-region-code/<span class="built_in">test</span>-derp/<span class="built_in">test</span>-derp/mesh: derp.Recv: EOF</span><br><span class="line">2023/11/12 15:01:54 good: derp/useless-region-code/<span class="built_in">test</span>-derp/udp6: 667.205µs</span><br><span class="line">2023/11/12 15:01:54 good: derp/useless-region-code/<span class="built_in">test</span>-derp/udp: 2.71478ms</span><br><span class="line">2023/11/12 15:01:54 good: derpmap-probe: 5.609009ms</span><br><span class="line">2023/11/12 15:01:54 bad: derp/useless-region-code/<span class="built_in">test</span>-derp/<span class="built_in">test</span>-derp/mesh: derp.Recv: EOF</span><br><span class="line">2023/11/12 15:01:54 bad: derp/useless-region-code/<span class="built_in">test</span>-derp/tls: connecting to <span class="string">"kiprey-derp:443"</span>: dial tcp: lookup kiprey-derp on 127.0.0.53:53: server misbehaving</span><br></pre></td></tr></table></figure>
+<p><strong>derpprobe 探测内容</strong></p>
+<p>先简单说明一下 derpprobe 探测的内容，它主要是探测以下三种功能（功能位于<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go" target="_blank" rel="noopener">prober/derp.go</a>）：</p>
+<ol>
+<li><em>DERP TLS probe</em>：只探测当前被测 DERP 服务器的 <strong>TLS 协议是否能正常建立 TLS 连接</strong>，不探测应用层数据（<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L58" target="_blank" rel="noopener">prober/derp.go#L58</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L97" target="_blank" rel="noopener">prober/derp.go#L97</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/tls.go#L29" target="_blank" rel="noopener">prober/tls.go#L29</a>）。</li>
+<li><em>DERP UDP probe</em>：探测当前被测 DERP 服务器上<strong>基于 UDP 的 STUN 服务</strong>是否正常（IPv4 &amp; IPv6 各探测一次，会建立连接并收发数据）（<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L113" target="_blank" rel="noopener">prober/derp.go#L113</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L206" target="_blank" rel="noopener">prober/derp.go#L206</a>）。</li>
+<li><em>DERP mesh probe</em>：探测当前被测 DERP 服务器<strong>与同 Region 下其他 DERP 服务器的数据转发</strong>是否正常（<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L122" target="_blank" rel="noopener">prober/derp.go#L122</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L139" target="_blank" rel="noopener">prober/derp.go#L139</a> &amp; <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L295" target="_blank" rel="noopener">prober/derp.go#L295</a>）。</li>
+</ol>
+<p>可以看到输出的结果里存在错误，其错误有两点：</p>
+<ol>
+<li>
+<p><strong>TLS 连接失败</strong>。阅读源代码发现 <em>DERP TLS probe</em> 连接 DERP 服务器的方式不太正宗，连接逻辑和常规客户端连接 DERP 服务器完全不同，并且只会请求访问配置中的 <strong>HostName 字段</strong>，而不会使用 <strong>IPv4/IPv6 字段</strong>(<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L97" target="_blank" rel="noopener">prober/derp.go#L97</a>)，同时还不使用 <strong>InsecureForTests 字段</strong>来设置关闭证书验证，因此 TLS probe 的错误就无法处理了；不过这个错误也无关紧要。</p>
+</li>
+<li>
+<p><strong>Prober 连接 DERP 服务失败</strong>。DERP 服务一直报如下信息的错误：</p>
+ <figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">2023</span>/XX/XX XX:XX:XX derp: <span class="number">127.0</span><span class="number">.0</span><span class="number">.1</span>:<span class="number">50566</span>: client xxxxx rejected: client nodekey:xxxxx not in set of peers</span><br></pre></td></tr></table></figure>
+<p>通过调试发现是因为 prober 所使用的 client key 是<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L357" target="_blank" rel="noopener">随机生成</a>的，因此 DERP 在指定 <code>—verify-clients</code> 后会将该 prober 连接阻断，在测试时需要去除 DERP 服务的这个参数，最终效果如下：</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%207.png" alt="Untitled"></p>
+</li>
+</ol>
+<p>简单解释一下 Prober 的使用关键点：</p>
+<ol>
+<li>
+<p>上图中本人在运行 derpprobe 时<strong>是直接运行最新源代码</strong>，而非通过 go install 预编译二进制文件的形式。这是因为在本人使用 derpprobe 时，刚好 derpprobe 正在修复bug，最新版本的修复代码尚未提交至 go pkg，因此是直接运行的源代码。</p>
+</li>
+<li>
+<p>使用 Prober 时<strong>一定要清除 proxy</strong>，否则你就会发现本该连接成功的 HTTPS 请求在一个奇怪的地方被”劫持“，导致 prober 失败：</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%208.png" alt="Untitled"></p>
+</li>
+</ol>
+<p>那么，derpprobe 的测试到此为止，接下来要实际部署进 tailscale 网络中来进行测试。</p>
+<p><strong>DERP mesh probe 探测原理</strong></p>
+<p>顺带说一下 DERP mesh probe 的探测原理，这个比较有意思，其目的是测试<strong>不同 client 连接同一个 Region（Cluster）时的数据转发效果</strong>，这里尤其需要考虑不同 client 连接至<strong>同一个 Region 但不同 Region Node</strong> 时消息的转发状态。其测试过程如下：</p>
+<blockquote>
+<p>为了避免混淆，规定 client1、client2 为非 DERP 服务的两个不同客户端节点；<strong>s</strong>client1、<strong>s</strong>client2 为 DERP 服务内对应创建的两个结构体，用来和 client1、client2 交互等等。</p>
+</blockquote>
+<ol>
+<li>
+<p>初始时，prober 会在 <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L266" target="_blank" rel="noopener">derpProbeNodePair 函数</a>里创建出两个<strong>分别连接不同 Region</strong> 的 client 结构 client1(连接 derp1) 和 client2(derp2)。这两个 client 使用了不同的密钥对，以假装是两个独立 Node 来对不同 DERP 发起连接。</p>
+<p>但要知道的是，代码里只是传入了两个<strong>处于同一 Region 的不同 RegionNode</strong>，那该如何达到连接<strong>不同 Region</strong> 的目的呢？事实上，prober 会将这些 DERP 节点伪造成来自不同 Region 的节点（<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/prober/derp.go#L364" target="_blank" rel="noopener">prober/derp.go#L364</a>，注意所返回的 DERPRegion 的 Nodes 都是传入的单个节点，RegionID 相同没有影响）。</p>
+</li>
+<li>
+<p>另一边，远程 DERP 服务会在收到 client 的连接请求后，调用 <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go#L498" target="_blank" rel="noopener">registerClient 函数</a>：</p>
+<ol>
+<li>
+<p>在 DERP 服务本地维护一个结构体 <strong>sclient</strong>，保存每个 client 连接的状态以及尚未发出的信息。</p>
+<blockquote>
+<p>DERP 这里一个 <code>sclient</code> 结构配对 Client 端的一个 <code>derphttp.Client</code>。</p>
+</blockquote>
+</li>
+<li>
+<p>向正在 watch 本 DERP 服务连接状态的其他 DERP Client 广播该 client 的上线情况（例如是否上线、远程 IP 地址信息等等，<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go#L538" target="_blank" rel="noopener">broadcastPeerStateChangeLocked 函数</a>）</p>
+</li>
+</ol>
+</li>
+<li>
+<p>接下来，prober 会<strong>令 client1 发送随机 8 字节数据给 client2</strong>，并期望能从 <strong>client2</strong> 中接收到相同的数据。数据的实际流向应该是 <code>client1 → derp1 → derp2 → client2</code>。具体来说：</p>
+<ol>
+<li>prober 在令 client1 发送数据时，client1 会调用 <a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_client.go#L225" target="_blank" rel="noopener">derp_client.Send</a> 函数，在这个 data 前包裹上 frameSendPacket 枚举和 client2 的 dstKey 目的地址，使得构成一个 <strong>Frame packet</strong>。</li>
+<li>这个 Frame packet 将会被 client1 先发送给 derp1（因为 client1 不了解 client2 的地址）</li>
+<li>derp1 在<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go#L799-L800" target="_blank" rel="noopener">接收到 Frame Packet</a> 后，会进入 handleFrameSendPacket 函数进行处理。
+<ol>
+<li>
+<p><strong>假如 client1 和 client2 连接的是同一个 Region</strong>（即 derp1 和 derp2 是同一个，只是逻辑上我们将它们分开来），那么 derp1 事实上是拥有 client2 在 derp1 这里所对应的 sclient2 结构体，则 derp1 会直接<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go#L1012-L1017" target="_blank" rel="noopener">发送 raw packet</a> 给 sclient2。</p>
+<p>该 raw packet 里会附带上传入数据的<strong>原始来源节点的 key</strong>（实际上就是每个节点所持有的公钥），相当于是把数据来源方的 ID 保存在了 raw packet 里。</p>
+<p>sclient2 在接收到这个 raw packet 后会生成 frameRecvPacket 给 client2。如此 client2 便可以调用 Recv 函数来获取其他节点发送给 client2 的数据。</p>
+</li>
+<li>
+<p>假如 client1 和 client2 连接的是独立的 Region，那么由于 derp1 也不知道 client2 的具体地址，它就会去<a href="https://github.com/tailscale/tailscale/blob/86c8ab75/derp/derp_server.go#L985" target="_blank" rel="noopener">获取知道 client2 地址的 fowarder 句柄</a>（在这里是一个 连接着 derp2 的 sclient 结构体）。通过该 fowwarder 句柄将消息从 derp1 传输给 derp2，并由 derp2 来将消息传递给 sclient2，并最终发送给 client2。</p>
+<blockquote>
+<p>forward 操作只会执行一次，不会执行第二次。</p>
+</blockquote>
+<p>那么 derp1 是怎么知道<em>要找 client2 得先找 derp2</em> 呢？这就跟上面 <code>2.b</code> 提到的 client 状态广播机制有关。在启动 derp 服务时，参数中可以指定其他多个处于同一个 region Node 的 mesh 节点，derp 服务会依次向这些 mesh 内的 derp 节点发起连接，并 watch 这些节点的 client 连接状态，以维护 derp 服务的 fwd 状态。</p>
+<blockquote>
+<p>不过这些就太细节了，没什么必要追究的了。</p>
+</blockquote>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+<h2 id="五、Tailscale-调试环境搭建">五、Tailscale 调试环境搭建</h2>
+<p>如果需要单步调试相关逻辑的话，需要手动 <strong>git clone tailscale 仓库至本地</strong>来调试，不能直接用 <code>~/go/pkg/mod/tailscale.com@v1.50.1</code> 底下的，因为这里的文件夹<strong>没有写权限</strong>。</p>
+<p>本人使用的 VSCode launch.json 如下，注意 <code>program</code> 一栏只能指定到文件夹，不能指定到具体的 go 代码，因为这会让调试器无法找到多文件项目中其他 go 代码，导致符号缺失：</p>
+<figure class="highlight json"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line">&#123;</span><br><span class="line">    <span class="comment">// 使用 IntelliSense 了解相关属性。 </span></span><br><span class="line">    <span class="comment">// 悬停以查看现有属性的描述。</span></span><br><span class="line">    <span class="comment">// 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387</span></span><br><span class="line">    <span class="attr">"version"</span>: <span class="string">"0.2.0"</span>,</span><br><span class="line">    <span class="attr">"configurations"</span>: [</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="attr">"name"</span>: <span class="string">"Launch derpprobe"</span>,</span><br><span class="line">            <span class="attr">"type"</span>: <span class="string">"go"</span>,</span><br><span class="line">            <span class="attr">"request"</span>: <span class="string">"launch"</span>,</span><br><span class="line">            <span class="attr">"mode"</span>: <span class="string">"auto"</span>,</span><br><span class="line">            <span class="attr">"program"</span>: <span class="string">"cmd/derpprobe"</span>,</span><br><span class="line">            <span class="attr">"args"</span>: [</span><br><span class="line">                <span class="string">"-derp-map"</span>, <span class="string">"file:///home/kiprey/derp-map.json"</span>,</span><br><span class="line">                <span class="string">"-once"</span></span><br><span class="line">            ],</span><br><span class="line">            <span class="attr">"cwd"</span>: <span class="string">"$&#123;workspaceFolder&#125;"</span>,</span><br><span class="line">            <span class="attr">"env"</span>: &#123;</span><br><span class="line">                <span class="comment">// 去除代理设置</span></span><br><span class="line">                <span class="attr">"ALL_PROXY"</span>: <span class="literal">null</span>, <span class="attr">"all_proxy"</span>: <span class="literal">null</span>,</span><br><span class="line">                <span class="attr">"HTTP_PROXY"</span>: <span class="literal">null</span>, <span class="attr">"http_proxy"</span>: <span class="literal">null</span>,</span><br><span class="line">                <span class="attr">"HTTPS_PROXY"</span>: <span class="literal">null</span>, <span class="attr">"https_proxy"</span>: <span class="literal">null</span>,</span><br><span class="line">            &#125;</span><br><span class="line">        &#125;,</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="attr">"name"</span>: <span class="string">"Launch derp"</span>,</span><br><span class="line">            <span class="attr">"type"</span>: <span class="string">"go"</span>,</span><br><span class="line">            <span class="attr">"request"</span>: <span class="string">"launch"</span>,</span><br><span class="line">            <span class="attr">"mode"</span>: <span class="string">"auto"</span>,</span><br><span class="line">            <span class="attr">"program"</span>: <span class="string">"cmd/derper"</span>,</span><br><span class="line">            <span class="attr">"args"</span>: [</span><br><span class="line">                <span class="string">"-c"</span>, <span class="string">"/home/kiprey/.derper.key"</span>,</span><br><span class="line">                <span class="string">"-a"</span>, <span class="string">":8888"</span>, <span class="string">"-stun-port"</span>, <span class="string">"8889"</span>, </span><br><span class="line">                <span class="string">"-http-port"</span>, <span class="string">"-1"</span>,</span><br><span class="line"></span><br><span class="line">                <span class="string">"-hostname"</span>, <span class="string">"kiprey-derp"</span>,</span><br><span class="line">                <span class="string">"--certmode"</span>, <span class="string">"manual"</span>,</span><br><span class="line">                <span class="string">"-certdir"</span>, <span class="string">"./certdir"</span>,</span><br><span class="line">            ],</span><br><span class="line">            <span class="attr">"cwd"</span>: <span class="string">"$&#123;workspaceFolder&#125;"</span>,</span><br><span class="line">        &#125;</span><br><span class="line">    ]</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h2 id="六、DERP-搭建总结演示">六、DERP 搭建总结演示</h2>
+<p>这一节我将整合上面的所有内容，从头到尾以最短篇幅描述搭建一个 DERP 服务器的操作流程。</p>
+<p><strong>重申：当前使用的 tailscale 版本为 v1.52.1 (2023/11/11)，git commit 为 <a href="https://github.com/tailscale/tailscale/commit/86c8ab7502a38b4de05308355fe0c847e4e78167" target="_blank" rel="noopener">86c8ab75.</a></strong></p>
+<blockquote>
+<p>这里重点说明一下 tailscale 版本，因为 Tailscale 迭代升级速度很快，可能一两年后该文章就不再适用了（捂脸）</p>
+</blockquote>
+<h3 id="1-前置条件">1. 前置条件</h3>
+<p>只有一个要求，那就是<strong>一个允许通过 TLS 流量的 TCP 协议的公共信道以及一个 UDP 协议的公共信道</strong>。</p>
+<p>无需域名、无需 TLS 证书、无需修改任何源代码、也无需自行部署 Headscale 等等，找个内网穿透服务就能建。</p>
+<p>这里说的比较抽象，实际上就是要么是<strong>一个 TCP 端口和一个 UDP 端口</strong>，要么就是<strong>一个端口同时允许 TCP 和 UDP 通信（mix-port）</strong>。如果不想运行 stun 服务只想搭建 derp 中转服务的话，则无需 UDP 端口。</p>
+<p>但无论如何，TCP 端口都 <strong>不得限制 TLS 流量的通过</strong>，通常这种限制会来自于运营商（例如家用公网 IP 部署）或者内网穿透服务商（服务商要对穿透内容负责，因此可能需要实名认证等方式才能放行用户的 TLS 流量）。</p>
+<h3 id="2-安装-DERP">2. 安装 DERP</h3>
+<blockquote>
+<p>以下所有命令全部在 DERP 服务器上运行。</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 去 https://go.dev/dl/ 下载最新版（一定要下载版本，而非 apt-get install golang）</span></span><br><span class="line">wget https://go.dev/dl/go1.21.4.linux-amd64.tar.gz</span><br><span class="line">sudo rm -rf /usr/<span class="built_in">local</span>/go &amp;&amp; sudo tar -C /usr/<span class="built_in">local</span> -xzf go1.21.4.linux-amd64.tar.gz</span><br><span class="line">rm go1.21.4.linux-amd64.tar.gz</span><br><span class="line"><span class="built_in">export</span> PATH=<span class="variable">$PATH</span>:/usr/<span class="built_in">local</span>/go/bin</span><br><span class="line"></span><br><span class="line"><span class="comment"># 确定安装是否g成功 </span></span><br><span class="line">go version</span><br><span class="line"><span class="comment"># 查看 GOROOT 和 GOPATH 是否不为空 &amp; 可访问</span></span><br><span class="line">go env</span><br><span class="line"></span><br><span class="line"><span class="comment"># 配置 go 代理并安装</span></span><br><span class="line">go env -w GOPROXY=https://goproxy.cn,direct</span><br><span class="line">go install tailscale.com/cmd/derper@latest</span><br><span class="line"><span class="comment"># 安装 derp probe 协助测试 derper</span></span><br><span class="line">go install tailscale.com/cmd/derpprobe@latest</span><br></pre></td></tr></table></figure>
+<h3 id="3-启动-DERP">3. 启动 DERP</h3>
+<p>配置端口暴露至公网。这一步既可以通过内网穿透完成，也可以配置已有暴露至公网的机器的 iptables 策略：</p>
+<blockquote>
+<p>请注意：iptables 策略有优先级之分，一定要插到 DROP all 之前。</p>
+</blockquote>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 配置 TCP 入站，将允许 dest-port 为 8888 的 TCP 连接规则插入 iptables 中的第 10 条</span></span><br><span class="line">sudo iptables -I INPUT 10 -p tcp --dport 8888 -j ACCEPT</span><br><span class="line"><span class="comment"># 配置 UDP 入站，将允许 dest-port 为 8889 的 UDP 连接规则插入 iptables 中的第 10 条</span></span><br><span class="line">sudo iptables -I INPUT 10 -p udp --dport 8889 -j ACCEPT</span><br><span class="line"></span><br><span class="line"><span class="comment"># --------------</span></span><br><span class="line"><span class="comment"># 查看 iptables</span></span><br><span class="line">$ sudo iptables -L -n</span><br><span class="line">Chain INPUT (policy ACCEPT)</span><br><span class="line">target     prot opt <span class="built_in">source</span>               destination</span><br><span class="line">ACCEPT     icmp --  0.0.0.0/0            0.0.0.0/0</span><br><span class="line">...</span><br><span class="line">ACCEPT     udp  --  0.0.0.0/0            0.0.0.0/0            udp dpt:8889</span><br><span class="line">ACCEPT     tcp  --  0.0.0.0/0            0.0.0.0/0            tcp dpt:8888</span><br><span class="line">DROP       all  --  0.0.0.0/0            0.0.0.0/0</span><br></pre></td></tr></table></figure>
+<p>接下来，配置并启动 DERP 服务。</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 指定 DERP_HOST 为 kiprey-derp（后面会用）</span></span><br><span class="line">DERP_HOST=<span class="string">"kiprey-derp"</span></span><br><span class="line">DERP_PORT=8888</span><br><span class="line">STUN_PORT=8889</span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建自签名证书</span></span><br><span class="line">mkdir ~/certdir &amp;&amp; <span class="built_in">cd</span> ~/certdir</span><br><span class="line">openssl genpkey -algorithm RSA -out <span class="variable">$&#123;DERP_HOST&#125;</span>.key   </span><br><span class="line">openssl req -new -key <span class="variable">$&#123;DERP_HOST&#125;</span>.key -out <span class="variable">$&#123;DERP_HOST&#125;</span>.csr</span><br><span class="line">openssl x509 -req \</span><br><span class="line">		-days 36500 \</span><br><span class="line">		-<span class="keyword">in</span> <span class="variable">$&#123;DERP_HOST&#125;</span>.csr \</span><br><span class="line">		-signkey <span class="variable">$&#123;DERP_HOST&#125;</span>.key \</span><br><span class="line">		-out <span class="variable">$&#123;DERP_HOST&#125;</span>.crt \</span><br><span class="line">		-extfile &lt;(<span class="built_in">printf</span> <span class="string">"subjectAltName=DNS:<span class="variable">$&#123;DERP_HOST&#125;</span>"</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 启动 DERP 服务（中继和stun）</span></span><br><span class="line"><span class="comment"># --verify-clients 需要本地运行 tailscaled，我在这里省略了安装 tailscale 的步骤</span></span><br><span class="line">~/go/bin/derper \</span><br><span class="line">    -c ~/.derper.key \</span><br><span class="line">    -a :<span class="variable">$&#123;DERP_PORT&#125;</span> -http-port -1 \</span><br><span class="line">    -stun-port <span class="variable">$&#123;STUN_PORT&#125;</span> \</span><br><span class="line">    -hostname <span class="variable">$&#123;DERP_HOST&#125;</span> \</span><br><span class="line">    --certmode manual \</span><br><span class="line">    -certdir ~/certdir \</span><br><span class="line">    --verify-clients</span><br></pre></td></tr></table></figure>
+<p>启动 DERP 服务后，在<strong>另一台机器上</strong>做连通性测试：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 这里的 DERP_HOST 要与 DERP 服务上的一致</span></span><br><span class="line">DERP_HOST=<span class="string">"kiprey-derp"</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 以下是 DERP 服务的公网视角，即如何从公网连接其地址和端口。</span></span><br><span class="line"><span class="comment"># 如果存在端口转发，则这里的端口会和上面 DERP 服务本地监听的端口不同，请自行配置</span></span><br><span class="line">DERP_PUB_IP=<span class="string">"a.b.c.d"</span></span><br><span class="line">DERP_PUB_PORT=8888</span><br><span class="line">STUN_PUB_PORT=8889</span><br><span class="line"></span><br><span class="line">$ <span class="built_in">unset</span> all_proxy http_proxy https_proxy</span><br><span class="line">$ curl --insecure --resolve <span class="string">"<span class="variable">$&#123;DERP_HOST&#125;</span>:<span class="variable">$&#123;DERP_PUB_PORT&#125;</span>:<span class="variable">$&#123;DERP_PUB_IP&#125;</span>"</span> <span class="string">"https://<span class="variable">$&#123;DERP_HOST&#125;</span>:<span class="variable">$&#123;DERP_PUB_PORT&#125;</span>"</span></span><br><span class="line"></span><br><span class="line">&lt;html&gt;&lt;body&gt;</span><br><span class="line">&lt;h1&gt;DERP&lt;/h1&gt;</span><br><span class="line">&lt;p&gt;</span><br><span class="line">  This is a</span><br><span class="line">  &lt;a href=<span class="string">"https://tailscale.com/"</span>&gt;Tailscale&lt;/a&gt;</span><br><span class="line">  &lt;a href=<span class="string">"https://pkg.go.dev/tailscale.com/derp"</span>&gt;DERP&lt;/a&gt;</span><br><span class="line">  server.</span><br><span class="line">&lt;/p&gt;</span><br><span class="line"></span><br><span class="line"><span class="comment"># 测试 UDP 协议 STUN 服务的连通性</span></span><br><span class="line">$ nc <span class="variable">$&#123;DERP_PUB_IP&#125;</span> <span class="variable">$&#123;STUN_PUB_PORT&#125;</span> -v -u</span><br><span class="line"></span><br><span class="line">Connection to a.b.c.d e port [udp/*] succeeded!</span><br></pre></td></tr></table></figure>
+<p>连通性测试通过后，DERP 服务器上先<strong>关闭 derp 服务</strong>，创建 service 来让它开机自启：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br></pre></td><td class="code"><pre><span class="line">DERP_HOST=<span class="string">"kiprey-derp"</span></span><br><span class="line">DERP_PORT=8888</span><br><span class="line">STUN_PORT=8889</span><br><span class="line"></span><br><span class="line"><span class="comment"># 创建service文件</span></span><br><span class="line"><span class="built_in">echo</span> <span class="string">"[Unit]</span></span><br><span class="line"><span class="string">Description=Tailscale derp service</span></span><br><span class="line"><span class="string">After=network.target</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">[Service]</span></span><br><span class="line"><span class="string">ExecStart=/home/<span class="variable">$&#123;USER&#125;</span>/go/bin/derper \</span></span><br><span class="line"><span class="string">    -c /home/<span class="variable">$&#123;USER&#125;</span>/.derper.key \</span></span><br><span class="line"><span class="string">    -a :<span class="variable">$&#123;DERP_PORT&#125;</span> -http-port -1 \</span></span><br><span class="line"><span class="string">    -stun-port <span class="variable">$&#123;STUN_PORT&#125;</span> \</span></span><br><span class="line"><span class="string">    -hostname <span class="variable">$&#123;DERP_HOST&#125;</span> \</span></span><br><span class="line"><span class="string">    --certmode manual \</span></span><br><span class="line"><span class="string">    -certdir /home/<span class="variable">$&#123;USER&#125;</span>/certdir \</span></span><br><span class="line"><span class="string">    --verify-clients</span></span><br><span class="line"><span class="string">Restart=always</span></span><br><span class="line"><span class="string">User=<span class="variable">$&#123;USER&#125;</span></span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string">[Install]</span></span><br><span class="line"><span class="string">WantedBy=multi-user.target"</span> \</span><br><span class="line">	| sudo tee /etc/systemd/system/tailscale-derp.service</span><br><span class="line"></span><br><span class="line"><span class="comment"># 重新加载Systemd配置</span></span><br><span class="line">sudo systemctl daemon-reload</span><br><span class="line"></span><br><span class="line"><span class="comment"># 启动服务并设置开机自启动</span></span><br><span class="line">sudo systemctl start tailscale-derp</span><br><span class="line">sudo systemctl <span class="built_in">enable</span> tailscale-derp</span><br><span class="line"></span><br><span class="line"><span class="comment"># 查看服务状态，没问题就行</span></span><br><span class="line"><span class="comment"># 如果有问题那就得看看是不是之前的 derper 忘记关了，导致端口占用</span></span><br><span class="line">sudo systemctl status tailscale-derp</span><br><span class="line"></span><br><span class="line"><span class="comment"># -------------------</span></span><br><span class="line"><span class="comment"># 如需禁用</span></span><br><span class="line">sudo systemctl stop tailscale-derp</span><br><span class="line">sudo systemctl <span class="built_in">disable</span> tailscale-derp</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>到这里后，DERP 服务配置完成。</p>
+</blockquote>
+<h3 id="4-配置-ACL">4. 配置 ACL</h3>
+<p>接下来要去 Tailscale admin panel 网页，配置一下 ACL 以更新所有 tailscale 节点的配置信息。</p>
+<figure class="highlight"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line">...</span><br><span class="line">&#123;</span><br><span class="line">	...</span><br><span class="line">	"acls": [...],</span><br><span class="line">	...</span><br><span class="line">	"ssh": [...],</span><br><span class="line">  ...</span><br><span class="line">	"derpMap": &#123;</span><br><span class="line">		"Regions": &#123;</span><br><span class="line">			"900": &#123;</span><br><span class="line">				"RegionID":   900,</span><br><span class="line">				"RegionCode": "MyDerp",</span><br><span class="line">				"Nodes": [</span><br><span class="line">					&#123;</span><br><span class="line">						<span class="attr">"Name"</span>:             <span class="string">"MyDerp-Name"</span>,</span><br><span class="line">						<span class="attr">"RegionID"</span>:         <span class="number">900</span>,</span><br><span class="line">						<span class="attr">"HostName"</span>:         <span class="string">"kiprey-derp"</span>,</span><br><span class="line">						<span class="attr">"IPv4"</span>:             <span class="string">"a.b.c.d"</span>,</span><br><span class="line">						<span class="attr">"DERPPort"</span>:         <span class="number">8888</span>,</span><br><span class="line">						<span class="attr">"STUNPort"</span>:         <span class="number">8889</span>,</span><br><span class="line">						<span class="attr">"InsecureForTests"</span>: <span class="literal">true</span>,</span><br><span class="line">					&#125;,</span><br><span class="line">				],</span><br><span class="line">			&#125;,</span><br><span class="line">		&#125;,</span><br><span class="line">	&#125;,</span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h3 id="5-演示">5. 演示</h3>
+<p>在网页上保存好 ACL 后，ACL 会立即下发到各个 tailscale 节点里。随便找个节点运行 netcheck，可以发现 DERP 成功添加：</p>
+<p><img src="/2023/11/tailscale-derp/Untitled%209.png" alt="Untitled"></p>
+<h2 id="七、参考链接">七、参考链接</h2>
+<ul>
+<li><a href="https://tailscale.com/kb/1232/derp-servers/" target="_blank" rel="noopener">DERP Servers - Tailscale Documentation</a></li>
+<li><a href="https://icloudnative.io/posts/custom-derp-servers/" target="_blank" rel="noopener">Tailscale 基础教程：部署私有 DERP 中继服务器 - 云原生</a></li>
+<li><a href="https://tailscale.com/kb/1118/custom-derp-servers/" target="_blank" rel="noopener">Custom DERP Servers - Tailscale Documentation</a></li>
+<li><a href="http://www.cppblog.com/peakflys/archive/2013/01/25/197562.html" target="_blank" rel="noopener">p2p的原理和常见的实现方式 - cppblog</a></li>
+<li><a href="https://tailscale.com/blog/how-nat-traversal-works/" target="_blank" rel="noopener">How NAT traversal works NAT - Tailscale Blog</a></li>
+<li>上文中的各类代码和其他较为琐碎而没记录与此处的各类 blog</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2023/11/tailscale-derp/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Tailscale/" rel="tag">Tailscale</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+    
+      <a href="/2023/08/curve_finance_vuln/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Curve Finance 漏洞复现</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

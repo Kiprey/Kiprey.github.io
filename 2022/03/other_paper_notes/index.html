@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="论文笔记,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    论文笔记随笔 - 1 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-other_paper_notes"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  论文笔记随笔 - 1
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/03/other_paper_notes/" class="article-date">
+  <time datetime="2022-03-06T16:00:00.000Z" itemprop="datePublished">2022-03-07</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB/">论文阅读</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">6.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">25 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<p>这里存放阅读论文/读代码时所记录下的一些<strong>零碎</strong>笔记。</p>
+<p>由于这部分活动在记录笔记时，出于时间与重要性考虑，只会记录下较为重要的一部分，不会完整记录，因此单篇笔记的篇幅不会太长。</p>
+<blockquote>
+<p>原先是想着把这些随笔放到周报里去，但是这会打乱周报的排版，思来想去还是想单独立一篇文章出来。</p>
+</blockquote>
+<a id="more"></a>
+<h2 id="一、Address-Sanitizer-LLVM-3-1">一、Address Sanitizer LLVM 3.1</h2>
+<p>阅读 Address Sanitizer LLVM 3.1 最早期的源代码。</p>
+<ul>
+<li>
+<p>Asan 使用 8 字节映射至 1字节的粗粒度内存映射。每块虚拟内存都会对应一块 shadow memory。</p>
+<blockquote>
+<p>8字节的粗粒度，是因为 malloc 返回地址会对齐8字节。</p>
+</blockquote>
+<p>其中 shadow byte 上的值表示 origin memory 中前 n 个字节是可访问的。</p>
+</li>
+<li>
+<p>Asan 会在 LLVM pass 过程的末尾，对所有的内存读写操作进行插桩，检查当前访问的内存地址所对应的 shadow byte 的值是否说明当前地址可访问。如果不可访问则直接abort。</p>
+</li>
+<li>
+<p>对于溢出检测，asan 会在用户内存的<strong>左右</strong>两边分别加上一块大小固定的 redzone，其中 redzone 所对应的 shadow memory 将会被加毒。这样当访问到 redzone 时将触发 asan。</p>
+<blockquote>
+<p>加毒（poison) 指的是将某块用户内存所对应的 shadow memory 标记为不可访问。</p>
+</blockquote>
+</li>
+<li>
+<p>对于栈内存来说，它会先分配一块 <strong>原始栈大小 + (等待被 redzone 检测的变量个数 + 1) * redzone 大小</strong>的内存，然后修改那些目标变量的 alloc 指令的偏移量。（poisonStackInFunction 函数）</p>
+<p>之后，将一些栈上的信息放入当前栈帧最左边的 redzone里。</p>
+<p>在函数头部，插入给当前栈帧 redzone 加毒的操作；并在所有 ret 语句之前插入 redzone 解毒的操作。</p>
+<p>对于当前函数，若当前函数执行了一些 noret 的函数（例如 exit、execve），则在执行这些 noret 函数之前，必须对其解毒，防止误报。处理 no ret call 是为了防止有不返回的函数调用导致调用后栈上的 poison 信息没有被处理。</p>
+</li>
+<li>
+<p>但需要注意的是，asan 只会在<strong>全局变量</strong>的<strong>右边</strong>加 redzone。 （insertGlobalRedzones 函数）</p>
+<p>同时，虽然全局变量的 redzone 的添加操作是以插桩的形式加入程序中，但全局变量的加毒解毒操作是位于 runtime 中。</p>
+</li>
+<li>
+<p>Asan 会 hook memcpy 等内存处理或字符串处理的 lib 函数，以达到更好的效果。（InitializeAsanInterceptors 函数）</p>
+</li>
+<li>
+<p>asan 除了检测 内存越界读写以外，它同样检测 UAF 和 use after return。</p>
+<ul>
+<li>
+<p>UAF</p>
+<p>asan hook 掉了 malloc、free、realloc 等函数，创建了自己的内存管理机制，在分配内存时对内存解毒，在释放内存时加毒。</p>
+<p>对于动态分配的内存，一共有三种主要状态，分别是：可分配、检疫、已分配。当某个内存块被释放时，该内存块将会被设置为<strong>检疫</strong>状态，并放置到检疫队列中。等到检疫队列数量超过阈值后，再将其中的检疫内存放回可分配内存池中。这样做的目的是为了<strong>延长某块内存从被释放到被二次分配的过程</strong>，延长检测 UAF 的窗口期。</p>
+</li>
+<li>
+<p>use after return</p>
+<p>在替换栈帧上原始 alloc 为新 alloc 之前，asan 会先分配一块 fake stack, 然后在替换 alloc 指令时，将其地址替换为 fake stack。这样，带有 redzone 的局部变量就会 alloc 在 fake stack 上，而不是 origin stack。</p>
+<p>在当前函数结束时，fake stack 会被重新加毒，注意此时<strong>不会回收</strong> fake stack。</p>
+<p>那么 fake stack 在什么时候被回收呢？在分配 fake stack时。分配时会同步检测 fake stack 的调用栈，遍历调用栈中的每个 fake stack，判断当前 fake stack 所对应的 real_stack 地址是否大于当前的运行时栈。如果大于则说明该 fake stack 已经没有用处了，因此将会被释放。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>asan 第一版存在局限性，例如不会检测到<strong>结构体成员之间内存对齐的那一小部分内存</strong>的越界，以及不会检测这种越界到<strong>另一块用户可读写内存</strong>中的情况等等，不过总体上实现效果非常优秀。</p>
+</li>
+</ul>
+<blockquote>
+<p>这里感谢 sad 师傅分享的笔记。</p>
+</blockquote>
+<h2 id="二、HFL-Hybrid-Fuzzing-on-the-Linux-Kernel">二、HFL: Hybrid Fuzzing on the Linux Kernel</h2>
+<p>论文 <code>HFL: Hybrid Fuzzing on the Linux Kernel</code> 结合 fuzz 技术和符号执行技术，主要解决三个问题：</p>
+<ul>
+<li>
+<p>由 syscall 参数所决定的间接控制流改变，会使得符号执行效率低下。（主要是这种：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227202648534.png" alt="image-20220227202648534"></p>
+<ul>
+<li>random fuzz 无法高效处理那些<strong>函数指针表索引来自参数</strong>的情况。</li>
+<li>符号执行技术用一个 symbol 来索引函数表可能会导致符号解引用，而且还需要符号探索整个值空间</li>
+</ul>
+<p><strong>解决方案</strong>：基于 kernel src 做了一个<strong>离线</strong>转换器，用于在<strong>编译时</strong>将间接控制流转换成直接控制流：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227202903484.png" alt="image-20220227202903484"></p>
+</li>
+<li>
+<p>需要推断 syscall 调用序列和依赖关系，以便于控制和匹配内部系统状态，防止 fuzz 效率低效</p>
+<p>解决方法：</p>
+<ol>
+<li>
+<p>首先使用静态分析技术（占大头的应该是指针分析技术），在多个 syscall 中收集<strong>对相同内存位置进行读写</strong>的<strong>内存读写对</strong> 集合（candidates）。这种内存读写是分开的，即在一个 syscall 中 write，在另一个 syscall 中 read。</p>
+</li>
+<li>
+<p>之后在 runtime 中验证这些 candidates。因为静态分析会产生一些误报，因此需要在执行时检测某个内存读写对是否确实会访问相同的内存位置，如果是则说明遍历到的 candidate 是真正的依赖关系对。</p>
+<p>同时写操作的 syscall 一定在读操作的前面，因为<strong>只有先写才能读</strong>。</p>
+</li>
+<li>
+<p>使用符号执行技术，确定 syscall 参数之间的依赖关系。例如 syscall2 中的参数等于 syscall1 中的某个参数，具体的看下面工作流程图可得知。</p>
+</li>
+</ol>
+<p>工作流程如下：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227203857407.png" alt="image-20220227203857407"></p>
+</li>
+<li>
+<p>推断用于调用 syscall 的嵌套参数类型。这里还是用的老一套方法，检测 copy_from_user 函数以检测 syscall 嵌套参数的情况。这个其实不用多说，一张图胜过千言万语。</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227204307290.png" alt="image-20220227204307290"></p>
+</li>
+</ul>
+<p>除了上面这三个问题以外，hybrid fuzz 中 fuzz 和 symbolic excution 切换的时机也很关键，其 fuzzer 内部<strong>维持了一个频率表，用于统计每个分支的 true/false 评估数量</strong>。我个人对这个设计还挺感兴趣，但是源码存放的网站已经被关闭，找不到源码了。</p>
+<h2 id="三、MoonShine-Optimizing-OS-Fuzzer-Seed">三、MoonShine: Optimizing OS Fuzzer Seed</h2>
+<p>论文 <code>MoonShine: Optimizing OS Fuzzer Seed</code>。这篇论文主要说明如何从真实系统调用序列中提取 OS Fuzzer 种子（种子蒸馏），同时保留依赖关系。它给出了两个有意思的依赖关系定义：对于 syscall $C_i、C_j$ 来说，</p>
+<ul>
+<li>
+<p>显式依赖：若 $C_i$ 生成的值用做 $C_j$ 的参数输入时，则说明 $C_j$ 依赖 $C_i$ ，那么自然得先调用 $C_i$ 再调用 $C_j$。</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227211315342.png" alt="image-20220227211315342"></p>
+</li>
+<li>
+<p>隐式依赖：若 $C_i$ 在执行过程中会<strong>通过共享变量读写</strong>来影响 $C_j$ 的执行，则说明 $C_j$ 依赖 $C_i$ 的执行。</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227211330243.png" alt="image-20220227211330243"></p>
+</li>
+</ul>
+<p>MoonShine 建立依赖关系的流程是这样的：</p>
+<ul>
+<li>
+<p>对于<strong>显式依赖</strong>来说，MoonShine 主要构建依赖关系图，通过调用序列，将 syscall 返回值和对应的 syscall 参数相连接，来确定显式依赖。</p>
+</li>
+<li>
+<p>对于<strong>隐式依赖</strong>来说，MoonShine 主要通过分析一对 syscall 之中的读写依赖项来确定依赖关系。即，若 $C_i$ 读取的全局变量集合与 $C_j$ 写入的全局变量集合之间存在交集，则说明这两个 syscall 之间存在隐式依赖关系。但需要注意的是，受限于静态分析的精度，其隐式依赖关系可能会被高估或者低估。</p>
+</li>
+</ul>
+<blockquote>
+<p>需要注意的是</p>
+<ol>
+<li>如果 $C_i$ <strong>隐式</strong>依赖与 $C_j$，而 $C_j$ <strong>显式</strong>依赖于 $C_k$，则可说明 $C_i$ <strong>隐式</strong>依赖于 $C_k$</li>
+<li>如果 $C_i$ <strong>显式</strong>依赖与 $C_j$，而 $C_j$ <strong>隐式</strong>依赖于 $C_k$，则可说明 $C_i$ <strong>显式</strong>依赖于 $C_k$</li>
+</ol>
+</blockquote>
+<p>算法伪代码如下所示，伪代码还是比较好理解的：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220227213931466.png" alt="image-20220227213931466"></p>
+<p>以下是整体的算法思路：</p>
+<ul>
+<li>首先是根据 coverage 对 syscall 进行排序，优先处理 coverage 更高的 syscall。</li>
+<li>之后遍历 syscall 序列，获取其隐式依赖和显式依赖，并将其添加进语料序列中。</li>
+</ul>
+<p><img src="/2022/03/other_paper_notes/image-20220227213945270.png" alt="image-20220227213945270"></p>
+<h2 id="四、Scalable-Fuzzing-of-Program-Binaries-with-E9AFL">四、Scalable Fuzzing of Program Binaries with E9AFL</h2>
+<p>阅读论文 <code>Scalable Fuzzing of Program Binaries with E9AFL</code>：</p>
+<p>e9afl 是一个可对无符号二进制程序插桩实现覆盖率反馈的工具，插桩后的程序可以直接用于 AFL 中进行 fuzz。相对于其他针对纯二进制文件进行 fuzz 的方法，它的优势在于插桩后的 overhead 还能保证在较低水平，同时还保证较高的精度。</p>
+<p>整个插桩过程主要分为三步：</p>
+<ol>
+<li>
+<p>设计待插入的 trampoline template。这个没啥好说的，基本和 AFL 插桩方式对齐：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220302154604172.png" alt="image-20220302154604172"></p>
+</li>
+<li>
+<p>运行时插入。这步主要做的是将 fork server 和共享内存初始化等操作注入进 binary 中，使得在执行 main 函数前就执行这些操作。</p>
+</li>
+<li>
+<p>确定待插桩的指令位置集合。e9afl 自己实现了一个轻量级控制流分析，以查找所有可能的 jump targets，其中包括直接目标和间接目标。间接目标的检测是通过<strong>分析数据段上的跳转表和指向代码的指针</strong>所确定的。</p>
+<p>有意思的是，虽然静态控制流分析可能会存在一些精度误差（jump targets 多分析或者少分析），但是这些误差对整个 fuzz 过程不会造成太大的影响。</p>
+</li>
+</ol>
+<p>需要注意的是，如果 e9afl 只是插桩 trampoline 但不对其进行任何优化的话，整个程序的执行速度将会非常的慢。虽然 forkserver 对二进制程序的启动速度进行优化，但 fork 出的子进程将会<strong>大量触发页错</strong>。这是因为这些子进程会经常执行到 trampoline，因此会触发到 trampoline 所在页的页错误。</p>
+<p>页错误是制约 e9afl 性能影响的关键，因此需要对其进行优化。这里它提出了三种优化策略：</p>
+<ol>
+<li>
+<p>trampoline ordering</p>
+<p>使用与 patch 指令所对应的顺序，来在内存上分配 trampoline 内存。</p>
+<p>什么意思呢？个人认为是这样的，对于相同代码区域（假设<strong>函数</strong>级的代码区域），e9afl 尽可能地<strong>将这个函数中所会用到的 trampoline，全部集中分配到某个页面（或者某个集中内存页区域里）</strong>。换句话说，尽可能让 patch 点相邻的指令，其 trampoline 也相邻。</p>
+<p>这背后的原理是：对于一个函数来说，这个函数中的 trampoline 大概率是会<strong>大半都被执行</strong>的，那么如果将这个函数中的 trampoline 全都集中到一起，当函数执行第一个 trampoline1 时触发页错（正常现象），则接下来函数继续执行下面的 trampoline2 时就不再触发页错了，因为 trampoline1 和 2 位于同一块内存区域。</p>
+</li>
+<li>
+<p>instruction selection</p>
+<p>由于上一步优化策略在某些时刻可能不会起作用，例如 patch 时用到了指令双关技术，导致能跳转的 trampoline 地址有限。<strong>这一步的优化策略将尝试在基本块中的其他位置进行插桩，而不只是局限在每个基本块的块首。<strong>e9afl 会搜索</strong>同一基本块中是否存在其它 size&gt;=5byte 的指令</strong>，并对该指令进行插桩。</p>
+<p><img src="/2022/03/other_paper_notes/image-20220302161136498.png" alt="image-20220302161136498"></p>
+</li>
+<li>
+<p>bad block elimination</p>
+<p>如果上面两个步骤的优化都无法完成，则说明相应的 trampoline 大概率会触发 page fault 并降低 fuzz 速度。那么这一步的优化，就主要侧重于<strong>删除一些不必要的 trampoline 插桩</strong>。</p>
+<p>例如，假设通过 BasicBlockA 的所有路径都会通过到 BasicBlockB，那么只需检测这两个块中的其中一个的覆盖信息即可，这属于路径微分问题。</p>
+<blockquote>
+<p>注：e9afl 将那些<strong>无法应用上述两步优化的基本块</strong>，称作为 bad block；反之为 good block。</p>
+</blockquote>
+<p>但在这里 e9afl 更侧重于消减掉 bad block 的插桩，其做法如下：</p>
+<ol>
+<li>
+<p>初始时，按照以下规则为每个基本块打标签：</p>
+<ol>
+<li>为每个 good blocks 初始时打上  unoptimized 标签</li>
+<li>为每个<strong>可能是间接跳转目标</strong>的 bad blocks 初始时打上 unpotimized 标签</li>
+<li>其他 bad blocks 初始时打上 optimized 标签</li>
+</ol>
+</li>
+<li>
+<p>接下来，尝试解决 path differentation problem。对于任意满足以下条件的 sub-paths $\sigma=&lt;A\rightarrow…\rightarrow B&gt;$ :</p>
+<ol>
+<li><code>&lt;A, B&gt;</code> 这一对基本块是 unoptimized</li>
+<li><code>&lt;A,B&gt;</code> 之间的基本块全都是 optimized</li>
+</ol>
+<p><img src="/2022/03/other_paper_notes/image-20220302174125760.png" alt="image-20220302174125760"></p>
+<p><strong>若对于相同的 <code>&lt;A,B&gt;</code>对来说，存在至少两个 sub-paths $\sigma_1、\sigma_2$，则说明违反了 path differentiation 属性，需要对其进行修补</strong>。</p>
+<p>修补方式是：贪心地将 $\sigma_1、\sigma_2$ 中 optimized 的基本块修改为 unpotimized，并一直递归这个过程，直到没有任何 sub-paths 违背了这个属性。</p>
+<p><img src="/2022/03/other_paper_notes/image-20220302175118541.png" alt="image-20220302175118541"></p>
+</li>
+</ol>
+</li>
+</ol>
+<p>最后是 e9afl 的评估效果，可以看到测试效果还是相当不错的，同时 e9afl 也能处理规模较大的文件，例如 chrome：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220302161245744.png" alt="image-20220302161245744"></p>
+<h2 id="五、NTFUZZ-Enabling-Type-Aware-Kernel-Fuzzing-on-Windows-with-Static-Binary-Analysis">五、NTFUZZ: Enabling Type-Aware Kernel Fuzzing on Windows with Static Binary Analysis</h2>
+<p>论文 NTFuzz 提出了一个比较有意思的做法：</p>
+<blockquote>
+<p>通过静态分析技术，将 <strong>documented</strong> 的<strong>用户 API 函数</strong>参数类型信息，传播至 <strong>undocumented</strong> 的<strong>系统调用</strong>参数类型，以弥补这两者之中的信息鸿沟。</p>
+</blockquote>
+<p>通常</p>
+<ol>
+<li>fuzzer 很难在没有参数类型信息的情况下，很好的 fuzz 或触发 bug</li>
+<li>undocumented 的系统调用通常会和 documented 的 API 函数相关联</li>
+<li>尽管 API 函数最终会进行系统调用，但 API 函数级别的 fuzz 不大可能会触发到 bug。这应该是因为 API 函数会事先对参数做一些过滤操作。</li>
+</ol>
+<p>以下是 NTFuzz 的架构图，其中主要分为静态分析和动态内核 fuzzer 两部分：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307203406916.png" alt="image-20220307203406916"></p>
+<p>其中比较关键的是静态分析器中的 Modular Analyzer，以 <strong>Function</strong> 为一个基本的分析单位，其基本算法思路如下：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307204928524.png" alt="image-20220307204928524"></p>
+<p>初始时，输入 CFG、调用图、API描述。之后对 callGraph 使用<strong>拓扑排序</strong>，<strong>自底向上</strong>的去遍历每个函数（即先分析 callee，再分析 caller）。这样做的目的是为了可以在分析调用图上层函数时，直接使用先前已分析好的下层函数 summaries，降低时间开销。每次执行 summarize 操作分析函数时，会记录下<strong>这个函数所调用的 syscall</strong>，以及其<strong>内存状态的变动情况</strong>。</p>
+<p>但这种函数分析顺序无法处理<strong>递归调用</strong>和<strong>间接调用</strong>两种情况，因此 NTFuzz 只是简单的将其省略。除此之外，静态分析器还必须能够</p>
+<ul>
+<li>跨函数追踪数据流。</li>
+<li>追踪过程间的内存状态。例如可能某个内存位置在某个函数中被修改，然后用到了另一个函数中去，那么这种使用情况就必须能够追踪的到。</li>
+</ul>
+<p>接下来我们来重点看看静态分析器的三个部分：</p>
+<ul>
+<li>
+<p>Front-end</p>
+<p>前端主要做了几件事情：读入 API 描述；将二进制文件解析成基本的 IR 语句并生成 CFG。其中，API 描述主要靠 Windows SDK 来获取，其代码内部的<strong>结构化注释</strong>也能很好的为 NTFuzz 提供类型信息。除此之外，解析出的 IR 省略了很多与类型信息或内存状态变动无关的 opcode，只留下了几个较为重要的：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307210748554.png" alt="image-20220307210748554"></p>
+<p>有意思的是，这之中省略了一元运算符和分支跳转等指令。这可能是因为一元运算符通常不涉及内存修改，而分支跳转信息也会保存在所建立的 CFG 边上。</p>
+<p>为了减小静态分析的 callGraph 大小，NTFuzz 先从带有 sysenter 指令的 syscall stub 函数开始，<strong>自底向上</strong>分析一个个函数的<strong>caller</strong>，直到遇到<strong>第一个 documented 的 API 函数</strong>，这样分析出来的函数集合称为 S1。但需要注意的是只分析 S1 是不够用的，因为这里面并没有包含其它<strong>可能会被 S1 中函数所调用的</strong>修改内存状态函数，因此在分析出 S1 后，还需要从 S1 函数集合出发，分析那些<strong>所有会被 S1 中函数所调用到的函数集合</strong> S2。这样处理后，<strong>S1 + S2 集合</strong>便是 NTFuzz 需要进行静态分析的<strong>目标函数集合</strong>。</p>
+</li>
+<li>
+<p>Modular Analyzer</p>
+<p>整篇文章中最重要的部分就在这一小节中。</p>
+<p>这一部分将会对目标函数集合依次执行 summarize 操作。整体上，该阶段会用到<strong>流敏感</strong>静态分析技术，这也是为了更好的支持指针分析技术。正如先前所说，这一步会记录下<strong>每个函数传递给 syscall 的参数值</strong>（注意这个值是抽象的，并非绝对的值），以及在<strong>函数进入和退出前后其内存状态的改变情况</strong>。具体来说，这步分为两个部分：<strong>抽象域(abstract domain)</strong> 和<strong>抽象语义(abstract semantics)</strong>。</p>
+<p>抽象域（Abstract Domain），个人认为是用于在为函数提取 summary 时，指定其中某些变量或值的范围。其定义的抽象域主要有以下几种：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307222341920.png" alt="image-20220307222341920"></p>
+<p>乍一看有亿点点复杂（实际上刚接触确实比较复杂），需要一点一点的啃。</p>
+<ol>
+<li>
+<p>集合 Z，表示的是整数集合。（就是高中数学的那个 Z 集合）</p>
+</li>
+<li>
+<p>集合 I，表示抽象的整数集合。先引入一下 symbol 的概念，<strong>symbol</strong> 表示每个函数参数所引入的一个新的符号。因为我们在静态分析阶段没法确定各个函数调用的参数具体是什么值，因此需要用个符号来代替，有点类似符号执行的思想。例如</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">func</span><span class="params">(<span class="keyword">int</span> a )</span> </span>&#123;</span><br><span class="line">   <span class="keyword">int</span> b = a*<span class="number">3</span>+<span class="number">1</span>;</span><br><span class="line">   <span class="keyword">return</span> b;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>此时在静态分析阶段，我们可以粗略的认为参数 a 的数值为一个 symbol $\alpha$，那么变量 b 的数值便是 $\alpha * 3 +1$。</p>
+<p>因此，我们可以使用 $a*symbol+b$ 的形式来表示一个符号整数。当 a 为 0 时，则表示一个具体整数；a 不为 0 时，则表示一个符号整数。</p>
+<p>比较有意思的是符号整数还并上了一个<strong>倒T</strong>和<strong>正T</strong> 集合后，才构成抽象整数集合 I。其中，</p>
+<ul>
+<li>倒T 表示的是<strong>没有实际分析意义的整数</strong>集合。</li>
+<li>正T 表示的是<strong>任意一个整数</strong>集合。</li>
+</ul>
+<p>这里给出了倒T和正T 与普通整数的相加操作：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307223812099.png" alt="image-20220307223812099"></p>
+<blockquote>
+<p>因为倒T集合中的元素没有实际分析意义，因此如果倒T集合与一个有<strong>分析意义</strong>的 i 相加，则保留 i。</p>
+<p>由于正T表示的是任意整数集合，因此任意整数集合与其他整数相加，则仍然为一个任意整数集合，即正T集合。</p>
+<p>个人猜测这种加法所保留的结果，会更偏向于保留更有意义的集合。其优先级排序大体为 $正T &gt; i &gt; 倒T$。</p>
+</blockquote>
+<p>接下来我们来简单看看两个符号整数相加的结果：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307224215299.png" alt="image-20220307224215299"></p>
+<p>可以看到，只有在一些非常限制的条件下，两个符号整数相加才能得到确定的结果，否则其结果集合将非常的大，用 正T 集合来表示。</p>
+</li>
+<li>
+<p>集合 V，表示函数中某个值的抽象。我们可以使用三个集合来确定一个变量的属性，分别是<strong>抽象值集合</strong>（数值取哪些），<strong>抽象位置集合</strong>（该变量存到了哪里），以及<strong>抽象类型集合</strong>（这个值的类型可以是哪些）。对于某个特定的抽象值 V 来说，<strong>使用三元组表示</strong>，其可选的数值是 <strong>集合I的子集</strong>；可选的内存位置是集合L<strong>幂集</strong>的子集；可选的类型是集合T<strong>幂集</strong>的子集。<br>
+因此对于整个抽象值集合V来说，V的集合范围便是 <strong>集合 I x 集合L幂集 x 集合T 幂集</strong>。</p>
+<blockquote>
+<p>注意，$2^T$ 表示集合 T 的幂集。</p>
+</blockquote>
+<blockquote>
+<p>内存位置用幂集子集来表示，是因为一个指针在静态分析时可能会指向多个内存位置；类型同理。</p>
+</blockquote>
+</li>
+<li>
+<p>集合L，表示抽象内存位置集合。抽象内存位置可能有以下几种：</p>
+<ol>
+<li>
+<p>全局变量区某个固定的位置，因此用 $Global(Z)$ 表示所有可能的全局变量集合</p>
+</li>
+<li>
+<p>栈区某个固定位置，用二元组 (f, o) 表示函数 f 栈帧上相对偏移为 o 的位置，因此用 $Stack(function\space *\space Z)$ 表示所有可能的栈变量位置集合；堆区同理，不过堆区用的是 (a, o) 表示堆变量位置，表示地址 a 上相对偏移为 o 的位置。</p>
+<blockquote>
+<p>上面这些都表示的是静态分析中相对较为固定的内存位置。</p>
+</blockquote>
+</li>
+<li>
+<p>除了上面几种以外，还有一种内存位置是需要考虑的：符号指针 s 和指针偏移量为 o 的内存位置，用 SymLoc(s, o) 来指定抽象内存位置。</p>
+</li>
+</ol>
+</li>
+<li>
+<p>集合T，表示类型<strong>约束</strong>集合。对于一个变量来说，其类型，要么是一个确定的类型，要么就和 symbol 类型一样。注意这里是<strong>约束</strong>的集合，因此如果某个类型的约束集合为空，则表示可以为<strong>任何类型</strong>。</p>
+</li>
+</ol>
+<p><strong>抽象语义（Abstract Semantics）</strong>，个人认为是对 expr 或 stmt 具体干了什么做了一个描述。要理解这个得先把先前说的 IR 搬过来：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307210748554.png" alt="image-20220307210748554"></p>
+<p>现在我们再来尝试理解对 expr 的 evaluation，一个一个来：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307233508336.png" alt="image-20220307233508336"></p>
+<blockquote>
+<p>其中，$V$表示的是，在抽象状态 $S$ 下，给定一个 $expr$  ，返回其表示的 Abstract Value。</p>
+</blockquote>
+<p>我们先看看什么是抽象状态 S：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220307233801692.png" alt="image-20220307233801692"></p>
+<p>我们可以很容易的知道，抽象状态 S 保存了<strong>寄存器-&gt;V 的映射关系</strong>，以及<strong>内存位置 L -&gt; V 的映射关系</strong>，这样的<strong>一个二维元组</strong>。简单来说，一个 State 保存了所有关于值的东西，即所有寄存器对应的值和所有内存位置对应的值。</p>
+<blockquote>
+<p>因此，我们用 S[0] 来表示状态 S 下寄存器的映射关系 R，S[1] 表示状态 S 下内存位置的映射关系 M。</p>
+</blockquote>
+<ul>
+<li>$V(reg)(S)$：这个公式是比较好理解的。对于状态S，若传入一个 reg，则会先获取状态 S 下的寄存器映射关系 R（即 S[0]），之后使用 reg 作为该映射关系的键，获取其值。</li>
+<li>$V([e])(S)$：对于状态S，若传入一个表达式 $e$，则返回 e 所对应的内存位置上的值。这个公式等号后面的内容要拆开看。首先，我们需要获取表达式 e 所对应的 Abstract Value，即 $V(e)(S)$。返回的 Abstract Value 是一个三元组，其第1个 field 为 Memory Location（下标从0开始），因此 $V(e)(S)[1]$表示<strong>表达式 e 所有的内存位置集合</strong>。最后便是尝试访问在状态 S 下，其 Abstract Value 的所有内存位置，即 $\bigcup {S[1][l] | l \in V(e)(S)[1]}$</li>
+<li>$V(i)(S)$ ：对于状态 S，获取整数表达式 $i$ 所对应的 Abstract Value。
+<ul>
+<li>当 $i=0$ 时，我们无法区分 i 是整数 0 还是空指针 NULL，因此只能忽略其类型约束。</li>
+<li>当 $i \in DataSection$，则我们可以确定 i 是一个指向全局变量的指针值。因为 i 所指向的数值并非我们所关心的，因此用倒 T 表示。</li>
+<li>其他情况下则认为 i 是一个普通整型。</li>
+</ul>
+</li>
+<li>$V(e_1*e_2)(S)$：对于状态 S，获取其二元操作后的值。有个特殊的点在于，对于<strong>操作数组元素</strong>时，<strong>被操作的数组元素的 Memory Location，会被设置为 Array Base Memory Location</strong>，而不是精确的数组元素位置。这是为了防止索引范围爆炸所导致的内存位置爆炸。</li>
+</ul>
+<p>接下来我们再试着理解 Stmt 的 evaluation：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220308084738528.png" alt="image-20220308084738528"></p>
+<p>其中，$m[k \rightarrow v]$ 表示<strong>把 m 从映射 k 强更新为 v</strong>；箭头上打个 w 表示是<strong>弱更新</strong>。在了解完 expr 相关的表达式后，我们可以较为容易的理解 Put、Store 和 update 原语，因此不再赘述。而对于 Call 原语来说，由于调用的函数可能会产生副作用（例如修改内存等等），因此需要额外处理。</p>
+<p>这里，将一个函数的副作用定义为一个二元组，这样的二元组可以保存 <strong>什么样的参数导致什么样的内存修改</strong> 的信息：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220308091612142.png" alt="image-20220308091612142"></p>
+<p>而 apply 操作所要做的事情，就是将 Side Effect 中的 Update Set，apply 进状态 S 中：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220308092314488.png" alt="image-20220308092314488"></p>
+<p>apply 原语中有个<strong>倒 L 符号</strong>，个人理解是，将某个函数对某个内存位置上的值，映射为另一个函数上另一个内存位置上的值。这么说有点拗口，举个简单的例子：caller 有个变量，位于 $STACK(caller, -0x40)$，而 callee 则会访问 $STACK(callee, -0x80)$（caller 的局部变量），虽然看上去两个函数使用了不同的内存位置，但本质上这两个都指向的是<strong>同一个内存位置</strong>，因此需要做一个映射代换，那么<strong>倒L符号</strong>起到的就是这个<strong>替换</strong>作用。</p>
+</li>
+<li>
+<p>Type Inferrer</p>
+<p>类型推断器将会使用上一步所生成出的 summary 进行类型推断。难点在于<strong>结构体类型</strong>和<strong>数组类型</strong>推断。</p>
+<p>首先是<strong>结构体类型推断</strong>。对于位于堆上的结构体来说，Inferrer 可以通过分析堆块所对应的状态来得出；但对于位于栈上的结构体来说，由于<strong>不像堆块那样隐含着边界信息</strong>，因此其他 field 可能会被误认为是其他的局部变量，很难去区分开到底栈上结构体中有哪些 field：</p>
+<p><img src="/2022/03/other_paper_notes/image-20220308102221825.png" alt="image-20220308102221825"></p>
+<p>NTFuzz 在这里提出了一种启发式策略：通过函数中的内存访问模式，来判断某个栈变量是否为结构体中的一部分。</p>
+<p>通俗的说，若某个<strong>相邻栈变量</strong>在初始化后<strong>从未使用</strong>，则说明这个变量是栈结构体中的一部分，将会被传递给 syscall；若这样的变量连初始化操作也没有，则说明这样的变量将会被 syscall 初始化。</p>
+<p>其次是<strong>数组类型推断</strong>。数据类型分为两部分：数组元素类型和数组大小。其中数组元素类型可以通过 documented API 来获取；而数组大小可以通过 SAL 注释或者 API 参数的 size 参数来获取，以及还可以通过观察<strong>内存分配模式</strong>来获取。</p>
+<blockquote>
+<p>有相当一部分 API 中的参数包含了数组指针和数组大小两部分，因此可以通过分析这些 API 来获取大小。</p>
+</blockquote>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/03/other_paper_notes/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/paper/" rel="tag">paper</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/03/syzkaller-1/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            syzkaller 源码阅读笔记-1
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/02/e9patch/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">《Binary Rewriting without Control Flow Recovery》论文笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

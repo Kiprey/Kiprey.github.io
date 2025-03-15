@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="笔记,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    计算机网络笔记-1 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-cnatda-1"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  计算机网络笔记-1
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2021/05/cnatda-1/" class="article-date">
+  <time datetime="2021-05-15T03:12:44.000Z" itemprop="datePublished">2021-05-15</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">11.7k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">41 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里记录了笔者阅读《计算机网络：自顶向下方法》的一些笔记。笔记有所缩略。</li>
+<li>主要关于
+<ul>
+<li>第一章：计算机网络和因特网</li>
+<li>第二章：应用层</li>
+<li>第三章：运输层</li>
+</ul>
+</li>
+</ul>
+<a id="more"></a>
+<h2 id="第一章：计算机网络和因特网">第一章：计算机网络和因特网</h2>
+<ul>
+<li>
+<p>所有的联网设备称为<strong>主机（host）<strong>或者</strong>端系统（end system）</strong>。</p>
+</li>
+<li>
+<p>端系统通过<strong>通信链路communication link</strong>和<strong>分组交换机packet switch</strong>相连。</p>
+<ul>
+<li>分组交换机中最著名的两种是<strong>路由器router</strong>和<strong>链路层交换机link-layer switch</strong>。</li>
+<li>一个分组所经历的一系列<strong>通信链路</strong>和<strong>分组交换机</strong>称为通过该网络的<strong>路径route/path</strong>。</li>
+</ul>
+</li>
+<li>
+<p>网络核心</p>
+<blockquote>
+<p>通过网络链路和交换机移动数据有两种基本方法：<strong>电路交换</strong>和<strong>分组交换</strong>。</p>
+</blockquote>
+<ul>
+<li>
+<p>分组交换：</p>
+<p><img src="/2021/05/cnatda-1/image-20210507194417422.png" alt="image-20210507194417422"></p>
+<ul>
+<li>
+<p>在各种网络应用中，端系统彼此交换<strong>报文message</strong>，报文能够包含协议设计者需要的任何东西，例如控制功能、数据等。</p>
+</li>
+<li>
+<p>为了从源端系统向目的端系统发送一个报文，源将长报文划分为较小的数据块，称之为<strong>分组packet。</strong></p>
+</li>
+<li>
+<p>多数分组交换机在链路的输入端使用<strong>存储转发传输store-and-forward transmission机制</strong>。指的是在交换机能够开始向输出链路传输该分组的第一个比特之前，必须接收到整个分组。</p>
+<p><img src="/2021/05/cnatda-1/image-20210507193626489.png" alt="image-20210507193626489"></p>
+</li>
+<li>
+<p>排队时延和分组丢失</p>
+<ul>
+<li>每台分组交换机有多条链路与之相连。对于每条相连的链路，该分组交换机具有一个<strong>输出缓存/输出队列</strong>，用于存储路由器准备发往那条链路的分组。</li>
+<li>如果到达的分组需要传输到某条链路，但发现该链路正忙于传输其他分组，该到达分组必须在输出缓存中等待，因此除了存储转发时延以外，分组还要承受输出缓存的<strong>排队时延</strong>。如果该缓存已被完全装装满，则将出现<strong>分组丢失packet loss</strong>。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>电路交换</p>
+<ul>
+<li>
+<p>当两台主机通信时，该网络在两台主机之间创建一条专用的端到端连接。因此必须在两条链路的每条上先预留一条电路。</p>
+<p><img src="/2021/05/cnatda-1/image-20210507194445844.png" alt="image-20210507194445844"></p>
+</li>
+<li>
+<p>电路交换网络中的复用</p>
+<blockquote>
+<p>链路中的电路是通过<strong>频分复用FDM</strong>或<strong>时分复用TDM</strong>来实现。</p>
+</blockquote>
+<ul>
+<li>
+<p>对于频分复用FDM来说，链路的频谱由跨越链路创建的所有连接共享，为每个连接<strong>专用一个频段</strong>，例如收音机。</p>
+</li>
+<li>
+<p>对于时分复用TDM来说，时间被划分为固定区间的帧，每帧被划分为固定数量的时隙。网络跨越一条链路创建一条连接时，网络在每个帧中为该连接指定一个时隙。这些时隙专门由该链接单独使用。</p>
+</li>
+</ul>
+<p><img src="/2021/05/cnatda-1/image-20210507195514761.png" alt="image-20210507195514761"></p>
+</li>
+</ul>
+</li>
+<li>
+<p>分组交换比电路交换更有效：</p>
+<ul>
+<li>提供更好的带宽共享。</li>
+<li>更简单、有效，成本更低。</li>
+</ul>
+<p>电路交换不考虑需求，而预先分配了传输链路的使用，使得效率较低。分组交换按需分配链路使用，效率较高。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>分组交换的时延</p>
+<ul>
+<li>
+<p><strong>节点处理时延</strong>：检查分组首部和决定将该分组导向何处所需要的时间，以及检查比特级别的差错等时间。</p>
+</li>
+<li>
+<p><strong>排队时延</strong>：在队列中，当分组在链路上等待传输时，它经受排队时延。一个特定分组的排队时延长度取决于先期到达的正在排队等待向链路传输的分组数量。</p>
+</li>
+<li>
+<p><strong>传输时延</strong>：传输时延是将<strong>特定分组的所有比特</strong>，<strong>发射进链路</strong>所需要的时间。传输时延与分组大小呈正相关。</p>
+</li>
+<li>
+<p><strong>传播时延</strong>：从该链路的起点到下一个路由器传播所需要的时间。</p>
+<blockquote>
+<p>注意：传输时延和传播时延不是一回事，两者概念完全不同。</p>
+</blockquote>
+</li>
+</ul>
+<blockquote>
+<p>四个相加即<strong>总时延</strong>。$d_{nodal}=d_{proc}+d_{queue}+d_{trans}+d_{prop}$</p>
+</blockquote>
+</li>
+<li>
+<p>协议分层</p>
+<ul>
+<li>
+<p><strong>应用层</strong>：网络应用程序以及他们的应用层协议存留的地方，例如http、smtp等。</p>
+</li>
+<li>
+<p><strong>运输层</strong>：运输层在应用程序端点之间传送应用层报文，有以下两种运输协议：</p>
+<ul>
+<li><strong>TCP</strong>：将长报文划分为短报文，提供拥塞控制机制。</li>
+<li><strong>UDP</strong>：向应用程序提供无连接服务，不提供不必要服务，没有可靠性，没有流量控制，没有拥塞控制。</li>
+</ul>
+<p>将运输层的分组称为<strong>报文段segment</strong>。</p>
+</li>
+<li>
+<p><strong>网络层</strong>：网络层负责将称为<strong>数据报datagram</strong>的网络层分组从一台主机移动到另一台主机。<strong>网络层包括著名网际协议IP。</strong></p>
+</li>
+<li>
+<p><strong>链路层</strong>：网络层通过源和目的地之间的一系列路由器来 <strong>路由（注意这是动词）</strong> 数据报。为了将分组从一个结点移动到路径上的下一个结点，网络层必须依靠该链路层的服务。</p>
+<p>将链路层分组称为<strong>帧frame</strong>。链路层的任务是将<strong>整个帧</strong>从一个网络元素移动到邻近的网络元素。该层协议与链路层相关。</p>
+</li>
+<li>
+<p><strong>物理层</strong>：物理层的任务是将每个帧中的一个个比特从一个节点移动到下一个节点。该层协议与链路相关，并进一步与链路的<strong>实际传输媒体</strong>相关，例如双绞铜线、单模光纤等。</p>
+</li>
+</ul>
+<p>各层的所有协议称为<strong>协议栈</strong>。</p>
+<p><img src="/2021/05/cnatda-1/image-20210507202004763.png" alt="image-20210507202004763"></p>
+</li>
+</ul>
+<h2 id="第二章：应用层">第二章：应用层</h2>
+<h3 id="1-因特网提供的运输服务">1. 因特网提供的运输服务</h3>
+<ul>
+<li>
+<p>TCP服务</p>
+<ul>
+<li>
+<p><strong>面向连接的服务</strong>：</p>
+<p>在应用层数据报文开始流动之前，TCP让客户和服务器互相交换<strong>运输层</strong>控制信息。这个握手过程提醒客户和服务器为大量分组的到来做好准备。</p>
+<p>三次握手完成后，一个<strong>TCP连接</strong>就在两个进程之间建立，该连接是<strong>全双工</strong>的，即连接的双方可以在此连接上<strong>同时进行报文的收发</strong>。</p>
+<p>当应用程序结束报文发送时，必须拆除该连接。</p>
+</li>
+<li>
+<p><strong>可靠的数据传送服务</strong>：</p>
+<p>通信进程能够依靠TCP，无差错、按顺序交付所有发送的数据，无字节丢失或冗余。</p>
+</li>
+<li>
+<p>具有拥塞控制机制。</p>
+</li>
+</ul>
+<blockquote>
+<p><strong>安全套接字SSL</strong>：TCP的加强版本，即加密版本。</p>
+<p>SSL有自己的套接字API，应用向SSL套接字传递明文数据，发送主机中SSL加密该数据并将加密后数据传递给<strong>发送端TCP套接字</strong>。接收端套接字接收到加密数据，将其解密，并通过SSL套接字将明文数据传递给接收进程。</p>
+</blockquote>
+</li>
+<li>
+<p>UDP服务</p>
+<ul>
+<li>是一种不提供不必要服务的轻量级运输协议，仅提供最小服务。</li>
+<li>UDP是无连接的，因此两进程通信前没有握手过程。</li>
+<li>UDP协议提供不可靠数据传送服务，即UDP协议<strong>不保证报文到达接受进程</strong>，同时接收到的报文也<strong>可能是乱序的</strong>。无拥塞控制机制。</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-应用层协议">2. 应用层协议</h3>
+<h4 id="a-http">a. http</h4>
+<ul>
+<li>
+<p><strong>请求报文</strong>样例如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">GET &#x2F;somedir&#x2F;page.html HTTP&#x2F;1.1</span><br><span class="line">Host: www.someschool.edu</span><br><span class="line">Connection: close</span><br><span class="line">User-agent: Mozilla&#x2F;5.0</span><br><span class="line">Accept-language: fr</span><br></pre></td></tr></table></figure>
+<p>具体<strong>请求报文</strong>通用格式如下：</p>
+<p><img src="/2021/05/cnatda-1/image-20210507204906032.png" alt="image-20210507204906032"></p>
+</li>
+<li>
+<p><strong>响应报文</strong>样例如下：</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">HTTP&#x2F;1.1 200 OK</span><br><span class="line">Connection: close</span><br><span class="line">Date: Tue, 18 Aug 2015 15:44:04 GMT</span><br><span class="line">Server: Apache&#x2F;2.23 (CentOS)</span><br><span class="line">Last-Modified: Tue, 18 Aug 2015 15:11:03 GMT</span><br><span class="line">Content-Length: 6821</span><br><span class="line">Content-Type: text&#x2F;html</span><br><span class="line"></span><br><span class="line">(data data data data data ...)</span><br></pre></td></tr></table></figure>
+<p>具体通用格式如下：</p>
+<p><img src="/2021/05/cnatda-1/image-20210507205312687.png" alt="image-20210507205312687"></p>
+</li>
+<li>
+<p><strong>web 缓存</strong></p>
+<ul>
+<li>
+<p>Web缓存也称代理服务器，其工作流程如下：</p>
+<ul>
+<li>
+<p>浏览器创建一个到Web缓存器的TCP连接，并向Web缓存器中的对象发送一个 HTTP 请求。</p>
+</li>
+<li>
+<p>Web缓存器进行检查</p>
+<ul>
+<li>
+<p>如果本地存储了对象副本，则Web缓存器向客户浏览器用HTTP响应报文返回该对象。</p>
+</li>
+<li>
+<p>如果没有存储该对象，则打开一个与该对象的初始服务器的TCP连接，并在该连接上发起一个HTTP请求。受到请求后，初始服务器向该web缓存器发送具有该对象的http响应。</p>
+<p>当Web缓存器接收到对象后，在本地存储空间存储一份副本，并向客户的浏览器用HTTP响应报文发送该副本。</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>存放在Web缓存器中的对象副本可能是陈旧的，而http协议允许缓存器证实它的对象是最新的，即<strong>条件GET</strong>方法：</p>
+<ul>
+<li>请求报文使用 GET 方法</li>
+<li>请求报文中包含一个 If-Modified-Since 首部行</li>
+</ul>
+<p>如果Web缓存器向初始服务器发送<strong>条件get</strong>报文时：</p>
+<ul>
+<li>目标对象没有发生改变，则响应报文中的body为空。</li>
+<li>目标对象已经改变，响应报文中存放新的对象。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="b-DNS">b. DNS</h4>
+<ul>
+<li>
+<p>主机的一种标识方式是使用其<strong>主机名hostname</strong>。</p>
+</li>
+<li>
+<p>DNS是</p>
+<ul>
+<li>一个由分层的DNS服务器实现的分布式数据库。</li>
+<li>一个使得主机能够查询分布式数据库的应用层协议。</li>
+</ul>
+</li>
+<li>
+<p>DNS提供的服务</p>
+<ul>
+<li>
+<p><strong>主机名到IP地址的转换</strong></p>
+</li>
+<li>
+<p><strong>主机别名</strong>：有着复杂主机名的主机能够拥有一个或多个别名。</p>
+<p>例如一台名为<code>relay1.west-coast.enterprise.com</code>的主机，可能还有两个别名为<code>enterprise.com</code>和<code>www.enterprise.com</code>的主机。在这种情况下，<code>relay1.west-coast.enterprise.com</code>也称为<strong>规范主机名canonical hostname</strong>。主机别名比主机规范名更加容易记忆。</p>
+</li>
+<li>
+<p><strong>邮件服务器别名</strong>：电子邮件应用程序可以调用DNS，对提供的主机名别名进行解析，以获得该主机的规范主机名及其IP地址。</p>
+</li>
+<li>
+<p><strong>负载分配</strong>：DNS也用在冗余的服务器之间进行负载分配。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>DNS工作机理概述</p>
+<ul>
+<li>
+<p>分布式、层次数据库</p>
+<ul>
+<li>为了处理扩展性问题，DNS使用了大量的DNS服务器，以层次方式组织。</li>
+<li>有三种类型的DNS服务器
+<ul>
+<li><strong>根DNS服务器</strong>：提供顶级域服务器的ID地址。</li>
+<li><strong>顶级域（Top-Level Domain）DNS服务器</strong>：对于每个顶级域（例如com、org、net等）和所有国家的顶级域（如uk、fr等），都有TLD服务器。TLD服务器提供权威DNS服务器的IP地址。</li>
+<li><strong>权威DNS服务器</strong>：在因特网上具有公共可访问主机的每个机构必须提供公共可访问的DNS记录，这些记录将这些主机的名字映射为IP地址。一个组织机构的权威DNS收藏了这些DNS记录。</li>
+</ul>
+</li>
+</ul>
+<p><img src="/2021/05/cnatda-1/image-20210508203109038.png" alt="image-20210508203109038"></p>
+<ul>
+<li>
+<p>本地DNS服务器：严格来说不属于DNS服务器的层次结构。本地服务器起着代理的作用，将DNS请求转发到DNS服务器层次结构中。</p>
+<p>DNS查询分为两种：<strong>递归查询</strong>和<strong>迭代查询</strong>。</p>
+<ul>
+<li>
+<p>迭代查询</p>
+<p><img src="/2021/05/cnatda-1/image-20210508204520770.png" alt="image-20210508204520770"></p>
+</li>
+<li>
+<p>递归查询</p>
+<p><img src="/2021/05/cnatda-1/image-20210508204559893.png" alt="image-20210508204559893"></p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>DNS缓存</p>
+<ul>
+<li>
+<p>原理：当某DNS服务器接收一个DNS回答时，DNS缓存能将映射缓存在本地存储器中。</p>
+<p>如果在DNS服务器中缓存了一台主机/IP地址对，另一个对相同主机名的查询到达该DNS服务器时，该DNS服务器就能提供所要求的IP地址，即使它不是该主机名的权威服务器。</p>
+</li>
+<li>
+<p>由于主机和主机名与IP地址间的映射并不是永久的，DNS服务器在一段时间后将丢弃缓存的信息。</p>
+</li>
+<li>
+<p>本地DNS服务器也能够缓存TLD服务器的IP地址，因而允许本地DNS绕过查询链中的根DNS服务器。因为缓存的存在，除了少数DNS查询以外，<strong>根服务器</strong>被绕过了。</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>DNS记录和报文</p>
+<ul>
+<li>
+<p>共同实现DNS分布式数据库的所有DNS服务器存储了<strong>资源记录（Resource Recode, RR）</strong>,其中提供了主机名到IP地址的映射。每个DNS回答报文中包含了一条或多条的资源记录。</p>
+</li>
+<li>
+<p>资源记录是一个包含了下列字段的4元组：<strong>(Name, Value, Type, TTL)</strong></p>
+<p>其中，TTL是该记录的生存时间，决定了<strong>资源记录应当从缓存中删除的时间</strong>。</p>
+<p>Name和Value的值取决于Type：</p>
+<ul>
+<li>
+<p>如果Type = A，则 Name 是主机名， Value 是该主机名对应的IP地址。即一条类型为A的资源记录提供了标准的主机名到IP地址的映射。例如 <strong>(<a href="http://relay1.bar.foo.com" target="_blank" rel="noopener">relay1.bar.foo.com</a>, 145.37.93.126, A)</strong></p>
+</li>
+<li>
+<p>如果Type = NS，则 Name 是一个域（例如<code>foo.com</code>），而 Value 是个知道如何获取该域中主机IP地址的权威DNS服务器的主机名。这个记录用于沿着查询链来路由DNS查询。例如 <strong>(<a href="http://foo.com" target="_blank" rel="noopener">foo.com</a>, <a href="http://dns.foo.com" target="_blank" rel="noopener">dns.foo.com</a>, NS)</strong></p>
+</li>
+<li>
+<p>如果 Type = CNAME，则 Value 是个别名为 Name 的主机对应的规范主机名。该记录能够向查询的主机提供一个主机名对应的规范主机名。例如 <strong>(<a href="http://foo.com" target="_blank" rel="noopener">foo.com</a>, <a href="http://relay1.bar.foo.com" target="_blank" rel="noopener">relay1.bar.foo.com</a>, CNAME)</strong></p>
+</li>
+<li>
+<p>如果Type = MX，则 Value 是个别名为 Name 的<strong>邮件服务器的规范主机名</strong>。例如 <strong>(<a href="http://foo.com" target="_blank" rel="noopener">foo.com</a>, <a href="http://mail.bar.foo.com" target="_blank" rel="noopener">mail.bar.foo.com</a>, MX)</strong>。MX记录允许邮件服务器主机名具有简单的别名。</p>
+<blockquote>
+<p>注意：通过MX记录，一个公司的邮件服务器和其他服务器（例如Web服务器）可以使用<strong>相同的别名</strong>。为了获取邮件服务器的规范主机名，DNS客户应该请求一条MX记录；而为了获取其他服务器的规范主机名，应该请求CNAME记录。</p>
+</blockquote>
+</li>
+</ul>
+<p>如果一台DNS服务用于某特定主机名的<strong>权威DNS服务器</strong>，那么该DNS服务器会有一条<strong>包含用于该主机名的类型A记录</strong>。</p>
+<p>如果服务器不是用于某主机名的权威DNS服务器，那么该服务器将<strong>包含一条类型NS记录</strong>，该记录对应于包含主机名的域；同时还将<strong>包括一条类型A记录</strong>，提供<strong>在NS记录的Value字段中的DNS服务器的IP地址</strong>。</p>
+</li>
+<li>
+<p>DNS报文格式如下，只有查询和回答两种报文，并且格式相同：</p>
+<p><img src="/2021/05/cnatda-1/image-20210509000647692.png" alt="image-20210509000647692"></p>
+<ul>
+<li>前12个字节是<strong>首部区域</strong>，其中有几个字段。
+<ul>
+<li>第一个字段（标识符）是一个16比特的数，用于标识该查询。该标识符会被复制到对查询的回答报文中，以便让客户用它来匹配发送的请求和接收到的回答。</li>
+<li>标志字段中含有若干标志。
+<ul>
+<li>1比特的 <strong>“查询/回答”</strong> 标志位指出报文是 <strong>查询报文0</strong> 还是 <strong>回答报文1</strong> 。</li>
+<li>当某DNS服务器是所请求名字的权威DNS服务器时，1比特的 <strong>“权威的”</strong> 标志位将会被置在回答报文中。</li>
+<li>如果客户在该DNS服务器没有某记录时，希望它执行<strong>递归</strong>查询，将设置1比特的 <strong>“希望递归”</strong> 标志位。如果该DNS服务器支持递归查询，则在回答报文中会对1比特的 <strong>“递归可用”</strong> 标志位置位。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><strong>问题区域</strong>包含着正在进行的查询信息。其中，该区域包括
+<ul>
+<li>名字字段，包含正在被查询的主机名字</li>
+<li>类型字段，指出有关该名字的正被询问的问题类型，例如主机地址是与一个名字相关联（类型A）还是与某个名字的邮件服务器相关联（类型MX）。</li>
+</ul>
+</li>
+<li>在来自DNS服务器的回答中，<strong>回答区域</strong>包含了对最初请求的名字的资源记录。回答报文中的回答区域可以包含多条RR，因此<strong>一个主机名能够有多个IP地址，例如负载均衡</strong>。</li>
+<li><strong>权威区域</strong>包含了其他权威服务器的记录。</li>
+<li><strong>附加区域</strong>包含了其他有帮助的记录。例如对于一个MX请求的回答报文的回答区域包含了一条资源记录，提供了邮件服务器的规范主机名。而附加区域中<strong>包含了一个类型A记录</strong>，提供<strong>用于该邮件服务器的规范主机名的IP地址</strong>。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-套接字编程">3. 套接字编程</h3>
+<h4 id="a-UDP编程">a. UDP编程</h4>
+<p><img src="/2021/05/cnatda-1/image-20210508165739385.png" alt="image-20210508165739385"></p>
+<ul>
+<li>
+<p><code>UDPClient.py</code></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> socket <span class="keyword">import</span> *</span><br><span class="line">serverName = <span class="string">'hostname'</span></span><br><span class="line">serverPort = <span class="number">12000</span></span><br><span class="line">clientSocket = socket(AF_INET, SOCK_DGRAM)</span><br><span class="line">message = raw_input(<span class="string">'Input lowercase sentence:'</span>)</span><br><span class="line">clientSocket.sendto(message.encode(), (serverName, serverPort))</span><br><span class="line">modifiedMessage, serverAddress = clientSocket.recvfrom(<span class="number">2048</span>)</span><br><span class="line">print(modifiedMessage.decode())</span><br><span class="line">clientSocket.close()</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>UDPServer.py</code></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> socket <span class="keyword">import</span> *</span><br><span class="line">serverPort = <span class="number">12000</span></span><br><span class="line">serverSocket = socket(AF_INET, SOCK_DGRAM)</span><br><span class="line">serverSocket.bind((<span class="string">''</span>, serverPort))</span><br><span class="line">print(<span class="string">"The server is ready to receive"</span>)</span><br><span class="line"><span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">    message, clientAddress = serverSocket.recvfrom(<span class="number">2048</span>)</span><br><span class="line">    modifiedMessage = message.decode().upper()</span><br><span class="line">    serverSocket.sendto(modifiedMessage.encode(), clientAddress)</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="b-TCP编程">b. TCP编程</h4>
+<p><img src="/2021/05/cnatda-1/image-20210508165807956.png" alt="image-20210508165807956"></p>
+<ul>
+<li>
+<p><code>TCPClient.py</code></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> socket <span class="keyword">import</span> *</span><br><span class="line">serverName = <span class="string">'servername'</span></span><br><span class="line">serverPort = <span class="number">12000</span></span><br><span class="line">clientSocket = socket(AF_INET, SOCK_STREAM)</span><br><span class="line">clientSocket.connect((serverName, serverPort))</span><br><span class="line">sentence = raw_input(<span class="string">'Input lowercase sentence:'</span>)</span><br><span class="line">clientSocket.send(sentence.encode())</span><br><span class="line">modifiedSentence = clientSocket.recvfrom(<span class="number">1024</span>)</span><br><span class="line">print(<span class="string">'From Server: '</span>, modifiedSentence.decode())</span><br><span class="line">clientSocket.close()</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>TCPServer.py</code></p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> socket <span class="keyword">import</span> *</span><br><span class="line">serverPort = <span class="number">12000</span></span><br><span class="line">serverSocket = socket(AF_INET, SOCK_STREAM)</span><br><span class="line">serverSocket.bind((<span class="string">''</span>, serverPort))</span><br><span class="line">serverSocket.listen(<span class="number">1</span>)</span><br><span class="line">print(<span class="string">"The server is ready to receive"</span>)</span><br><span class="line"><span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">    connectionSocket, addr = serverSocket.accept()</span><br><span class="line">    sentence = connectionSocket.recvfrom(<span class="number">1024</span>).decode()</span><br><span class="line">    capitalizedSentence = sentence.upper()</span><br><span class="line">    connectionSocket.send(capitalizedSentence.encode())</span><br><span class="line">    connectionSocket.close()</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="第三章：运输层">第三章：运输层</h2>
+<h3 id="1-简述">1. 简述</h3>
+<ul>
+<li>
+<p>运输层协议为运行在不同主机上的应用进程之间提供了<strong>逻辑通信logic communication</strong>功能。从应用程序的角度来看，通过逻辑通信，运行不同进程的主机好像直接相连一样。</p>
+</li>
+<li>
+<p>TCP和UDP是运输层协议中的一种，但运输层协议<strong>不是只有这两种</strong>。</p>
+</li>
+<li>
+<p>将运输层TCP/UDP分组称为<strong>报文段segment</strong>，将网络层分组称为<strong>数据报datagram</strong>。</p>
+</li>
+<li>
+<p>因特网网络层协议中有一个协议为<strong>网际协议IP</strong>，其服务模型是<strong>尽力而为交付服务</strong>，称为<strong>不可靠服务</strong>。每台主机至少有一个网络层地址，即IP地址。</p>
+</li>
+<li>
+<p>将主机间交付扩展到进程间交付被称为<strong>运输层的多路复用与多路分解</strong>。</p>
+<ul>
+<li>
+<p>将运输层报文段中的数据交付到正确的套接字的工作称为<strong>多路分解</strong>。</p>
+</li>
+<li>
+<p>从不同套接字中收集数据块、为每个数据块封装上首部信息，以生成报文段，并最终传递到网络层。这些工作统称为<strong>多路复用</strong>。</p>
+</li>
+<li>
+<p>运输层多路复用要求</p>
+<ul>
+<li>套接字有唯一标识符。</li>
+<li>每个报文段有特殊字段来指示该报文段索要交付到的套接字。通常这些字段包含<strong>源端口号字段</strong>和<strong>目的端口号字段</strong>（还有一些其他字段）。</li>
+</ul>
+</li>
+<li>
+<p>运输层实现分解服务的过程</p>
+<ul>
+<li>当报文到达主机时，运输层检查报文段中的目的端口号，并将其定向到相应的套接字。</li>
+<li>报文段中的数据通过套接字进入其所连接的进程。</li>
+</ul>
+</li>
+<li>
+<p><strong>无连接</strong>的多路复用与多路分解</p>
+<p>一个UDP套接字是由一个<strong>二元组</strong>全面标识，该二元组包含一个<strong>目的IP地址</strong>和一个<strong>目的端口号</strong>。</p>
+<p>因此如果两个UDP报文段有不同的源IP地址/源端口号，但具有相同的目的IP地址和目的端口号，则两个报文段将通过相同的目的套接字被定向到相同的目的进程。</p>
+</li>
+<li>
+<p><strong>面向连接</strong>的多路复用与多路分解</p>
+<p>一个TCP套接字是由一个 <strong>四元组（源IP地址，源端口号，目的IP地址，目的端口号）</strong> 来标识。</p>
+<p>两个具有不同源IP地址或源端口号的到达TCP报文段将被定向到两个不同的套接字。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-无连接运输：UDP">2. 无连接运输：<strong>UDP</strong></h3>
+<ul>
+<li>
+<p>UDP优点</p>
+<ul>
+<li><strong>关于发送什么数据以及何时发送的应用层控制更为精细</strong>。与TCP的拥塞控制机制相反，UDP会<strong>立即</strong>将应用层的数据打包并<strong>立即</strong>传递给网络层。</li>
+<li><strong>无需连接建立</strong>。UDP无需三次握手，不需要任何准备即可进行数据传输，因此不会引入建立连接的时延。</li>
+<li><strong>无连接状态</strong>。TCP需要在端系统中维护连接状态，此连接状态中包括接受和发送缓存、拥塞控制参数以及序号与确认号的参数。而UDP不维护连接状态，因此不跟踪这些参数，就可以支持更多活跃客户。</li>
+<li><strong>分组首部开销小</strong>。每个TCP报文段都有20字节的首部开销，而UDP仅有8字节的开销。</li>
+</ul>
+</li>
+<li>
+<p>UDP报文段结构</p>
+<p><img src="/2021/05/cnatda-1/image-20210508163648687.png" alt="image-20210508163648687"></p>
+</li>
+<li>
+<p>UDP提供差错检测功能：发送方的UDP对报文段中的所有16比特字的<strong>和</strong>进行<strong>反码运算</strong>。求和时遇到的任何溢出都将被回卷。得到的结果被放在UDP报文段中的检验和字段。</p>
+<blockquote>
+<p>回卷：把溢出的最高位1和低16位做加法运算。</p>
+</blockquote>
+<p>这样，接收方将全部的16比特字相加，如果分组没有引入差错，则在接收方处该和将为1111111111111111。如果存在任意一个位置的比特为0，则说明该分组中出现差错。</p>
+</li>
+</ul>
+<h3 id="3-可靠数据传输">3. 可靠数据传输</h3>
+<h4 id="1-构建可靠传输数据协议">1. 构建可靠传输数据协议</h4>
+<ul>
+<li>
+<p><strong>可靠数据传输</strong>为上层实体提供的服务抽象是：数据可以通过一条可靠的信道进行传输。借助于可靠信道，传输数据比特就不会不会受到损坏或丢失，并且所有数据都是按照其发送顺序进行交互。</p>
+<p>实现这种服务抽象是<strong>可靠数据传输协议</strong>的责任，但通常该协议的<strong>下层</strong>协议是<strong>不可靠</strong>的，因此任务较为复杂。</p>
+<blockquote>
+<p>例如：TCP是在不可靠的（IP）端到端网络层之上实现的可靠数据传输协议。</p>
+</blockquote>
+</li>
+<li>
+<p>底层信道在分组的传输或缓存的过程中，可能会产生比特差错。当检测到这类错误时，发送方需要重传对应的分组，并等待接收方发送<strong>肯定确认</strong>或<strong>否定确认</strong>的控制报文。这些控制报文使得接收方可以让发送方知道哪些内容被正确接收，那些内容接收有误并因此需要重复。在计算机网络中，基于这样<strong>重传机制</strong>的<strong>可靠数据传输协议</strong>称为<strong>自动重传请求（Automatic Repeat reQuest, ARQ）</strong>。</p>
+<p>更重要的是，ARQ协议还需要另外三种协议功能来处理存在比特差错的情况：</p>
+<ul>
+<li><strong>差错检测</strong>。需要一种机制以使接收方检测到何时出现了比特差错。这里使用<strong>比特校验技术</strong>（想想UDP校验）。</li>
+<li><strong>接收方反馈</strong>。由于发送方和接收方通常在不同的端系统上运行，因此发送方要了解接收方情况的唯一途径是<strong>让接收方提供明确的反馈信息给发送方</strong>。口述报文中的<strong>肯定确认ACK</strong>和<strong>否定确认NAK</strong>就是这种反馈的例子。</li>
+<li><strong>重传</strong>。接收方收到有差错的分组时，发送方将重传该分组文。</li>
+</ul>
+<p>需要注意的是，接收方返回的 ACK/NAK 报文同样有受损或丢包的风险。当发送方收到含糊的 ACK/NAK 分组时，只需重传分组即可，但这会在信道中引入<strong>冗余分组</strong>。冗余分组的困难点在于，接收方无法<strong>事先</strong>知道接收到的分组是新的还是一次重传。</p>
+<p>解决这个问题的一个简单方法是：在数据分组中添加一新字段，让发送方对其数据分组编号，即将发送数据分组的<strong>序号</strong>放在该字段，之后接收方只需检查序号即可确定收到的分组是否是一次重传。</p>
+</li>
+<li>
+<p>除了比特受损以外，底层信道还会丢包。因此可靠数据传输协议必须处理另外两个问题：<strong>如何检测丢包</strong> &amp; <strong>发送丢包后该做什么</strong>。根据上文，我们可以很容易的给出后一个问题的答案——<strong>重传</strong>。但对于第一个<strong>如何检测丢包</strong>，我们需要进一步的研究一下。</p>
+<p>发送方等待足够长的时间以<strong>确定</strong>分组是否已经丢失。实践中发送方根据特定算法选择一个时间值，以<strong>判定</strong>是否丢包（注意是<strong>判定</strong>不是<strong>确保</strong>）。如果在这个时间内没有收到ACK则重传该分组。</p>
+<blockquote>
+<p>需要注意的是，如果一个分组经历特别大的时延，发送方就可能重新发送该分组，即便原分组和其ACK都没有丢失。而这种情况就引入了<strong>冗余数据分组</strong>。</p>
+</blockquote>
+<p>为了实现基于时间的重传机制，需要一个<strong>倒计时定时器</strong>，在一个给定的时间量过期后，中断发送方，使其重传。</p>
+</li>
+<li>
+<p>最终，实现的可靠传输数据协议的状态机图如下所示：</p>
+<p><img src="/2021/05/cnatda-1/image-20210514200231320.png" alt="image-20210514200231320"></p>
+<p>这里同样有一个图说明运行时可能产生的各类情况:</p>
+<p><img src="/2021/05/cnatda-1/image-20210514200835917.png" alt="image-20210514200835917"></p>
+<p>在<strong>检验和</strong>、<strong>序号</strong>、<strong>定时器</strong>、<strong>肯定和否定确认分组</strong>这些技术中，每种机制都在可靠传输协议的运行中起到了必不可少的作用，至此组合而成一个<strong>可靠传输数据协议</strong>。</p>
+</li>
+</ul>
+<h4 id="2-流水线可靠传输数据协议">2. 流水线可靠传输数据协议</h4>
+<p>上文中所实现的可靠传输数据协议是一个<strong>停等</strong>协议，即只有确保<strong>接收方正常接受当前分组</strong>后，才会继续发送下一个分组。停等协议的性能极其低下，并且其信道利用率也非常的低，故<strong>允许发送方发送多个分组而无需等待确认</strong>是一个必然的选择。</p>
+<p>由于许多从发送方向接收方输送的分组可以被看做是填充到一条流水线中，因此该技术称为<strong>流水线</strong>。流水线技术对可靠数据传输协议带来的影响如下：</p>
+<ul>
+<li>必须增加序号范围。因为每个输送中的分组必须有一个唯一的序号，并且或许有多个在输送中的未确认报文。</li>
+<li>协议中的发送方和接收方两端也许不得不缓存多个分组。发送方至少要缓存那些已发送但没有确认的分组；接收方需要缓存那些已正确接受的分组。</li>
+<li>所需序号范围和对缓冲的要求取决于数据传输协议如何处理丢失、损坏以及延时过大的分组。</li>
+</ul>
+<p>对于流水线的差错恢复有两种基本方法：<strong>回退N步（Go-Back-N, GBN）<strong>和</strong>选择重传（Selective Repeat, SR）</strong>。</p>
+<h5 id="1-回退N步">1) 回退N步</h5>
+<p>回退N步协议允许发送方发送多个分组而不需等待确认，但受限于在流水线中未确认的分组数不能超过某个最大允许数N。以下显示了发送方看到的GBN协议的序号范围：</p>
+<blockquote>
+<p>基序号：最早未确认分组的序号</p>
+<p>下一个序号：最小未使用序号</p>
+<p>N常被称为窗口长度，因此GBN协议称为滑动窗口协议。</p>
+</blockquote>
+<ul>
+<li>$[0, base-1]$：已经发送并被确认的分组</li>
+<li>$[base, nextseqnum-1]$：已经发送但未被确认的分组</li>
+<li>$[nextseqnum, base+N-1]$：用于那些要被立即发送的分组</li>
+<li>$[base+N, \infty)$：暂时不能被使用，直到移动窗口。</li>
+</ul>
+<p><img src="/2021/05/cnatda-1/image-20210514202515628.png" alt="image-20210514202515628"></p>
+<p>GBN的发送方必须响应三种类型的事件：</p>
+<ul>
+<li><strong>上层调用</strong>。当上层调用 rdt_send 时，发送方首先检查发送窗口是否已满，如果未满则产生一个分组并发送。如果窗口已满则隐式指示上层该窗口已满。</li>
+<li><strong>收到一个ACK</strong>。GBN协议中，对序号为n的分组的确认采取<strong>累计确认</strong>方式，表示接收方已正确接收到<strong>序号为n的以前且包括n在内</strong>的所有分组。</li>
+<li><strong>超时事件</strong>。定时器用于恢复数据或确认分组的丢失。如果出现超时，则发送方重传<strong>所有已发送但还未被确认过</strong>的分组。</li>
+</ul>
+<p>GBN的接收方动作较为简单：如果一个序号为n的分组被正确接收到，并且按序，则接收方为n发送一个ACK，并将该分组中的数据部分交付到上层。其他情况下则<strong>丢弃该部分</strong>并为<strong>最近按序接收的分组</strong>重新发送ACK。</p>
+<p>以下是一个运行中的GBN流程图：</p>
+<p><img src="/2021/05/cnatda-1/image-20210514204430755.png" alt="image-20210514204430755"></p>
+<h5 id="2-选择重传">2) 选择重传</h5>
+<p>GBN协议可能会重传许多<strong>本没必要重传的分组</strong>，从而影响性能。SR协议通过让发送方仅重传那些<strong>它怀疑在接收方出错的分组</strong>，从而避免了不必要的重传。这种个别的、按需的重传要求接收方<strong>逐个的确认</strong>正确接收的分组。</p>
+<p>SR协议同样使用窗口长度N来限制流水线中未完成、未被确认的分组数。但与GBN不同的是，发送方已经收到了对窗口中某些分组的ACK。</p>
+<p><img src="/2021/05/cnatda-1/image-20210514205328078.png" alt="image-20210514205328078"></p>
+<p>SR接收方将确认一个正确接收的分组而不管其是否<strong>按序</strong>。失序的分组将被<strong>缓存</strong>直到所有的丢失分组全被收到为止，此时才可以将一批分组按需交付给上层。需要注意的是：接收方会<strong>重新确认</strong>（而不是<strong>忽略</strong>）已收到过的那些<strong>序号小于当前窗口基序号</strong>的分组，因为<strong>发送方和接收方的窗口不总是一致</strong>。</p>
+<p>以下是出现丢包时SR操作的简单例子：</p>
+<p><img src="/2021/05/cnatda-1/image-20210514205526638.png" alt="image-20210514205526638"></p>
+<h4 id="3-可靠数据传输机制及其用途的总结">3. 可靠数据传输机制及其用途的总结</h4>
+<ul>
+<li><strong>检验和</strong>：用于检测在一个传输分组中的比特错误。</li>
+<li><strong>定时器</strong>：用于超时/重传一个分组。</li>
+<li><strong>序号</strong>：用于为从发送方流向接收方的数据分组按顺序进行编号。</li>
+<li><strong>确认</strong>：接收方用于告诉发送方一个分组或一组分组已被正确的接收到了。</li>
+<li><strong>否定确认</strong>：接收方用于告诉发送方某个分组未被正确的接收。</li>
+<li><strong>窗口、流水线</strong>：发送方也许被限制仅发送那些序号落在一个指定范围内的分组。</li>
+</ul>
+<h3 id="4-面向连接的运输：TCP">4. 面向连接的运输：TCP</h3>
+<ul>
+<li>
+<p>TCP被称为是面向连接的，因为在一个应用进程可以开始向另一个应用进程发送数据之前，这两个进程必须先相互发送某些预备报文段，以建立确保数据传输的参数，<strong>这个过程称为握手</strong>。连接的双方都将初始化与TCP连接相关的许多TCP状态变量。</p>
+<blockquote>
+<p>注意：TCP的连接，是一条逻辑连接，共同状态仅保留在两个通信端系统的TCP程序中。中间的网络元素不会维持TCP连接状态，它们看到的只是数据报，而不是连接。</p>
+</blockquote>
+<p>同时TCP还是<strong>全双工、点对点</strong>服务。</p>
+</li>
+<li>
+<p>TCP 可从发送缓存中取出并放入报文段中的数据数量受限于<strong>最大报文段长度（Maximum Segment Size， MSS）</strong>。而MSS通常根据最初确定的由本地发送主机发送的<strong>最大链路层帧长度</strong>（即<strong>最大传输单元Maximum Transmission Unit, MTU</strong>）来设置。设置该MSS要保证<strong>一个TCP报文段加上TCP/IP首部长度</strong>将适合单个链路层帧。</p>
+</li>
+</ul>
+<h4 id="a-TCP报文段结构">a. TCP<strong>报文段结构</strong></h4>
+<p><img src="/2021/05/cnatda-1/image-20210514212456035.png" alt="image-20210514212456035"></p>
+<ul>
+<li>
+<p><strong>源端口号</strong>和<strong>目标端口号</strong>：用于多路复用/分解来自或送到上层应用的数据。</p>
+</li>
+<li>
+<p>32bit的<strong>序号</strong>字段和32bit的<strong>确认号</strong>字段。</p>
+</li>
+<li>
+<p>16bit的<strong>接收窗口</strong>字段：用于流量控制，表示接收方愿意接受的字节数量。</p>
+</li>
+<li>
+<p>4bit的<strong>首部长度</strong>字段：表示以32bit为单位的TCP首部长度。由于TCP选项字段的原因，TCP首部的长度是可变的。（通常情况下，选项字段为空，因此TCP首部的典型长度为20字节）。</p>
+</li>
+<li>
+<p>可选与变长的<strong>选项字段</strong>。</p>
+</li>
+<li>
+<p>6bit的<strong>标志</strong>字段</p>
+<ul>
+<li>ACK: 指示确认字段中的值是有效的。</li>
+<li>RST、SYN、FIN：用于连接与拆除。</li>
+<li>CWR、ECE：明确拥塞通告中使用。</li>
+<li>PSH：表示接收方应该<strong>立即将数据交给上层</strong>。</li>
+<li>URG：表示报文段里存在着被发送端的上层实体置为<strong>紧急</strong>的数据。紧急数据的最后一个字节由16bit的紧急数据指针字段指出。当紧急数据存在并给出指向紧急数据尾指针的时候，TCP必须通知接收端的上层实体。</li>
+</ul>
+<blockquote>
+<p>在实践中，PSH、URG和紧急数据指针并没有使用。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="b-序号和确认号">b. 序号和确认号</h4>
+<ul>
+<li>
+<p>序号：TCP把数据看成一个<strong>无结构有序</strong>的字节流。序号建立在<strong>传送的字节流</strong>之上，而<strong>不是</strong>建立在传送的报文段的序列之上。因此<strong>一个报文段的序号是该报文段首字节的字节流编号</strong>。</p>
+<p><img src="/2021/05/cnatda-1/image-20210514213733944.png" alt="image-20210514213733944"></p>
+</li>
+<li>
+<p>确认号：TCP是全双工的，因此主机A在向主机B发送数据的同时，也可能会受到来自主机B的数据。从主机B到达的每个报文段中都有一个序号用于从B流向A的数据。<strong>主机A填写进报文段的确认号是主机A期望从主机B受到的下一字节的序号。</strong></p>
+<p>因为TCP只确认该流中至第一个丢失字节为止的字节，因此TCP被称为提供<strong>累计确认</strong>。若TCP收到乱序的报文段时，实践中最常用的做法是<strong>接收方保留失序的字节</strong>，并等待缺少的字节以填补该间隔。</p>
+</li>
+<li>
+<p>一个简单例子如下所示：</p>
+<p><img src="/2021/05/cnatda-1/image-20210514215113475.png" alt="image-20210514215113475"></p>
+</li>
+</ul>
+<h4 id="c-往返时间的估计与超时">c. 往返时间的估计与超时</h4>
+<ul>
+<li>
+<p>TCP使用超时/重传机制来处理报文段的丢失问题。<strong>超时时间间隔长度</strong>必须大于该连接的<strong>往返时间(RTT)</strong>，即从一个报文段发出到它被确认的时间，否则会造成不必要的重传。</p>
+</li>
+<li>
+<p>估计往返时间</p>
+<ul>
+<li>
+<p>报文段的<strong>样本RTT</strong>（这里表示为SampleRTT）就是从某报文被发出到对该报文段的确认被收到之间的时间量。大多数TCP的实现仅在某个时刻做一次SampleRTT测量，而不会为每次发送的报文段测量一个SampleRTT。</p>
+</li>
+<li>
+<p>TCP维持一个 SampleRTT 均值（称为 EstimatedRTT），一旦获得一个新 SampleRTT 时，TCP就会根据下列公式来更新 EstimatedRTT：</p>
+<p>$EstimatedRTT = (1 - \alpha) * EstimatedRTT + \alpha* SampleRTT$</p>
+<blockquote>
+<p>RFC 6298 中给出的 alpha 推荐值为 0.125。</p>
+</blockquote>
+</li>
+<li>
+<p>除了估算 RTT外，测量RTT的变化也是有价值的。RFC6298定义了RTT偏差 DevRTT，用于估算SampleRTT 一般会偏离 EstimatedRTT 的程度：</p>
+<p>$DevRTT = (1 - \beta) * DevRTT + \beta * |SampleRTT - EstimatedRTT|$</p>
+</li>
+</ul>
+</li>
+<li>
+<p>设置和管理重传超时间隔</p>
+<p>在TCP的确定重传超时间隔的方法中，EstimatedRTT 和 DevRTT 考虑到了显示的情况，因此最终的间隔为：$TimeoutInterval = EstimatedRTT + 4 * DevRTT$</p>
+<blockquote>
+<p>推荐初始的TimeoutInterval的值为1s。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="d-可靠数据传输">d. 可靠数据传输</h4>
+<ul>
+<li>
+<p><strong>实现机制</strong>：该部分中具体实现机制的大部分细节与上文中的<strong>可靠数据传输协议</strong>相同。</p>
+</li>
+<li>
+<p><strong>超时间隔加倍</strong>：每次TCP重传时都会将下一次的超时间隔设为先前值的两倍，而不是由EstimatedRTT和DevRTT推断出的值。</p>
+</li>
+<li>
+<p><strong>快速重传</strong>：</p>
+<ul>
+<li><strong>冗余ACK的生成过程</strong>：当TCP接收方检测到了数据流中的间隔时（该间隔可能是报文段丢失或重新排序造成），它只会对已经接收到的最后一个按序字节数据进行重复确认（即产生一个冗余ACK）。</li>
+<li><strong>验证丢包原因</strong>：由于发送方经常发送大量的报文段，如果一个报文段丢失则很有可能引发大量冗余ACK。如果TCP发送方接收到对相同数据的<strong>3个</strong>冗余ACK，则说明跟在这个已被确认过3次的报文段之后的报文段已经丢失。此时执行<strong>快速重传</strong>，在报文段定时器过期<strong>之前</strong>重传丢失的报文段。</li>
+</ul>
+</li>
+<li>
+<p>TCP差错恢复机制</p>
+<ul>
+<li>
+<p>TCP确认是累计式的，正确接收但失序的报文段是<strong>不会</strong>被接收方<strong>逐个确认</strong>。</p>
+<blockquote>
+<p>注意：不会被逐个确认<strong>不代表</strong>会被丢弃。</p>
+</blockquote>
+</li>
+<li>
+<p>TCP发送方仅需维持<strong>已发送过但未被确认的字节的最小序号</strong>和<strong>下一个要发送的字节的序号</strong>。</p>
+</li>
+<li>
+<p>许多TCP实现会将正确接收但失序的报文段<strong>缓存</strong>起来。</p>
+</li>
+<li>
+<p>对TCP提出的修改意见是<strong>选择确认</strong>。它允许TCP接收方有选择地确认失序报文段，而不是累计地确认最后一个正确接收的有序报文段。</p>
+</li>
+</ul>
+<blockquote>
+<p>TCP的差错恢复机制是 GBN协议和SR协议的混合体。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="e-流量控制">e. 流量控制</h4>
+<ul>
+<li>
+<p>TCP为应用程序提供<strong>流量控制</strong>服务以消除发送方使接收方缓存溢出的可能性。</p>
+</li>
+<li>
+<p>TCP发送方也可能因为IP网络的拥塞而被设置，这种形式的发送方的控制被称为<strong>拥塞控制</strong>。</p>
+<blockquote>
+<p>注意：拥塞控制和流量控制不同，需要区分开来。</p>
+</blockquote>
+</li>
+<li>
+<p>TCP通过让<strong>发送方</strong>维护一个称为<strong>接收窗口</strong>的变量来提供流量控制。接受窗口用于告诉<strong>发送方</strong>，<strong>当前接收方</strong>还有多少可用的缓存空间。TCP是全双工通信，在连接两端的发送方都各自维护一个接收窗口。</p>
+<p><img src="/2021/05/cnatda-1/image-20210515000223929.png" alt="image-20210515000223929"></p>
+<p>假设主机A通过一条TCP连接向主机B发送一个大文件。则主机B通过把当前的 <strong>接收窗口rwnd</strong> 值放入它发给主机A的报文段<strong>接收窗口字段</strong>中，通知主机A在该连接的缓存中还有多少可用空间。</p>
+</li>
+<li>
+<p>还有一个问题：假设主机B的接收缓存已满，使得 rwnd = 0，并且主机B没有任何数据要发给主机A（这种假设是为了确保主机AB之间<strong>没有任何的分组通信</strong>）。则因为主机B上的应用进程清空缓存时，TCP不会向主机A发送带有 rwnd 新值的新报文段，这样就会使得<strong>主机A无法知道主机B的接收缓存已经有新的空间了</strong>。因此<strong>主机A将会被阻塞，而无法再发送数据</strong>。</p>
+<p>对于这个问题，TCP规范中要求：**当主机B的接收窗口为0时，主机A继续发送只有一个字节数据的报文段，这些报文段将会被接收方确认。**等到最终主机B的缓存清空，返回的确认报文中将包含一个非零的 rwnd 值。</p>
+</li>
+</ul>
+<h4 id="f-TCP-连接管理">f. TCP 连接管理</h4>
+<ul>
+<li>
+<p>TCP连接流程</p>
+<ul>
+<li>
+<p>客户端TCP首先向服务器端的TCP发送一个特殊TCP报文段。该报文段中不包含应用层数据，而是在报文段首部设置 <strong>SYN 比特为1</strong>. 该特殊报文段被称为 <strong>SYN 报文段</strong>。</p>
+<p>同时，客户端会<strong>随机选择</strong>一个<strong>初始序号 client_isn</strong>，并将此编号放置进该起始的TCP SYN 报文段的<strong>序号字段</strong>中。</p>
+<blockquote>
+<p>注意：适当的随机选择 client_isn 在避免某些安全性攻击方面起到了一定的作用。</p>
+</blockquote>
+</li>
+<li>
+<p>当 TCP SYN 报文段到达服务器主机，则服务器会为该TCP连接<strong>分配 TCP 缓存和变量</strong>，并向该客户TCP发送允许连接的报文段。</p>
+<blockquote>
+<p>注意：提前分配缓存和变量可能受到 SYN 攻击。</p>
+</blockquote>
+<p>该报文段也不包含应用层数据，而是设置</p>
+<ul>
+<li><strong>SYN 比特为1</strong></li>
+<li>TCP报文首部的<strong>确认号</strong>为 client_isn + 1</li>
+<li>TCP报文首部的<strong>序号字段</strong>为 服务器的初始序号 server_isn 。</li>
+</ul>
+<p>该允许连接的报文段被称为 <strong>SYNACK报文段</strong>。</p>
+</li>
+<li>
+<p>当客户端收到 SYNACK 报文段时，客户端也为该连接分配缓存和变量。之后客户端向服务器发送最后一个报文段，<strong>对服务器的允许连接报文进行确认</strong>（客户端将值server_isn + 1防止进TCP报文段首部的确认字段）。由于连接已经建立，因此<strong>SYN比特置0</strong>。</p>
+<p>在这个确认报文中，<strong>可以带上客户端到服务器的数据</strong>。</p>
+</li>
+</ul>
+<p>为了创建连接，TCP会在两台主机之间发送3个分组，因此这个连接过程通常称为<strong>三次握手</strong>。</p>
+<p><img src="/2021/05/cnatda-1/image-20210515092421032.png" alt="image-20210515092421032"></p>
+</li>
+<li>
+<p>TCP连接拆除</p>
+<p>参与一条TCP连接的两个进程中的任何一个都能终止该连接。</p>
+<p><img src="/2021/05/cnatda-1/image-20210515092825158.png" alt="image-20210515092825158"></p>
+</li>
+</ul>
+<h4 id="g-拥塞控制原理">g. 拥塞控制原理</h4>
+<ul>
+<li>
+<p>拥塞原因与代价</p>
+<ul>
+<li>
+<p>假设主机A、B在容量为R的共享式输出链路上传播。当发送速率接近 R/2 时，平均使用时延将会越来越大。当发送速率超过 R/2 时，路由器中的平均排队分组数就会无限增长，源与目的地之间的平均时延也会变成无穷大。</p>
+</li>
+<li>
+<p>发送方必须执行重传以补偿因为缓存溢出而丢弃的分组。</p>
+</li>
+<li>
+<p>发送方在遇到大的时延时所进行的<strong>不必要重传</strong>会引起路由器利用其链路带宽来<strong>转发不必要的分组副本</strong>。</p>
+</li>
+<li>
+<p>当一个分组沿着一条路径被丢弃时，每个上游路由器用于<strong>转发该分组到丢弃该分组</strong>而使用的传输容量最终被浪费掉了。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>拥塞控制方法</p>
+<ul>
+<li>端到端拥塞控制：由于网络层<strong>没有</strong>为运输层提供<strong>显式支持</strong>，因此即便网络中存在拥塞，端系统也必须通过对网络行为的观察来推断。例如通过超时或冗余ACK确认。</li>
+<li>网络辅助的拥塞控制：在网络辅助的拥塞控制中，路由器向发送方提供关于网络中拥塞状态的显式反馈信息。这类拥塞信息从网络反馈到发送方通常有两种方式：
+<ul>
+<li>直接反馈信息：由网络路由器发给发送方。这种方式通常采用一种阻塞分组的形式。</li>
+<li>更通用的第二种形式：路由器标记或更新从发送方流向接收方的分组中的某个字段来表示拥塞的产生。当收到一个标记的分组后，接收方就会向发送方通知该网络拥塞指示。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h4 id="h-TCP-拥塞控制">h. TCP 拥塞控制</h4>
+<ul>
+<li>
+<p>TCP采用的方式是让每一个发送方<strong>根据所感知到的网络拥塞程度</strong>来限制其能向连接发送流量的速率。</p>
+<p>运行在发送方的 TCP 拥塞控制机制跟踪一个额外的变量：<strong>拥塞窗口cwnd</strong>。它限制了一个TCP发送方能向网络中发送流量的速率。即 $LastByteSend - LastByteAcked &lt;= min{cwnd, rwnd}$。发送速率为$min{cwnd, wrnd} / RTT$ 字节/秒。</p>
+</li>
+<li>
+<p>TCP发送方怎样确定它应当发送的速率?</p>
+<ul>
+<li>一个丢失的报文段表意味着拥塞。因此当丢失报文段时应当降低TCP发送方的速率。</li>
+<li>一个确认报文段表示该网络正在向接收方交付发送方的报文段，因此当对先前为确认报文段的确认到达时，能够增加发送方的速率。</li>
+<li>带宽探测。</li>
+</ul>
+</li>
+<li>
+<p>TCP拥塞控制算法</p>
+<ul>
+<li>
+<p><strong>慢启动</strong></p>
+<ul>
+<li>
+<p>慢启动起始阶段</p>
+<p>在慢启动状态，cwnd的值以1个MSS开始并且每当传输的报文段首次被确认就增加1个MSS。这会使得每过一个RTT，发送速率就翻倍。</p>
+<p>TCP发送速率起始慢，但在慢启动阶段以指数增长。</p>
+</li>
+<li>
+<p>慢启动结束阶段</p>
+<p>如果存在一个由<strong>超时指示</strong>的丢包事件（注意，不包括冗余指示的丢包），TCP发送方将cwnd设置为1并重新开始慢启动过程。同时还将第二个状态变量的值**ssthresh（慢启动阈值）**设置为 cwnd/2。</p>
+<p>当cwnd的值等于 ssthresh 时，结束慢启动并且TCP转移到<strong>拥塞避免模式</strong>。此时TCP会更为谨慎的增加 cwnd。</p>
+<p>如果检测到3个冗余ACK，则TCP执行快速重传并进入<strong>快速恢复</strong>状态。</p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>拥塞避免</strong></p>
+<p>一旦进入拥塞避免状态，cwnd的值大约是上次遇到拥塞时的值的一半，此时采用一种较保守的方法：<strong>每个RTT</strong>只将cwnd的值增加一个MSS。</p>
+<blockquote>
+<p>注意区分开，慢启动初始时是<strong>每个报文段被确认</strong>则增加一个MSS。而这里是<strong>每个RTT</strong>增加一个MSS。</p>
+</blockquote>
+<p>对于冗余ACK指示的丢包事件来说，TCP将cwnd减半，并且当收到3个冗余ACK时，将ssthresh的值记录为cwnd的值的一半。</p>
+</li>
+<li>
+<p><strong>快速恢复</strong></p>
+<ul>
+<li>在快速恢复中，对于引进TCP进入快速恢复状态的缺失报文段，对收到的每个冗余ACK，cwnd的值增加一个MSS。最终当对丢失报文段的一个ACK到达时，TCP在降低cwnd后进入拥塞避免状态。</li>
+<li>如果出现超时事件，快速恢复在执行如同在慢启动和拥塞避免中相同的动作后，迁移到慢启动状态：当丢包事件出现时，cwnd的值被设置为1个MSS，并且ssthresh的值设置为 cwnd 值的一半。</li>
+</ul>
+</li>
+</ul>
+<p><img src="/2021/05/cnatda-1/image-20210515131916271.png" alt="image-20210515131916271"></p>
+</li>
+<li>
+<p>公平性</p>
+<p>TCP会在多条连接之间平等共享带宽，但UDP因为没有拥塞控制机制，因此UDP源有可能容易压制TCP流量。</p>
+</li>
+<li>
+<p>明确拥塞通告：网络辅助拥塞控制</p>
+<ul>
+<li>对于IP和TCP的扩展方案 RFC3168 允许网络明确向TCP发送方和接收方发出拥塞信号。这种形式的网络辅助拥塞控制称为<strong>明确拥塞通告（Explicit Congestion Notification, ECN）</strong>，涉及到TCP和IP协议。</li>
+<li>在网络层，<strong>IP数据报</strong>首部的服务类型字段中的<strong>两个比特</strong>被用于ECN。路由器所使用的一种ECN比特设置表示该路由器<strong>正在历经阻塞</strong>。该阻塞标志则由被标记的IP数据报所携带，送给<strong>目的主机</strong>，再由<strong>目的主机</strong>通知<strong>发送主机</strong>。</li>
+<li>RFC3168 推荐仅当拥塞持续不断存在时才设置 ECN比特。发送主机所使用的另一种ECN比特设置通知路由器发送方和接收方是ECN使能的，因此能够对ECN指示的网络拥塞中采取行动。</li>
+<li>除了TCP以外的其他运输层协议也可以利用网络层发送ECN信号。</li>
+</ul>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2021/05/cnatda-1/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/" rel="tag">计算机网络</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/05/epoll/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            Epoll 小叙
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2021/05/WebServer-1/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">WebServer v1.0 文档</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

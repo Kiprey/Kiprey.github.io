@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CodeQL,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    深入学习CodeQL by security_lab |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-secLab-CodeQL-learning"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  深入学习CodeQL by security_lab
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/12/secLab-CodeQL-learning/" class="article-date">
+  <time datetime="2020-12-24T07:24:31.000Z" itemprop="datePublished">2020-12-24</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">9 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p><a href="https://github.com/github/securitylab/tree/main/CodeQL_Queries/cpp" target="_blank" rel="noopener">github SecurityLab</a> 上有多个CodeQL的使用例子</p>
+<p>通过学习这些例子，我们可以加深对CodeQL的了解，以便于更好的使用它。</p>
+<a id="more"></a>
+<h2 id="二、ChakraCore-bad-overflow-check">二、ChakraCore-bad-overflow-check</h2>
+<h3 id="1-漏洞模式">1. 漏洞模式</h3>
+<ul>
+<li>
+<p>这个例子主要是学习如何查找出<strong>错误的</strong>整数相加溢出判断逻辑。</p>
+</li>
+<li>
+<p>以一个例子为例</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">checkOverflow</span><span class="params">(<span class="keyword">unsigned</span> short x, <span class="keyword">unsigned</span> short y)</span> </span>&#123;</span><br><span class="line">  <span class="comment">// BAD: comparison is always false due to type promotion</span></span><br><span class="line">  <span class="keyword">return</span> (x + y &lt; x);  </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这里相加后的结果由于会自动隐式转换至<code>int</code>类型，因此该加法操作的结果将始终<strong>不会溢出</strong>。这会使得程序<strong>无法正常判断是否存在溢出操作</strong>，而这就是漏洞所在。</p>
+</li>
+<li>
+<p>但在以下这个例子中</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">bool</span> <span class="title">checkOverflow</span><span class="params">(<span class="keyword">unsigned</span> short x, <span class="keyword">unsigned</span> short y)</span> </span>&#123;</span><br><span class="line">  <span class="keyword">return</span> ((<span class="keyword">unsigned</span> short)(x + y) &lt; x);  <span class="comment">// GOOD: explicit cast</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>由于相加后的结果会进行强制类型转换，因此该加法操作的结果<strong>可以产生溢出</strong>，溢出判断逻辑工作正常。</p>
+</li>
+</ul>
+<h3 id="2-QL的编写">2. QL的编写</h3>
+<ul>
+<li>
+<p>首先明确目的，我们要查找出<strong>错误的检测溢出的代码</strong>，即上述中的第一个例子。</p>
+</li>
+<li>
+<p>因此，我们先列一下这个模式的必要条件，即通过什么条件来查找出这个漏洞</p>
+<ul>
+<li>
+<p>需要获取符合<code>var1 + var2 &lt;compare&gt; var1</code>的语句</p>
+</li>
+<li>
+<p>比较操作符<code>RelationalOperation</code>左右两边各有一个<code>AddExpr</code>和<code>LocalScopeVariable</code> var1</p>
+</li>
+<li>
+<p>加法操作<code>AddExpr</code>内部所含有的一个<code>LocalScopeVariable</code> va1，与上面的var1是同一个。</p>
+</li>
+<li>
+<p>操作数 var1 的位数必须小于32位</p>
+</li>
+<li>
+<p>加法运算的结果不执行强制类型转换，或者强转后的大小大于32位</p>
+<blockquote>
+<p>这个条件会使得溢出检测算法无效，而这就是我们的目标所在。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+<li>
+<p>故最终的QL代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line"><span class="comment">/** Matches `var &lt; var + ???`. */</span></span><br><span class="line"><span class="function">predicate <span class="title">overflowCheck</span><span class="params">(LocalScopeVariable var, AddExpr add, RelationalOperation compare)</span></span>&#123;</span><br><span class="line">  <span class="comment">/* 当前的relationalOperation，其左右两边分别是一个变量以及一个加法语句 */</span></span><br><span class="line">  compare.getAnOperand() = var.getAnAccess() <span class="keyword">and</span></span><br><span class="line">  compare.getAnOperand() = add <span class="keyword">and</span></span><br><span class="line">  <span class="comment">/* 同时这个变量还是加法语句中的一个操作数 */</span></span><br><span class="line">  add.getAnOperand() = var.getAnAccess()</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from LocalScopeVariable var, AddExpr add</span><br><span class="line">where overflowCheck(var, add, _)    <span class="comment">/* 获取可能存在溢出的点 */</span></span><br><span class="line">  <span class="keyword">and</span> var.getType().getSize() &lt; <span class="number">4</span>   <span class="comment">/* 当前的操作数大小要小于4字节 */</span></span><br><span class="line">  <span class="keyword">and</span> <span class="keyword">not</span> add.getConversion+().getType().getSize() &lt; <span class="number">4</span> <span class="comment">/* 限制加法的位数 &gt;= 32 */</span></span><br><span class="line">select add, <span class="string">"Overflow check on variable of type "</span> + var.getUnderlyingType()</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注意where语句中使用的一个通配符<code>_</code>，该通配符用于表示<strong>任何数据集</strong>。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="三、Facebook-Fizz-CVE-2019-3560">三、Facebook_Fizz_CVE-2019-3560</h2>
+<h3 id="1-漏洞模式-2">1. 漏洞模式</h3>
+<ul>
+<li>
+<p>该漏洞是一个由<code>+=</code>符所引起的整型溢出漏洞 - <a href="https://github.com/facebookincubator/fizz/blob/eaa81af854bef509c3c1d7c83df0cd0b084a0fef/fizz/record/PlaintextRecordLayer.cpp#L42" target="_blank" rel="noopener">src</a></p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">folly::Optional&lt;TLSMessage&gt; <span class="title">PlaintextReadRecordLayer::read</span><span class="params">(</span></span></span><br><span class="line"><span class="function"><span class="params">    folly::IOBufQueue&amp; buf)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (<span class="literal">true</span>) &#123;</span><br><span class="line">        <span class="comment">// 获取当前buf所读取到的指针位置</span></span><br><span class="line">        folly::<span class="function">io::Cursor <span class="title">cursor</span><span class="params">(buf.front())</span></span>;</span><br><span class="line">        <span class="comment">// ...</span></span><br><span class="line">        <span class="keyword">if</span> (<span class="comment">/* ... */</span>) &#123;</span><br><span class="line">          <span class="keyword">if</span> (<span class="comment">/* ... */</span>) &#123;</span><br><span class="line">            <span class="comment">// ...</span></span><br><span class="line">            <span class="comment">// 从当前cursor指向的位置中，读取一个uint16_t</span></span><br><span class="line">            <span class="keyword">auto</span> length = cursor.readBE&lt;<span class="keyword">uint16_t</span>&gt;();</span><br><span class="line">            <span class="comment">// 检查是否接收到足够多的数据以继续解析</span></span><br><span class="line">            <span class="keyword">if</span> (buf.chainLength() &lt; (cursor - buf.front()) + length) &#123;</span><br><span class="line">              <span class="keyword">return</span> folly::none;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="comment">// !!! 将 length执行加法操作</span></span><br><span class="line">            length +=</span><br><span class="line">                <span class="keyword">sizeof</span>(ContentType) + <span class="keyword">sizeof</span>(ProtocolVersion) + <span class="keyword">sizeof</span>(<span class="keyword">uint16_t</span>);</span><br><span class="line">            <span class="comment">// 修改buf的指针，使得下一次获取cursor时的位置移至后面</span></span><br><span class="line">            <span class="comment">// 详细函数见最下方</span></span><br><span class="line">            buf.trimStart(length);</span><br><span class="line">            <span class="keyword">continue</span>;</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="comment">// ...</span></span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// ...</span></span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">IOBuf::trimStart</span><span class="params">(<span class="built_in">std</span>::<span class="keyword">size_t</span> amount)</span> </span>&#123;</span><br><span class="line">    DCHECK_LE(amount, length_);</span><br><span class="line">    data_ += amount;</span><br><span class="line">    length_ -= amount;</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>这段代码中将会从传入的网络数据包中读取一个<code>uint16_t</code>，并将其传给<code>length</code>。<strong>即<code>length</code>是攻击者可控的</strong>。同时，代码中的<code>if</code>语句只是用于检测是否接收到足够多的数据，并<strong>不会检测可能存在的溢出操作</strong>。</p>
+</li>
+<li>
+<p>因此，倘若<code>length</code>在执行<code>+=</code>操作时溢出至0，那么在执行<code>buf.trimStart</code>函数时，<code>buf</code>中指向当前正在处理数据的<strong>指针将不会被修改</strong>。也就是说，在循环的下一次执行中，cursor会被<strong>设置为与当前循环相同的cursor</strong>，然后读取<strong>与当前循环相同的length</strong>，之后length<strong>继续溢出至0</strong>，buf的指针<strong>仍然没有被修改</strong>。如此循环往复，程序将陷入循环中<strong>无法跳出</strong>，这样便造成了拒绝服务攻击（DoS）。</p>
+</li>
+</ul>
+<h3 id="2-QL的编写-2">2. QL的编写</h3>
+<ul>
+<li>
+<p>先列出这个漏洞的必要条件</p>
+<ul>
+<li>不受信任的输入</li>
+<li>向下的类型转换</li>
+</ul>
+</li>
+<li>
+<p>首先，我们需要确定一个不受信任的输入。在Fizz中，数据通常按照<strong>网络字节顺序</strong>来通过套接字发送，因此网络字节顺序通常需要转换为<strong>主机字节顺序</strong>，这就意味着<code>ntohs</code>和<code>ntohl</code>通常是<strong>不受信任输入的来源之一</strong>。但是，Fizz使用<code>Endian</code>类来处理字节顺序转换。因此在查询时就必须设置数据流源头为<code>Endian</code>类变量。</p>
+<p>以下是一个用于查找所有<code>Endian::big</code>函数声明的QL代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.ir.IR</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The endianness conversion function `Endian::big()`.</span></span><br><span class="line"><span class="comment"> * It is Folly's replacement for `ntohs` and `ntohl`.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">EndianConvert</span> <span class="title">extends</span> <span class="title">Function</span> &#123;</span></span><br><span class="line">    EndianConvert() &#123;</span><br><span class="line">      <span class="keyword">this</span>.getName() = <span class="string">"big"</span> <span class="keyword">and</span></span><br><span class="line">      <span class="keyword">this</span>.getDeclaringType().getName().matches(<span class="string">"Endian"</span>)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from EndianConvert ec</span><br><span class="line">select ec</span><br></pre></td></tr></table></figure>
+<p>因此我们可以查找出调用<code>Endian::big</code>函数的<code>FunctionCall</code>，不受信任的数据将从这个<code>FunctionCall</code>中流出。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Holds if `i` is an endianness conversion.</span></span><br><span class="line"><span class="comment"> * (A telltale sign of network data.)</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="function">predicate <span class="title">isNetworkData</span><span class="params">(Instruction i)</span> </span>&#123;</span><br><span class="line">    i.(CallInstruction).getCallTarget().(FunctionInstruction).getFunctionSymbol() </span><br><span class="line">        instanceof EndianConvert</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>之后，我们查找从较大类型到较小类型的所有转换，这些类型转换<strong>可能会产生溢出</strong>，而我们的目标就是为了让<strong>不受信任的数据流动至此处</strong>。</p>
+<blockquote>
+<p><code>ConvertInstruction</code>类型来自于<code>semmle.code.cpp.ir.IR</code>，这个类型将会查找所有的类型转换。</p>
+<p>这里的类型转换<strong>不局限于</strong>强制类型转换和隐式类型转换，还包括<code>if</code>条件框中的<code>int</code>转<code>bool</code>类型等等。</p>
+<p>所包含的数据量及其之多，因此需要进行二次过滤。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.ir.IR</span><br><span class="line"></span><br><span class="line">from </span><br><span class="line">    ConvertInstruction conv, </span><br><span class="line">    Type inputType, </span><br><span class="line">    Type outputType</span><br><span class="line">where </span><br><span class="line">    <span class="comment">/* 转换后的类型位数必须小于原始类型 */</span></span><br><span class="line">    conv.getResultSize() &lt; conv.getUnary().getResultSize() <span class="keyword">and</span></span><br><span class="line">    <span class="comment">/* 获取初始类型 */</span></span><br><span class="line">    inputType = conv.getUnary().getResultType() <span class="keyword">and</span> </span><br><span class="line">    <span class="comment">/* 获取转换后类型 */</span></span><br><span class="line">    outputType = conv.getResultType()</span><br><span class="line">select</span><br><span class="line">    conv, </span><br><span class="line">    <span class="string">"Narrowing conversion from "</span> + inputType + <span class="string">" to "</span> + outputType + <span class="string">"."</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>接下来，我们便可以编写全局污点追踪查询</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">Cfg</span> <span class="title">extends</span> <span class="title">TaintTracking</span>:</span>:Configuration &#123;</span><br><span class="line">    Cfg() &#123; <span class="keyword">this</span> = <span class="string">"FizzOverflowIR"</span> &#125;</span><br><span class="line">    <span class="comment">/**</span></span><br><span class="line"><span class="comment">     * Holds if `source` is network data.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSource(DataFlow::Node source) &#123; </span><br><span class="line">        isNetworkData(source.asInstruction()) </span><br><span class="line">    &#125;</span><br><span class="line">  </span><br><span class="line">    <span class="comment">/** Holds if `sink` is a narrowing conversion. */</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSink(DataFlow::Node sink) &#123; </span><br><span class="line">        isNarrowingConversion(sink.asInstruction()) </span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>将上面的代码组装起来，便是以下的完整代码</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * @name Fizz Overflow</span></span><br><span class="line"><span class="comment"> * @description Narrowing conversions on untrusted data could enable</span></span><br><span class="line"><span class="comment"> *              an attacker to trigger an integer overflow.</span></span><br><span class="line"><span class="comment"> * @kind path-problem</span></span><br><span class="line"><span class="comment"> * @problem.severity warning</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.ir.dataflow.TaintTracking</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.ir.IR</span><br><span class="line"><span class="keyword">import</span> DataFlow::PathGraph</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * The endianness conversion function `Endian::big()`.</span></span><br><span class="line"><span class="comment"> * It is Folly's replacement for `ntohs` and `ntohl`.</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line"><span class="class"><span class="keyword">class</span> <span class="title">EndianConvert</span> <span class="title">extends</span> <span class="title">Function</span> &#123;</span></span><br><span class="line">    EndianConvert() &#123;</span><br><span class="line">      <span class="keyword">this</span>.getName() = <span class="string">"big"</span> <span class="keyword">and</span></span><br><span class="line">      <span class="keyword">this</span>.getDeclaringType().getName().matches(<span class="string">"Endian"</span>)</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/** Holds if `i` is a narrowing conversion. */</span></span><br><span class="line">predicate isNarrowingConversion(ConvertInstruction i) &#123;</span><br><span class="line">    i.getResultSize() &lt; i.getUnary().getResultSize()</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">/**</span></span><br><span class="line"><span class="comment"> * Holds if `i` is an endianness conversion.</span></span><br><span class="line"><span class="comment"> * (A telltale sign of network data.)</span></span><br><span class="line"><span class="comment"> */</span></span><br><span class="line">predicate isNetworkData(Instruction i) &#123;</span><br><span class="line">    i.(CallInstruction).getCallTarget().(FunctionInstruction).getFunctionSymbol() </span><br><span class="line">        instanceof EndianConvert</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">class Cfg extends TaintTracking::Configuration &#123;</span><br><span class="line">    Cfg() &#123; <span class="keyword">this</span> = <span class="string">"FizzOverflowIR"</span> &#125;</span><br><span class="line">  </span><br><span class="line">    <span class="comment">/**</span></span><br><span class="line"><span class="comment">     * Holds if `source` is network data.</span></span><br><span class="line"><span class="comment">     */</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSource(DataFlow::Node source) &#123; </span><br><span class="line">        isNetworkData(source.asInstruction()) </span><br><span class="line">    &#125;</span><br><span class="line">  </span><br><span class="line">    <span class="comment">/** Holds if `sink` is a narrowing conversion. */</span></span><br><span class="line">    <span class="keyword">override</span> predicate isSink(DataFlow::Node sink) &#123; </span><br><span class="line">        isNarrowingConversion(sink.asInstruction()) </span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">from</span><br><span class="line">  Cfg cfg, DataFlow::PathNode source, DataFlow::PathNode sink, ConvertInstruction conv,</span><br><span class="line">  Type inputType, Type outputType</span><br><span class="line">where</span><br><span class="line">  cfg.hasFlowPath(source, sink) <span class="keyword">and</span></span><br><span class="line">  conv = sink.getNode().asInstruction() <span class="keyword">and</span></span><br><span class="line">  inputType = conv.getUnary().getResultType() <span class="keyword">and</span></span><br><span class="line">  outputType = conv.getResultType()</span><br><span class="line">select sink, source, sink,</span><br><span class="line">  <span class="string">"Conversion of untrusted data from "</span> + inputType + <span class="string">" to "</span> + outputType + <span class="string">"."</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h2 id="四、libssh2-eating-error-codes">四、libssh2_eating_error_codes</h2>
+<h3 id="1-漏洞模式-3">1. 漏洞模式</h3>
+<ul>
+<li>
+<p>这种漏洞模式主要是由类似于以下的代码组成</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> _libssh2_get_c_string(...)&#123; <span class="comment">/* ... */</span>&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">unsigned</span> <span class="keyword">int</span> p_len;</span><br><span class="line"><span class="keyword">if</span>((p_len = _libssh2_get_c_string(&amp;buf, &amp;p)) &lt; <span class="number">0</span>)</span><br><span class="line">    <span class="comment">//...</span></span><br></pre></td></tr></table></figure>
+<p>其中，<code>_libssh2_get_c_string</code>函数返回的是一个<strong>带符号的整型</strong>，但接收返回值的变量是<strong>无符号</strong>的。因此该漏洞将会使函数内部<strong>产生的error code（-1）被忽略</strong>。</p>
+</li>
+</ul>
+<h3 id="2-QL的编写-3">2. QL的编写</h3>
+<ul>
+<li>
+<p>首先，我们不使用污点分析技术来尝试查询到这些错误。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"></span><br><span class="line">from FunctionCall call, ReturnStmt ret</span><br><span class="line">where</span><br><span class="line">  <span class="comment">/* 返回语句的返回值限定在负数 */</span></span><br><span class="line">  ret.getExpr().getValue().toInt() &lt; <span class="number">0</span> <span class="keyword">and</span></span><br><span class="line">  <span class="comment">/* 查找一个函数调用，这个函数调用将会调用 那些可能会返回-1的函数 */</span></span><br><span class="line">  call.getTarget() = ret.getEnclosingFunction() <span class="keyword">and</span></span><br><span class="line">  <span class="comment">/* 限定函数调用的返回值被类型转换为无符号整数 */</span></span><br><span class="line">  call.getFullyConverted().getType().getUnderlyingType().(IntegralType).isUnsigned()</span><br><span class="line">select call, ret</span><br></pre></td></tr></table></figure>
+<p>可以查询出一部分错误点。</p>
+</li>
+<li>
+<p>但上面的查询代码并不能很好的找到下面这种类型的错误</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> r = f();</span><br><span class="line"><span class="keyword">unsigned</span> <span class="keyword">int</span> x = r;</span><br></pre></td></tr></table></figure>
+<p>因此我们要试着使用一下数据流分析技术，查询从<code>FunctionCall</code>流出的数据（即返回值）到最近一个无符号类型转换的路径。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> cpp</span><br><span class="line"><span class="keyword">import</span> semmle.code.cpp.dataflow.DataFlow</span><br><span class="line"></span><br><span class="line">from FunctionCall call, ReturnStmt ret, DataFlow::Node source, DataFlow::Node sink</span><br><span class="line">where</span><br><span class="line">  ret.getExpr().getValue().toInt() &lt; <span class="number">0</span> <span class="keyword">and</span></span><br><span class="line">  call.getTarget() = ret.getEnclosingFunction() <span class="keyword">and</span></span><br><span class="line">  <span class="comment">/* 数据流源头被设置为FunctionCall位置 */</span></span><br><span class="line">  source.asExpr() = call <span class="keyword">and</span> </span><br><span class="line">  <span class="comment">/* 数据流终点被设置为存在类型转换的位置 */</span></span><br><span class="line">  sink.asExpr().getFullyConverted().getType().getUnderlyingType().(IntegralType).isUnsigned() <span class="keyword">and</span></span><br><span class="line">  DataFlow::localFlow(source, sink)</span><br><span class="line">select source, sink</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/12/secLab-CodeQL-learning/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CodeQL/" rel="tag">CodeQL</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2021/01/v8-turboFan/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            浅析 V8-turboFan
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/12/CodeQL-Setup/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">CodeQL初入</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

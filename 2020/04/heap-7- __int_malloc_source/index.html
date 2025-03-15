@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+
+
+<html lang="zh-CN">
+
+
+<head>
+  <meta charset="utf-8" />
+   
+  <meta name="keywords" content="CTF, pwn, heap, 堆漏洞, 源码分析,漏洞挖掘, 调试, 代码, 计算机科学, Kiprey, Blog, 二进制，信息安全" />
+   
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>
+    heap - 7 - _int_malloc 源码及其部分分析 |  Kiprey&#39;s Blog
+  </title>
+  <meta name="generator" content="hexo-theme-ayer">
+  
+  <link rel="shortcut icon" href="/favicon.ico" />
+  
+  
+<link rel="stylesheet" href="/dist/main.css">
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/Shen-Yu/cdn/css/remixicon.min.css">
+  
+<link rel="stylesheet" href="/css/custom.css">
+
+  
+  <script src="https://cdn.jsdelivr.net/npm/pace-js@1.0.2/pace.min.js"></script>
+  
+  
+
+  
+<script>
+var _hmt = _hmt || [];
+(function() {
+	var hm = document.createElement("script");
+	hm.src = "https://hm.baidu.com/hm.js?acff2772e1f74a625e1e26c280afa6c2";
+	var s = document.getElementsByTagName("script")[0]; 
+	s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
+
+<link rel="alternate" href="/atom.xml" title="Kiprey's Blog" type="application/atom+xml">
+</head>
+
+</html>
+
+<body>
+  <div id="app">
+    
+      
+      <canvas width="1777" height="841"
+        style="position: fixed; left: 0px; top: 0px; z-index: 99999; pointer-events: none;"></canvas>
+      
+    <main class="content on">
+      <section class="outer">
+  <article
+  id="post-heap-7- __int_malloc_source"
+  class="article article-type-post"
+  itemscope
+  itemprop="blogPost"
+  data-scroll-reveal
+>
+  <div class="article-inner">
+    
+    <header class="article-header">
+       
+<h1 class="article-title sea-center" style="border-left:0" itemprop="name">
+  heap - 7 - _int_malloc 源码及其部分分析
+</h1>
+ 
+
+      
+    </header>
+     
+    <div class="article-meta">
+      <a href="/2020/04/heap-7-%20__int_malloc_source/" class="article-date">
+  <time datetime="2020-04-06T16:00:00.000Z" itemprop="datePublished">2020-04-07</time>
+</a>   
+<div class="word_count">
+    <span class="post-time">
+        <span class="post-meta-item-icon">
+            <i class="ri-quill-pen-line"></i>
+            <span class="post-meta-item-text"> 字数统计:</span>
+            <span class="post-count">2.9k</span>
+        </span>
+    </span>
+
+    <span class="post-time">
+        &nbsp; | &nbsp;
+        <span class="post-meta-item-icon">
+            <i class="ri-book-open-line"></i>
+            <span class="post-meta-item-text"> 阅读时长≈</span>
+            <span class="post-count">15 分钟</span>
+        </span>
+    </span>
+</div>
+ 
+    </div>
+      
+
+
+
+  
+    <div class="article-entry" itemprop="articleBody">
+       
+  <p><code>__int_malloc</code> —— 核心内存分配函数</p>
+<a id="more"></a>
+<blockquote>
+<p>所有的分析都以注释的形式添加进源代码中，方便阅读</p>
+</blockquote>
+<figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br><span class="line">80</span><br><span class="line">81</span><br><span class="line">82</span><br><span class="line">83</span><br><span class="line">84</span><br><span class="line">85</span><br><span class="line">86</span><br><span class="line">87</span><br><span class="line">88</span><br><span class="line">89</span><br><span class="line">90</span><br><span class="line">91</span><br><span class="line">92</span><br><span class="line">93</span><br><span class="line">94</span><br><span class="line">95</span><br><span class="line">96</span><br><span class="line">97</span><br><span class="line">98</span><br><span class="line">99</span><br><span class="line">100</span><br><span class="line">101</span><br><span class="line">102</span><br><span class="line">103</span><br><span class="line">104</span><br><span class="line">105</span><br><span class="line">106</span><br><span class="line">107</span><br><span class="line">108</span><br><span class="line">109</span><br><span class="line">110</span><br><span class="line">111</span><br><span class="line">112</span><br><span class="line">113</span><br><span class="line">114</span><br><span class="line">115</span><br><span class="line">116</span><br><span class="line">117</span><br><span class="line">118</span><br><span class="line">119</span><br><span class="line">120</span><br><span class="line">121</span><br><span class="line">122</span><br><span class="line">123</span><br><span class="line">124</span><br><span class="line">125</span><br><span class="line">126</span><br><span class="line">127</span><br><span class="line">128</span><br><span class="line">129</span><br><span class="line">130</span><br><span class="line">131</span><br><span class="line">132</span><br><span class="line">133</span><br><span class="line">134</span><br><span class="line">135</span><br><span class="line">136</span><br><span class="line">137</span><br><span class="line">138</span><br><span class="line">139</span><br><span class="line">140</span><br><span class="line">141</span><br><span class="line">142</span><br><span class="line">143</span><br><span class="line">144</span><br><span class="line">145</span><br><span class="line">146</span><br><span class="line">147</span><br><span class="line">148</span><br><span class="line">149</span><br><span class="line">150</span><br><span class="line">151</span><br><span class="line">152</span><br><span class="line">153</span><br><span class="line">154</span><br><span class="line">155</span><br><span class="line">156</span><br><span class="line">157</span><br><span class="line">158</span><br><span class="line">159</span><br><span class="line">160</span><br><span class="line">161</span><br><span class="line">162</span><br><span class="line">163</span><br><span class="line">164</span><br><span class="line">165</span><br><span class="line">166</span><br><span class="line">167</span><br><span class="line">168</span><br><span class="line">169</span><br><span class="line">170</span><br><span class="line">171</span><br><span class="line">172</span><br><span class="line">173</span><br><span class="line">174</span><br><span class="line">175</span><br><span class="line">176</span><br><span class="line">177</span><br><span class="line">178</span><br><span class="line">179</span><br><span class="line">180</span><br><span class="line">181</span><br><span class="line">182</span><br><span class="line">183</span><br><span class="line">184</span><br><span class="line">185</span><br><span class="line">186</span><br><span class="line">187</span><br><span class="line">188</span><br><span class="line">189</span><br><span class="line">190</span><br><span class="line">191</span><br><span class="line">192</span><br><span class="line">193</span><br><span class="line">194</span><br><span class="line">195</span><br><span class="line">196</span><br><span class="line">197</span><br><span class="line">198</span><br><span class="line">199</span><br><span class="line">200</span><br><span class="line">201</span><br><span class="line">202</span><br><span class="line">203</span><br><span class="line">204</span><br><span class="line">205</span><br><span class="line">206</span><br><span class="line">207</span><br><span class="line">208</span><br><span class="line">209</span><br><span class="line">210</span><br><span class="line">211</span><br><span class="line">212</span><br><span class="line">213</span><br><span class="line">214</span><br><span class="line">215</span><br><span class="line">216</span><br><span class="line">217</span><br><span class="line">218</span><br><span class="line">219</span><br><span class="line">220</span><br><span class="line">221</span><br><span class="line">222</span><br><span class="line">223</span><br><span class="line">224</span><br><span class="line">225</span><br><span class="line">226</span><br><span class="line">227</span><br><span class="line">228</span><br><span class="line">229</span><br><span class="line">230</span><br><span class="line">231</span><br><span class="line">232</span><br><span class="line">233</span><br><span class="line">234</span><br><span class="line">235</span><br><span class="line">236</span><br><span class="line">237</span><br><span class="line">238</span><br><span class="line">239</span><br><span class="line">240</span><br><span class="line">241</span><br><span class="line">242</span><br><span class="line">243</span><br><span class="line">244</span><br><span class="line">245</span><br><span class="line">246</span><br><span class="line">247</span><br><span class="line">248</span><br><span class="line">249</span><br><span class="line">250</span><br><span class="line">251</span><br><span class="line">252</span><br><span class="line">253</span><br><span class="line">254</span><br><span class="line">255</span><br><span class="line">256</span><br><span class="line">257</span><br><span class="line">258</span><br><span class="line">259</span><br><span class="line">260</span><br><span class="line">261</span><br><span class="line">262</span><br><span class="line">263</span><br><span class="line">264</span><br><span class="line">265</span><br><span class="line">266</span><br><span class="line">267</span><br><span class="line">268</span><br><span class="line">269</span><br><span class="line">270</span><br><span class="line">271</span><br><span class="line">272</span><br><span class="line">273</span><br><span class="line">274</span><br><span class="line">275</span><br><span class="line">276</span><br><span class="line">277</span><br><span class="line">278</span><br><span class="line">279</span><br><span class="line">280</span><br><span class="line">281</span><br><span class="line">282</span><br><span class="line">283</span><br><span class="line">284</span><br><span class="line">285</span><br><span class="line">286</span><br><span class="line">287</span><br><span class="line">288</span><br><span class="line">289</span><br><span class="line">290</span><br><span class="line">291</span><br><span class="line">292</span><br><span class="line">293</span><br><span class="line">294</span><br><span class="line">295</span><br><span class="line">296</span><br><span class="line">297</span><br><span class="line">298</span><br><span class="line">299</span><br><span class="line">300</span><br><span class="line">301</span><br><span class="line">302</span><br><span class="line">303</span><br><span class="line">304</span><br><span class="line">305</span><br><span class="line">306</span><br><span class="line">307</span><br><span class="line">308</span><br><span class="line">309</span><br><span class="line">310</span><br><span class="line">311</span><br><span class="line">312</span><br><span class="line">313</span><br><span class="line">314</span><br><span class="line">315</span><br><span class="line">316</span><br><span class="line">317</span><br><span class="line">318</span><br><span class="line">319</span><br><span class="line">320</span><br><span class="line">321</span><br><span class="line">322</span><br><span class="line">323</span><br><span class="line">324</span><br><span class="line">325</span><br><span class="line">326</span><br><span class="line">327</span><br><span class="line">328</span><br><span class="line">329</span><br><span class="line">330</span><br><span class="line">331</span><br><span class="line">332</span><br><span class="line">333</span><br><span class="line">334</span><br><span class="line">335</span><br><span class="line">336</span><br><span class="line">337</span><br><span class="line">338</span><br><span class="line">339</span><br><span class="line">340</span><br><span class="line">341</span><br><span class="line">342</span><br><span class="line">343</span><br><span class="line">344</span><br><span class="line">345</span><br><span class="line">346</span><br><span class="line">347</span><br><span class="line">348</span><br><span class="line">349</span><br><span class="line">350</span><br><span class="line">351</span><br><span class="line">352</span><br><span class="line">353</span><br><span class="line">354</span><br><span class="line">355</span><br><span class="line">356</span><br><span class="line">357</span><br><span class="line">358</span><br><span class="line">359</span><br><span class="line">360</span><br><span class="line">361</span><br><span class="line">362</span><br><span class="line">363</span><br><span class="line">364</span><br><span class="line">365</span><br><span class="line">366</span><br><span class="line">367</span><br><span class="line">368</span><br><span class="line">369</span><br><span class="line">370</span><br><span class="line">371</span><br><span class="line">372</span><br><span class="line">373</span><br><span class="line">374</span><br><span class="line">375</span><br><span class="line">376</span><br><span class="line">377</span><br><span class="line">378</span><br><span class="line">379</span><br><span class="line">380</span><br><span class="line">381</span><br><span class="line">382</span><br><span class="line">383</span><br><span class="line">384</span><br><span class="line">385</span><br><span class="line">386</span><br><span class="line">387</span><br><span class="line">388</span><br><span class="line">389</span><br><span class="line">390</span><br><span class="line">391</span><br><span class="line">392</span><br><span class="line">393</span><br><span class="line">394</span><br><span class="line">395</span><br><span class="line">396</span><br><span class="line">397</span><br><span class="line">398</span><br><span class="line">399</span><br><span class="line">400</span><br><span class="line">401</span><br><span class="line">402</span><br><span class="line">403</span><br><span class="line">404</span><br><span class="line">405</span><br><span class="line">406</span><br><span class="line">407</span><br><span class="line">408</span><br><span class="line">409</span><br><span class="line">410</span><br><span class="line">411</span><br><span class="line">412</span><br><span class="line">413</span><br><span class="line">414</span><br><span class="line">415</span><br><span class="line">416</span><br><span class="line">417</span><br><span class="line">418</span><br><span class="line">419</span><br><span class="line">420</span><br><span class="line">421</span><br><span class="line">422</span><br><span class="line">423</span><br><span class="line">424</span><br><span class="line">425</span><br><span class="line">426</span><br><span class="line">427</span><br><span class="line">428</span><br><span class="line">429</span><br><span class="line">430</span><br><span class="line">431</span><br><span class="line">432</span><br><span class="line">433</span><br><span class="line">434</span><br><span class="line">435</span><br><span class="line">436</span><br><span class="line">437</span><br><span class="line">438</span><br><span class="line">439</span><br><span class="line">440</span><br><span class="line">441</span><br><span class="line">442</span><br><span class="line">443</span><br><span class="line">444</span><br><span class="line">445</span><br><span class="line">446</span><br><span class="line">447</span><br><span class="line">448</span><br><span class="line">449</span><br><span class="line">450</span><br><span class="line">451</span><br><span class="line">452</span><br><span class="line">453</span><br><span class="line">454</span><br><span class="line">455</span><br><span class="line">456</span><br><span class="line">457</span><br><span class="line">458</span><br><span class="line">459</span><br><span class="line">460</span><br><span class="line">461</span><br><span class="line">462</span><br><span class="line">463</span><br><span class="line">464</span><br><span class="line">465</span><br><span class="line">466</span><br><span class="line">467</span><br><span class="line">468</span><br><span class="line">469</span><br><span class="line">470</span><br><span class="line">471</span><br><span class="line">472</span><br><span class="line">473</span><br><span class="line">474</span><br><span class="line">475</span><br><span class="line">476</span><br><span class="line">477</span><br><span class="line">478</span><br><span class="line">479</span><br><span class="line">480</span><br><span class="line">481</span><br><span class="line">482</span><br><span class="line">483</span><br><span class="line">484</span><br><span class="line">485</span><br><span class="line">486</span><br><span class="line">487</span><br><span class="line">488</span><br><span class="line">489</span><br><span class="line">490</span><br><span class="line">491</span><br><span class="line">492</span><br><span class="line">493</span><br><span class="line">494</span><br><span class="line">495</span><br><span class="line">496</span><br><span class="line">497</span><br><span class="line">498</span><br><span class="line">499</span><br><span class="line">500</span><br><span class="line">501</span><br><span class="line">502</span><br><span class="line">503</span><br><span class="line">504</span><br><span class="line">505</span><br><span class="line">506</span><br><span class="line">507</span><br><span class="line">508</span><br><span class="line">509</span><br><span class="line">510</span><br><span class="line">511</span><br><span class="line">512</span><br><span class="line">513</span><br><span class="line">514</span><br><span class="line">515</span><br><span class="line">516</span><br><span class="line">517</span><br><span class="line">518</span><br><span class="line">519</span><br><span class="line">520</span><br><span class="line">521</span><br><span class="line">522</span><br><span class="line">523</span><br><span class="line">524</span><br><span class="line">525</span><br><span class="line">526</span><br><span class="line">527</span><br><span class="line">528</span><br><span class="line">529</span><br><span class="line">530</span><br><span class="line">531</span><br><span class="line">532</span><br><span class="line">533</span><br><span class="line">534</span><br><span class="line">535</span><br><span class="line">536</span><br><span class="line">537</span><br><span class="line">538</span><br><span class="line">539</span><br><span class="line">540</span><br><span class="line">541</span><br><span class="line">542</span><br><span class="line">543</span><br><span class="line">544</span><br><span class="line">545</span><br><span class="line">546</span><br><span class="line">547</span><br><span class="line">548</span><br><span class="line">549</span><br><span class="line">550</span><br><span class="line">551</span><br><span class="line">552</span><br><span class="line">553</span><br><span class="line">554</span><br><span class="line">555</span><br><span class="line">556</span><br><span class="line">557</span><br><span class="line">558</span><br><span class="line">559</span><br><span class="line">560</span><br><span class="line">561</span><br><span class="line">562</span><br><span class="line">563</span><br><span class="line">564</span><br><span class="line">565</span><br><span class="line">566</span><br><span class="line">567</span><br><span class="line">568</span><br><span class="line">569</span><br><span class="line">570</span><br><span class="line">571</span><br><span class="line">572</span><br><span class="line">573</span><br><span class="line">574</span><br><span class="line">575</span><br><span class="line">576</span><br><span class="line">577</span><br><span class="line">578</span><br><span class="line">579</span><br><span class="line">580</span><br><span class="line">581</span><br><span class="line">582</span><br><span class="line">583</span><br><span class="line">584</span><br><span class="line">585</span><br><span class="line">586</span><br><span class="line">587</span><br><span class="line">588</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">void</span> *</span><br><span class="line">_int_malloc (mstate av, <span class="keyword">size_t</span> bytes)</span><br><span class="line">&#123;</span><br><span class="line">  INTERNAL_SIZE_T nb;               <span class="comment">/* normalized request size */</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> idx;                 <span class="comment">/* associated bin index */</span></span><br><span class="line">  mbinptr bin;                      <span class="comment">/* associated bin */</span></span><br><span class="line"></span><br><span class="line">  mchunkptr victim;                 <span class="comment">/* inspected/selected chunk */</span></span><br><span class="line">  INTERNAL_SIZE_T size;             <span class="comment">/* its size */</span></span><br><span class="line">  <span class="keyword">int</span> victim_index;                 <span class="comment">/* its bin index */</span></span><br><span class="line"></span><br><span class="line">  mchunkptr remainder;              <span class="comment">/* remainder from a split */</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">long</span> remainder_size;     <span class="comment">/* its size */</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> block;               <span class="comment">/* bit map traverser */</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> bit;                 <span class="comment">/* bit map traverser */</span></span><br><span class="line">  <span class="keyword">unsigned</span> <span class="keyword">int</span> <span class="built_in">map</span>;                 <span class="comment">/* current word of binmap */</span></span><br><span class="line"></span><br><span class="line">  mchunkptr fwd;                    <span class="comment">/* misc temp for linking */</span></span><br><span class="line">  mchunkptr bck;                    <span class="comment">/* misc temp for linking */</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">const</span> <span class="keyword">char</span> *errstr = <span class="literal">NULL</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">     Convert request size to internal form by adding SIZE_SZ bytes</span></span><br><span class="line"><span class="comment">     overhead plus possibly more to obtain necessary alignment and/or</span></span><br><span class="line"><span class="comment">     to obtain a size of at least MINSIZE, the smallest allocatable</span></span><br><span class="line"><span class="comment">     size. Also, checked_request2size traps (returning 0) request sizes</span></span><br><span class="line"><span class="comment">     that are so large that they wrap around zero when padded and</span></span><br><span class="line"><span class="comment">     aligned.</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 将用户申请的内存大小，在检测后，转换为申请的chunk大小</span></span><br><span class="line">  checked_request2size (bytes, nb);</span><br><span class="line"></span><br><span class="line">  <span class="comment">/* There are no usable arenas.  Fall back to sysmalloc to get a chunk from</span></span><br><span class="line"><span class="comment">     mmap.  */</span></span><br><span class="line">  </span><br><span class="line">  <span class="comment">// 如果arena是空的，那就直接调用sysmalloc分配一块内存给用户</span></span><br><span class="line">  <span class="keyword">if</span> (__glibc_unlikely (av == <span class="literal">NULL</span>))</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="keyword">void</span> *p = sysmalloc (nb, av);</span><br><span class="line">      <span class="keyword">if</span> (p != <span class="literal">NULL</span>)</span><br><span class="line">  alloc_perturb (p, bytes);</span><br><span class="line">      <span class="keyword">return</span> p;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">     If the size qualifies as a fastbin, first check corresponding bin.</span></span><br><span class="line"><span class="comment">     This code is safe to execute even if av is not yet initialized, so we</span></span><br><span class="line"><span class="comment">     can try it without checking, which saves some time on this fast path.</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 如果request chunk size满足fast chunk的大小</span></span><br><span class="line">  <span class="keyword">if</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb) &lt;= (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (get_max_fast ()))</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="comment">// 根据request chunk size,找出应当被分配的fast bin索引与地址</span></span><br><span class="line">    idx = fastbin_index (nb);</span><br><span class="line">    mfastbinptr *fb = &amp;fastbin (av, idx);</span><br><span class="line">    mchunkptr pp = *fb;</span><br><span class="line">    <span class="comment">// 遍历出第一个fast chunk</span></span><br><span class="line">    <span class="keyword">do</span></span><br><span class="line">    &#123;</span><br><span class="line">      victim = pp;</span><br><span class="line">      <span class="keyword">if</span> (victim == <span class="literal">NULL</span>)</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">while</span> ((pp = catomic_compare_and_exchange_val_acq (fb, victim-&gt;fd, victim))</span><br><span class="line">            != victim);</span><br><span class="line">    <span class="comment">// 如果遍历出的fast chunk 地址不是空的</span></span><br><span class="line">    <span class="keyword">if</span> (victim != <span class="number">0</span>)</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="comment">// 做一些常规fast chunk检查</span></span><br><span class="line">      <span class="keyword">if</span> (__builtin_expect (fastbin_index (chunksize (victim)) != idx, <span class="number">0</span>))</span><br><span class="line">      &#123;</span><br><span class="line">        errstr = <span class="string">"malloc(): memory corruption (fast)"</span>;</span><br><span class="line">      errout:</span><br><span class="line">        malloc_printerr (check_action, errstr, chunk2mem (victim), av);</span><br><span class="line">        <span class="keyword">return</span> <span class="literal">NULL</span>;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="comment">// 既然该fast chunk是可被分配的，那就做chunk检测</span></span><br><span class="line">      check_remalloced_chunk (av, victim, nb);</span><br><span class="line">      <span class="comment">// 将chunk地址转换为用户所使用的地址</span></span><br><span class="line">      <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">      <span class="comment">// 如果相关位已设置，那就初始化该内存</span></span><br><span class="line">      alloc_perturb (p, bytes);</span><br><span class="line">      <span class="keyword">return</span> p;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">     If a small request, check regular bin.  Since these "smallbins"</span></span><br><span class="line"><span class="comment">     hold one size each, no searching within bins is necessary.</span></span><br><span class="line"><span class="comment">     (For a large request, we need to wait until unsorted chunks are</span></span><br><span class="line"><span class="comment">     processed to find best fit. But for small ones, fits are exact</span></span><br><span class="line"><span class="comment">     anyway, so we can check now, which is faster.)</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 如果fast bin无法满足需求，并且所申请的chunk大小满足small chunk的范围</span></span><br><span class="line">  <span class="keyword">if</span> (in_smallbin_range (nb))</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="comment">// 取出相关索引与small bin地址</span></span><br><span class="line">    idx = smallbin_index (nb);</span><br><span class="line">    bin = bin_at (av, idx);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 取出small bin的链尾chunk的地址</span></span><br><span class="line">    <span class="keyword">if</span> ((victim = last (bin)) != bin)</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="comment">// 如果这是第一次执行该代码语句</span></span><br><span class="line">      <span class="keyword">if</span> (victim == <span class="number">0</span>) <span class="comment">/* initialization check */</span></span><br><span class="line">        malloc_consolidate (av);</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">      &#123;</span><br><span class="line">        <span class="comment">// 如果有满足条件的small chunk</span></span><br><span class="line">        <span class="comment">// 那就将其从small bin上断开</span></span><br><span class="line">        <span class="comment">// 并作相关chunk检查</span></span><br><span class="line">        <span class="comment">// 最后再做一些操作后返回用户使用的指针</span></span><br><span class="line">        bck = victim-&gt;bk;</span><br><span class="line">        <span class="keyword">if</span> (__glibc_unlikely (bck-&gt;fd != victim))</span><br><span class="line">        &#123;</span><br><span class="line">          errstr = <span class="string">"malloc(): smallbin double linked list corrupted"</span>;</span><br><span class="line">          <span class="keyword">goto</span> errout;</span><br><span class="line">        &#125;</span><br><span class="line">        set_inuse_bit_at_offset (victim, nb);</span><br><span class="line">        bin-&gt;bk = bck;</span><br><span class="line">        bck-&gt;fd = bin;</span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (av != &amp;main_arena)</span><br><span class="line">          victim-&gt;size |= NON_MAIN_ARENA;</span><br><span class="line">        check_malloced_chunk (av, victim, nb);</span><br><span class="line">        <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">     If this is a large request, consolidate fastbins before continuing.</span></span><br><span class="line"><span class="comment">     While it might look excessive to kill all fastbins before</span></span><br><span class="line"><span class="comment">     even seeing if there is space available, this avoids</span></span><br><span class="line"><span class="comment">     fragmentation problems normally associated with fastbins.</span></span><br><span class="line"><span class="comment">     Also, in practice, programs tend to have runs of either small or</span></span><br><span class="line"><span class="comment">     large requests, but less often mixtures, so consolidation is not</span></span><br><span class="line"><span class="comment">     invoked all that often in most programs. And the programs that</span></span><br><span class="line"><span class="comment">     it is called frequently in otherwise tend to fragment.</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">else</span></span><br><span class="line">  &#123;</span><br><span class="line">    <span class="comment">// 取出largebin的索引</span></span><br><span class="line">    idx = largebin_index (nb);</span><br><span class="line">    <span class="comment">// 如果有空闲的fast chunks，则执行malloc_consolidate</span></span><br><span class="line">    <span class="keyword">if</span> (have_fastchunks (av))</span><br><span class="line">      malloc_consolidate (av);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">/*</span></span><br><span class="line"><span class="comment">     Process recently freed or remaindered chunks, taking one only if</span></span><br><span class="line"><span class="comment">     it is exact fit, or, if this a small request, the chunk is remainder from</span></span><br><span class="line"><span class="comment">     the most recent non-exact fit.  Place other traversed chunks in</span></span><br><span class="line"><span class="comment">     bins.  Note that this step is the only place in any routine where</span></span><br><span class="line"><span class="comment">     chunks are placed in bins.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">     The outer loop here is needed because we might not realize until</span></span><br><span class="line"><span class="comment">     near the end of malloc that we should have consolidated, so must</span></span><br><span class="line"><span class="comment">     do so and retry. This happens at most once, and only when we would</span></span><br><span class="line"><span class="comment">     otherwise need to expand memory to service a "small" request.</span></span><br><span class="line"><span class="comment">   */</span></span><br><span class="line"></span><br><span class="line">  <span class="comment">// 进入 for 大循环</span></span><br><span class="line">  <span class="keyword">for</span> (;; )</span><br><span class="line">  &#123;</span><br><span class="line">    <span class="keyword">int</span> iters = <span class="number">0</span>;</span><br><span class="line">    <span class="comment">// 遍历所有unsorted chunk</span></span><br><span class="line">    <span class="keyword">while</span> ((victim = unsorted_chunks (av)-&gt;bk) != unsorted_chunks (av))</span><br><span class="line">    &#123;</span><br><span class="line">      bck = victim-&gt;bk;</span><br><span class="line">      <span class="comment">// 进行unsorted chunk 大小检测，异常小或异常大都会导致出错</span></span><br><span class="line">      <span class="keyword">if</span> (__builtin_expect (victim-&gt;size &lt;= <span class="number">2</span> * SIZE_SZ, <span class="number">0</span>)</span><br><span class="line">          || __builtin_expect (victim-&gt;size &gt; av-&gt;system_mem, <span class="number">0</span>))</span><br><span class="line">        malloc_printerr (check_action, <span class="string">"malloc(): memory corruption"</span>,</span><br><span class="line">                          chunk2mem (victim), av);</span><br><span class="line">      <span class="comment">// 获取当前遍历到的unsorted chunk的size</span></span><br><span class="line">      size = chunksize (victim);</span><br><span class="line"></span><br><span class="line">      <span class="comment">/*</span></span><br><span class="line"><span class="comment">          If a small request, try to use last remainder if it is the</span></span><br><span class="line"><span class="comment">          only chunk in unsorted bin.  This helps promote locality for</span></span><br><span class="line"><span class="comment">          runs of consecutive small requests. This is the only</span></span><br><span class="line"><span class="comment">          exception to best-fit, and applies only when there is</span></span><br><span class="line"><span class="comment">          no exact fit for a small chunk.</span></span><br><span class="line"><span class="comment">        */</span></span><br><span class="line"></span><br><span class="line">      <span class="comment">// 如果当前请求位于small chunks的大小范围内</span></span><br><span class="line">      <span class="comment">// 同时，unsorted bin里只有一个chunk，该chunk还是last_remainder</span></span><br><span class="line">      <span class="comment">// 并且该last_remainder的大小足够分配</span></span><br><span class="line">      <span class="keyword">if</span> (in_smallbin_range (nb) &amp;&amp;</span><br><span class="line">          bck == unsorted_chunks (av) &amp;&amp;</span><br><span class="line">          victim == av-&gt;last_remainder &amp;&amp;</span><br><span class="line">          (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (size) &gt; (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb + MINSIZE))</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="comment">/* split and reattach remainder */</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// 将该last_remainder 分割</span></span><br><span class="line">        remainder_size = size - nb;</span><br><span class="line">        remainder = chunk_at_offset (victim, nb);</span><br><span class="line">        <span class="comment">// 同时，将这部分last_remainder放回unsorted bin里</span></span><br><span class="line">        unsorted_chunks (av)-&gt;bk = unsorted_chunks (av)-&gt;fd = remainder;</span><br><span class="line">        <span class="comment">// 并把剩余部分置为新的last_remainder</span></span><br><span class="line">        av-&gt;last_remainder = remainder;</span><br><span class="line">        remainder-&gt;bk = remainder-&gt;fd = unsorted_chunks (av);</span><br><span class="line">        <span class="keyword">if</span> (!in_smallbin_range (remainder_size))</span><br><span class="line">        &#123;</span><br><span class="line">          remainder-&gt;fd_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">          remainder-&gt;bk_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">// 最后对切割出来的chunk进行一些常规操作并返回</span></span><br><span class="line">        set_head (victim, nb | PREV_INUSE |</span><br><span class="line">                  (av != &amp;main_arena ? NON_MAIN_ARENA : <span class="number">0</span>));</span><br><span class="line">        set_head (remainder, remainder_size | PREV_INUSE);</span><br><span class="line">        set_foot (remainder, remainder_size);</span><br><span class="line"></span><br><span class="line">        check_malloced_chunk (av, victim, nb);</span><br><span class="line">        <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* remove from unsorted list */</span></span><br><span class="line">      <span class="comment">// 将当前遍历到的unsorted chunk从unsorted bin里断开</span></span><br><span class="line">      unsorted_chunks (av)-&gt;bk = bck;</span><br><span class="line">      bck-&gt;fd = unsorted_chunks (av);</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* Take now instead of binning if exact fit */</span></span><br><span class="line"></span><br><span class="line">      <span class="comment">// 如果遍历到的这个unsorted chunk，它的大小与所申请的chunk大小刚刚好</span></span><br><span class="line">      <span class="comment">// 直接分配</span></span><br><span class="line">      <span class="keyword">if</span> (size == nb)</span><br><span class="line">      &#123;</span><br><span class="line">        set_inuse_bit_at_offset (victim, size);</span><br><span class="line">        <span class="keyword">if</span> (av != &amp;main_arena)</span><br><span class="line">          victim-&gt;size |= NON_MAIN_ARENA;</span><br><span class="line">        check_malloced_chunk (av, victim, nb);</span><br><span class="line">        <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* place chunk in bin */</span></span><br><span class="line"></span><br><span class="line">      <span class="comment">// 将所遍历到的unsorted chunk，按照chunk大小，分类放置进small bin或large bin中</span></span><br><span class="line">      <span class="keyword">if</span> (in_smallbin_range (size))</span><br><span class="line">      &#123;</span><br><span class="line">        victim_index = smallbin_index (size);</span><br><span class="line">        bck = bin_at (av, victim_index);</span><br><span class="line">        fwd = bck-&gt;fd;</span><br><span class="line">      &#125;</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">      &#123;</span><br><span class="line">        <span class="comment">// 将遍历到的unsorted chunk放置进large bin里</span></span><br><span class="line">        victim_index = largebin_index (size);</span><br><span class="line">        bck = bin_at (av, victim_index);</span><br><span class="line">        fwd = bck-&gt;fd;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* maintain large bins in sorted order */</span></span><br><span class="line">        <span class="comment">// 如果large bin非空</span></span><br><span class="line">        <span class="keyword">if</span> (fwd != bck)</span><br><span class="line">        &#123;</span><br><span class="line">          <span class="comment">/* Or with inuse bit to speed comparisons */</span></span><br><span class="line">          size |= PREV_INUSE;</span><br><span class="line">          <span class="comment">/* if smaller than smallest, bypass loop below */</span></span><br><span class="line">          assert ((bck-&gt;bk-&gt;size &amp; NON_MAIN_ARENA) == <span class="number">0</span>);</span><br><span class="line">          <span class="comment">// 如果遍历到的unsorted chunk的size，小于 large bin链上large chunks的最小size</span></span><br><span class="line">          <span class="keyword">if</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (size) &lt; (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (bck-&gt;bk-&gt;size))</span><br><span class="line">          &#123;</span><br><span class="line">            <span class="comment">//将当前遍历到的unsorted chunk接到当前large bin的链尾</span></span><br><span class="line">            fwd = bck;</span><br><span class="line">            bck = bck-&gt;bk;</span><br><span class="line"></span><br><span class="line">            victim-&gt;fd_nextsize = fwd-&gt;fd;</span><br><span class="line">            victim-&gt;bk_nextsize = fwd-&gt;fd-&gt;bk_nextsize;</span><br><span class="line">            fwd-&gt;fd-&gt;bk_nextsize = victim-&gt;bk_nextsize-&gt;fd_nextsize = victim;</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="keyword">else</span></span><br><span class="line">          &#123;</span><br><span class="line">            assert ((fwd-&gt;size &amp; NON_MAIN_ARENA) == <span class="number">0</span>);</span><br><span class="line">            <span class="comment">// 从large bin的链头到链尾，从size大的chunk到size小的chunk，依次遍历，直到找到第一个 大小不大于该unsorted chunk的 第一个chunk</span></span><br><span class="line">            <span class="keyword">while</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) size &lt; fwd-&gt;size)</span><br><span class="line">            &#123;</span><br><span class="line">              fwd = fwd-&gt;fd_nextsize;</span><br><span class="line">              assert ((fwd-&gt;size &amp; NON_MAIN_ARENA) == <span class="number">0</span>);</span><br><span class="line">            &#125;</span><br><span class="line"></span><br><span class="line">            <span class="comment">// 如果当前遍历到的large chunk的大小刚好等于即将插入的unsorted chunk的大小</span></span><br><span class="line">            <span class="comment">// 总是选择插入到这个large chunk的后面</span></span><br><span class="line">            <span class="keyword">if</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) size == (<span class="keyword">unsigned</span> <span class="keyword">long</span>) fwd-&gt;size)</span><br><span class="line">              <span class="comment">/* Always insert in the second position.  */</span></span><br><span class="line">              fwd = fwd-&gt;fd;</span><br><span class="line">            <span class="keyword">else</span></span><br><span class="line">            &#123;</span><br><span class="line">              victim-&gt;fd_nextsize = fwd;</span><br><span class="line">              victim-&gt;bk_nextsize = fwd-&gt;bk_nextsize;</span><br><span class="line">              fwd-&gt;bk_nextsize = victim;</span><br><span class="line">              victim-&gt;bk_nextsize-&gt;fd_nextsize = victim;</span><br><span class="line">            &#125;</span><br><span class="line">            bck = fwd-&gt;bk;</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">          victim-&gt;fd_nextsize = victim-&gt;bk_nextsize = victim;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      mark_bin (av, victim_index);</span><br><span class="line">      victim-&gt;bk = bck;</span><br><span class="line">      victim-&gt;fd = fwd;</span><br><span class="line">      fwd-&gt;bk = victim;</span><br><span class="line">      bck-&gt;fd = victim;</span><br><span class="line"></span><br><span class="line"><span class="meta">#<span class="meta-keyword">define</span> MAX_ITERS       10000</span></span><br><span class="line">      <span class="keyword">if</span> (++iters &gt;= MAX_ITERS)</span><br><span class="line">        <span class="keyword">break</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 在对unsorted chunks进行排列放置进对应bin之后</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">        If a large request, scan through the chunks of current bin in</span></span><br><span class="line"><span class="comment">        sorted order to find smallest that fits.  Use the skip list for this.</span></span><br><span class="line"><span class="comment">      */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">//判断所申请的chunks是否为large chunk</span></span><br><span class="line">    <span class="keyword">if</span> (!in_smallbin_range (nb))</span><br><span class="line">    &#123;</span><br><span class="line">      bin = bin_at (av, idx);</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* skip scan if empty or largest chunk is too small */</span></span><br><span class="line">      <span class="comment">// 如果当前large bin链不为空，以及该链上的large chunks大小足够</span></span><br><span class="line">      <span class="keyword">if</span> ((victim = first (bin)) != bin &amp;&amp;</span><br><span class="line">          (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (victim-&gt;size) &gt;= (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb))</span><br><span class="line">      &#123;</span><br><span class="line">        victim = victim-&gt;bk_nextsize;</span><br><span class="line">        <span class="keyword">while</span> (((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (size = chunksize (victim)) &lt;</span><br><span class="line">                (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb)))</span><br><span class="line">          victim = victim-&gt;bk_nextsize;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Avoid removing the first entry for a size so that the skip</span></span><br><span class="line"><span class="comment">            list does not have to be rerouted.  */</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果满足大小的chunks不止一个，则始终取走第二个，以减小指针操作</span></span><br><span class="line">        <span class="keyword">if</span> (victim != last (bin) &amp;&amp; victim-&gt;size == victim-&gt;fd-&gt;size)</span><br><span class="line">          victim = victim-&gt;fd;</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 计算出该large chunks分割后剩余的chunk大小</span></span><br><span class="line">        remainder_size = size - nb;</span><br><span class="line">        <span class="comment">// 该large chunks解链</span></span><br><span class="line">        unlink (av, victim, bck, fwd);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Exhaust */</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// 如果该large chunks分割后剩余的chunk大小小于最小chunk大小</span></span><br><span class="line"></span><br><span class="line">        <span class="keyword">if</span> (remainder_size &lt; MINSIZE)</span><br><span class="line">        &#123;</span><br><span class="line">          <span class="comment">// 剩余的这点空间，一起附赠给用户</span></span><br><span class="line">          set_inuse_bit_at_offset (victim, size);</span><br><span class="line">          <span class="keyword">if</span> (av != &amp;main_arena)</span><br><span class="line">            victim-&gt;size |= NON_MAIN_ARENA;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="comment">/* Split */</span></span><br><span class="line"></span><br><span class="line">        <span class="comment">// 否则，切割chunk</span></span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">        &#123;</span><br><span class="line">          <span class="comment">// 切割该large chunk</span></span><br><span class="line">          remainder = chunk_at_offset (victim, nb);</span><br><span class="line">          <span class="comment">/* We cannot assume the unsorted list is empty and therefore</span></span><br><span class="line"><span class="comment">              have to perform a complete insert here.  */</span></span><br><span class="line"></span><br><span class="line">          <span class="comment">// 并把剩余的chunk放入unsorted bin里</span></span><br><span class="line">          bck = unsorted_chunks (av);</span><br><span class="line">          fwd = bck-&gt;fd;</span><br><span class="line">          <span class="keyword">if</span> (__glibc_unlikely (fwd-&gt;bk != bck))</span><br><span class="line">          &#123;</span><br><span class="line">            errstr = <span class="string">"malloc(): corrupted unsorted chunks"</span>;</span><br><span class="line">            <span class="keyword">goto</span> errout;</span><br><span class="line">          &#125;</span><br><span class="line"></span><br><span class="line">          remainder-&gt;bk = bck;</span><br><span class="line">          remainder-&gt;fd = fwd;</span><br><span class="line">          bck-&gt;fd = remainder;</span><br><span class="line">          fwd-&gt;bk = remainder;</span><br><span class="line">          <span class="keyword">if</span> (!in_smallbin_range (remainder_size))</span><br><span class="line">          &#123;</span><br><span class="line">            remainder-&gt;fd_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">            remainder-&gt;bk_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">          &#125;</span><br><span class="line">          set_head (victim, nb | PREV_INUSE |</span><br><span class="line">                    (av != &amp;main_arena ? NON_MAIN_ARENA : <span class="number">0</span>));</span><br><span class="line">          set_head (remainder, remainder_size | PREV_INUSE);</span><br><span class="line">          set_foot (remainder, remainder_size);</span><br><span class="line">        &#125;</span><br><span class="line">        check_malloced_chunk (av, victim, nb);</span><br><span class="line">        <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">        Search for a chunk by scanning bins, starting with next largest</span></span><br><span class="line"><span class="comment">        bin. This search is strictly by best-fit; i.e., the smallest</span></span><br><span class="line"><span class="comment">        (with ties going to approximately the least recently used) chunk</span></span><br><span class="line"><span class="comment">        that fits is selected.</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">        The bitmap avoids needing to check that most blocks are nonempty.</span></span><br><span class="line"><span class="comment">        The particular case of skipping all bins during warm-up phases</span></span><br><span class="line"><span class="comment">        when no chunks have been returned yet is faster than it might look.</span></span><br><span class="line"><span class="comment">      */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 既然当前large bin里没有适合的large chunk</span></span><br><span class="line">    <span class="comment">// 则使用binmap遍历索引更高、大小更大的bin，以满足用户需求</span></span><br><span class="line"></span><br><span class="line">    ++idx;</span><br><span class="line">    bin = bin_at (av, idx);</span><br><span class="line">    block = idx2block (idx);</span><br><span class="line">    <span class="built_in">map</span> = av-&gt;binmap[block];</span><br><span class="line">    bit = idx2bit (idx);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">for</span> (;; )</span><br><span class="line">    &#123;</span><br><span class="line">      <span class="comment">/* Skip rest of block if there are no more set bits in this block.  */</span></span><br><span class="line">      <span class="keyword">if</span> (bit &gt; <span class="built_in">map</span> || bit == <span class="number">0</span>)</span><br><span class="line">      &#123;</span><br><span class="line">        <span class="keyword">do</span></span><br><span class="line">        &#123;</span><br><span class="line">          <span class="keyword">if</span> (++block &gt;= BINMAPSIZE) <span class="comment">/* out of bins */</span></span><br><span class="line">            <span class="keyword">goto</span> use_top;</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">while</span> ((<span class="built_in">map</span> = av-&gt;binmap[block]) == <span class="number">0</span>);</span><br><span class="line"></span><br><span class="line">        bin = bin_at (av, (block &lt;&lt; BINMAPSHIFT));</span><br><span class="line">        bit = <span class="number">1</span>;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* Advance to bin with set bit. There must be one. */</span></span><br><span class="line">      <span class="keyword">while</span> ((bit &amp; <span class="built_in">map</span>) == <span class="number">0</span>)</span><br><span class="line">      &#123;</span><br><span class="line">        bin = next_bin (bin);</span><br><span class="line">        bit &lt;&lt;= <span class="number">1</span>;</span><br><span class="line">        assert (bit != <span class="number">0</span>);</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="comment">/* Inspect the bin. It is likely to be non-empty */</span></span><br><span class="line">      victim = last (bin);</span><br><span class="line"></span><br><span class="line">      <span class="comment">/*  If a false alarm (empty bin), clear the bit. */</span></span><br><span class="line">      <span class="keyword">if</span> (victim == bin)</span><br><span class="line">      &#123;</span><br><span class="line">        av-&gt;binmap[block] = <span class="built_in">map</span> &amp;= ~bit; <span class="comment">/* Write through */</span></span><br><span class="line">        bin = next_bin (bin);</span><br><span class="line">        bit &lt;&lt;= <span class="number">1</span>;</span><br><span class="line">      &#125;</span><br><span class="line"></span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">      &#123;</span><br><span class="line">        size = chunksize (victim);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/*  We know the first chunk in this bin is big enough to use. */</span></span><br><span class="line">        assert ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (size) &gt;= (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb));</span><br><span class="line"></span><br><span class="line">        remainder_size = size - nb;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* unlink */</span></span><br><span class="line">        unlink (av, victim, bck, fwd);</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Exhaust */</span></span><br><span class="line">        <span class="keyword">if</span> (remainder_size &lt; MINSIZE)</span><br><span class="line">          &#123;</span><br><span class="line">            set_inuse_bit_at_offset (victim, size);</span><br><span class="line">            <span class="keyword">if</span> (av != &amp;main_arena)</span><br><span class="line">              victim-&gt;size |= NON_MAIN_ARENA;</span><br><span class="line">          &#125;</span><br><span class="line"></span><br><span class="line">        <span class="comment">/* Split */</span></span><br><span class="line">        <span class="keyword">else</span></span><br><span class="line">        &#123;</span><br><span class="line">          remainder = chunk_at_offset (victim, nb);</span><br><span class="line"></span><br><span class="line">          <span class="comment">/* We cannot assume the unsorted list is empty and therefore</span></span><br><span class="line"><span class="comment">              have to perform a complete insert here.  */</span></span><br><span class="line">          bck = unsorted_chunks (av);</span><br><span class="line">          fwd = bck-&gt;fd;</span><br><span class="line">          <span class="keyword">if</span> (__glibc_unlikely (fwd-&gt;bk != bck))</span><br><span class="line">          &#123;</span><br><span class="line">            errstr = <span class="string">"malloc(): corrupted unsorted chunks 2"</span>;</span><br><span class="line">            <span class="keyword">goto</span> errout;</span><br><span class="line">          &#125;</span><br><span class="line">          remainder-&gt;bk = bck;</span><br><span class="line">          remainder-&gt;fd = fwd;</span><br><span class="line">          bck-&gt;fd = remainder;</span><br><span class="line">          fwd-&gt;bk = remainder;</span><br><span class="line"></span><br><span class="line">          <span class="comment">/* advertise as last remainder */</span></span><br><span class="line">          <span class="keyword">if</span> (in_smallbin_range (nb))</span><br><span class="line">            av-&gt;last_remainder = remainder;</span><br><span class="line">          <span class="keyword">if</span> (!in_smallbin_range (remainder_size))</span><br><span class="line">            &#123;</span><br><span class="line">              remainder-&gt;fd_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">              remainder-&gt;bk_nextsize = <span class="literal">NULL</span>;</span><br><span class="line">            &#125;</span><br><span class="line">          set_head (victim, nb | PREV_INUSE |</span><br><span class="line">                    (av != &amp;main_arena ? NON_MAIN_ARENA : <span class="number">0</span>));</span><br><span class="line">          set_head (remainder, remainder_size | PREV_INUSE);</span><br><span class="line">          set_foot (remainder, remainder_size);</span><br><span class="line">        &#125;</span><br><span class="line">        check_malloced_chunk (av, victim, nb);</span><br><span class="line">        <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">        <span class="keyword">return</span> p;</span><br><span class="line">      &#125;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">  use_top:</span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">        If large enough, split off the chunk bordering the end of memory</span></span><br><span class="line"><span class="comment">        (held in av-&gt;top). Note that this is in accord with the best-fit</span></span><br><span class="line"><span class="comment">        search rule.  In effect, av-&gt;top is treated as larger (and thus</span></span><br><span class="line"><span class="comment">        less well fitting) than any other available chunk since it can</span></span><br><span class="line"><span class="comment">        be extended to be as large as necessary (up to system</span></span><br><span class="line"><span class="comment">        limitations).</span></span><br><span class="line"><span class="comment"></span></span><br><span class="line"><span class="comment">        We require that av-&gt;top always exists (i.e., has size &gt;=</span></span><br><span class="line"><span class="comment">        MINSIZE) after initialization, so if it would otherwise be</span></span><br><span class="line"><span class="comment">        exhausted by current request, it is replenished. (The main</span></span><br><span class="line"><span class="comment">        reason for ensuring it exists is that we may need MINSIZE space</span></span><br><span class="line"><span class="comment">        to put in fenceposts in sysmalloc.)</span></span><br><span class="line"><span class="comment">      */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 既然上面真的什么chunk都分配不出来，那就尝试使用top chunk</span></span><br><span class="line">    victim = av-&gt;top;</span><br><span class="line">    size = chunksize (victim);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果top chunk的大小 小于所需的chunk的大小</span></span><br><span class="line">    <span class="keyword">if</span> ((<span class="keyword">unsigned</span> <span class="keyword">long</span>) (size) &gt;= (<span class="keyword">unsigned</span> <span class="keyword">long</span>) (nb + MINSIZE))</span><br><span class="line">    &#123;</span><br><span class="line">      remainder_size = size - nb;</span><br><span class="line">      remainder = chunk_at_offset (victim, nb);</span><br><span class="line">      av-&gt;top = remainder;</span><br><span class="line">      set_head (victim, nb | PREV_INUSE |</span><br><span class="line">                (av != &amp;main_arena ? NON_MAIN_ARENA : <span class="number">0</span>));</span><br><span class="line">      set_head (remainder, remainder_size | PREV_INUSE);</span><br><span class="line"></span><br><span class="line">      check_malloced_chunk (av, victim, nb);</span><br><span class="line">      <span class="keyword">void</span> *p = chunk2mem (victim);</span><br><span class="line">      alloc_perturb (p, bytes);</span><br><span class="line">      <span class="keyword">return</span> p;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/* When we are using atomic ops to free fast chunks we can get</span></span><br><span class="line"><span class="comment">        here for all block sizes.  */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果top chunk也不够大，则尝试执行malloc_consolidate，并尝试重新从small bin和large bin中分配chunk</span></span><br><span class="line">    <span class="keyword">else</span> <span class="keyword">if</span> (have_fastchunks (av))</span><br><span class="line">    &#123;</span><br><span class="line">      malloc_consolidate (av);</span><br><span class="line">      <span class="comment">/* restore original bin index */</span></span><br><span class="line">      <span class="keyword">if</span> (in_smallbin_range (nb))</span><br><span class="line">        idx = smallbin_index (nb);</span><br><span class="line">      <span class="keyword">else</span></span><br><span class="line">        idx = largebin_index (nb);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">/*</span></span><br><span class="line"><span class="comment">        Otherwise, relay to handle system-dependent cases</span></span><br><span class="line"><span class="comment">      */</span></span><br><span class="line"></span><br><span class="line">    <span class="comment">// 如果真的是山穷水尽了，一个free chunk都挤不出来了</span></span><br><span class="line">    <span class="keyword">else</span></span><br><span class="line">    &#123;</span><br><span class="line">      <span class="comment">// 就勉为其难的调用sysmalloc分配内存</span></span><br><span class="line">      <span class="keyword">void</span> *p = sysmalloc (nb, av);</span><br><span class="line">      <span class="keyword">if</span> (p != <span class="literal">NULL</span>)</span><br><span class="line">        alloc_perturb (p, bytes);</span><br><span class="line">      <span class="keyword">return</span> p;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+ 
+      <!-- reward -->
+      
+    </div>
+    
+
+    <!-- copyright -->
+    
+    <div class="declare">
+      <ul class="post-copyright">
+        <li>
+          <i class="ri-copyright-line"></i>
+          <strong>版权声明： </strong>
+          
+          本博客所有文章除特别声明外，著作权归作者所有。转载请注明出处！
+          
+        </li>
+      </ul>
+    </div>
+    
+    <footer class="article-footer">
+       
+<div class="share-btn">
+      <span class="share-sns share-outer">
+        <i class="ri-share-forward-line"></i>
+        分享
+      </span>
+      <div class="share-wrap">
+        <i class="arrow"></i>
+        <div class="share-icons">
+          
+          <a class="weibo share-sns" href="javascript:;" data-type="weibo">
+            <i class="ri-weibo-fill"></i>
+          </a>
+          <a class="weixin share-sns wxFab" href="javascript:;" data-type="weixin">
+            <i class="ri-wechat-fill"></i>
+          </a>
+          <a class="qq share-sns" href="javascript:;" data-type="qq">
+            <i class="ri-qq-fill"></i>
+          </a>
+          <a class="douban share-sns" href="javascript:;" data-type="douban">
+            <i class="ri-douban-line"></i>
+          </a>
+          <!-- <a class="qzone share-sns" href="javascript:;" data-type="qzone">
+            <i class="icon icon-qzone"></i>
+          </a> -->
+          
+          <a class="facebook share-sns" href="javascript:;" data-type="facebook">
+            <i class="ri-facebook-circle-fill"></i>
+          </a>
+          <a class="twitter share-sns" href="javascript:;" data-type="twitter">
+            <i class="ri-twitter-fill"></i>
+          </a>
+          <a class="google share-sns" href="javascript:;" data-type="google">
+            <i class="ri-google-fill"></i>
+          </a>
+        </div>
+      </div>
+</div>
+
+<div class="wx-share-modal">
+    <a class="modal-close" href="javascript:;"><i class="ri-close-circle-line"></i></a>
+    <p>扫一扫，分享到微信</p>
+    <div class="wx-qrcode">
+      <img src="//api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://kiprey.github.io/2020/04/heap-7-%20__int_malloc_source/" alt="微信分享二维码">
+    </div>
+</div>
+
+<div id="share-mask"></div>  
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/CTF/" rel="tag">CTF</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Heap/" rel="tag">Heap</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/Pwn/" rel="tag">Pwn</a></li></ul>
+
+    </footer>
+  </div>
+
+   
+  <nav class="article-nav">
+    
+      <a href="/2020/04/reverse/" class="article-nav-link">
+        <strong class="article-nav-caption">上一篇</strong>
+        <div class="article-nav-title">
+          
+            CTF Reverse 的笔记
+          
+        </div>
+      </a>
+    
+    
+      <a href="/2020/04/heap-6-__libc_malloc_source/" class="article-nav-link">
+        <strong class="article-nav-caption">下一篇</strong>
+        <div class="article-nav-title">heap - 6 - __libc_malloc 源码及其部分分析</div>
+      </a>
+    
+  </nav>
+
+   
+ 
+   
+<div class="gitalk" id="gitalk-container"></div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.css">
+
+
+<script src="https://cdn.jsdelivr.net/npm/gitalk@1.7.2/dist/gitalk.min.js"></script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/blueimp-md5@2.10.0/js/md5.min.js"></script>
+
+<script type="text/javascript">
+  var gitalk = new Gitalk({
+    clientID: '5f6c407f4cb8963d03ac',
+    clientSecret: '1d6faa663a735dbfd671990187d6e62b32498560',
+    repo: 'kiprey.github.io',
+    owner: 'kiprey',
+    admin: ['kiprey'],
+    // id: location.pathname,      // Ensure uniqueness and length less than 50
+    id: md5(location.pathname),
+    distractionFreeMode: false,  // Facebook-like distraction free mode
+    pagerDirection: 'last'
+  })
+
+  gitalk.render('gitalk-container')
+</script>
+     
+</article>
+
+</section>
+      <footer class="footer">
+  <div class="outer">
+    <ul>
+      <li>
+        Copyrights &copy;
+        2020-2025
+        <i class="ri-heart-fill heart_icon"></i> Kiprey
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+      </li>
+    </ul>
+    <ul>
+      <li>
+        
+        
+        <span>
+  <span><i class="ri-user-3-fill"></i>访问人数:<span id="busuanzi_value_site_uv"></span></span>
+  <span class="division">|</span>
+  <span><i class="ri-eye-fill"></i>浏览次数:<span id="busuanzi_value_page_pv"></span></span>
+</span>
+        <!-- <script src="//cdn.bootcss.com/jquery/3.2.1/jquery.min.js"></script>
+        <script>
+            $(document).ready(function() {
+                var int1 = setInterval(fixCount1, 100);
+                var int2 = setInterval(fixCount2, 100);
+
+                var busuanziValueSiteOffset = 100000000000;
+                var busuanziValuePageOffset = 200000000000;
+                function fixCount1() {
+                    if ($("#busuanzi_value_site_uv").css("display") != "none") {
+                        clearInterval(int1);
+                        $("#busuanzi_value_site_uv").html(parseInt($("#busuanzi_value_site_uv").html()) + busuanziValueSiteOffset);
+                    }
+                }
+                function fixCount2() {
+                    if ($("#busuanzi_value_page_pv").css("display") != "none") {
+                        clearInterval(int2);
+                        $("#busuanzi_value_page_pv").html(parseInt($("#busuanzi_value_page_pv").html()) + busuanziValuePageOffset);
+                    }
+                }
+            });
+        </script> -->
+        
+      </li>
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      
+    </ul>
+    <ul>
+      <li>
+        <!-- cnzz统计 -->
+        
+      </li>
+    </ul>
+  </div>
+</footer>
+      <div class="float_btns">
+        <div class="totop" id="totop">
+  <i class="ri-arrow-up-line"></i>
+</div>
+
+<div class="todark" id="todark">
+  <i class="ri-moon-line"></i>
+</div>
+
+      </div>
+    </main>
+    <aside class="sidebar on">
+      <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+  <div class="logo">
+    <a href="/"><img src="/images/ayer-side.svg" alt="Kiprey&#39;s Blog"></a>
+  </div>
+  
+  <ul class="nav nav-main">
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/">主页</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/archives">归档</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/categories">分类</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/tags">标签</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/friends">友链</a>
+    </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link" href="/about">关于</a>
+    </li>
+    
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      
+      <a class="nav-item-link nav-item-search"  title="搜索">
+        <i class="ri-search-line"></i>
+      </a>
+      
+      
+      <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+        <i class="ri-rss-line"></i>
+      </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+    </aside>
+    <script>
+      if (window.matchMedia("(max-width: 768px)").matches) {
+        document.querySelector('.content').classList.remove('on');
+        document.querySelector('.sidebar').classList.remove('on');
+      }
+    </script>
+    <div id="mask"></div>
+
+<!-- #reward -->
+<div id="reward">
+  <span class="close"><i class="ri-close-line"></i></span>
+  <p class="reward-p"><i class="ri-cup-line"></i>请我喝杯咖啡吧~</p>
+  <div class="reward-box">
+    
+    
+  </div>
+</div>
+    
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+<!-- Tocbot -->
+
+
+<script src="/js/tocbot.min.js"></script>
+
+<script>
+  tocbot.init({
+    tocSelector: '.tocbot',
+    contentSelector: '.article-entry',
+    headingSelector: 'h1, h2, h3, h4, h5, h6',
+    hasInnerContainers: true,
+    scrollSmooth: true,
+    scrollContainer: 'main',
+    positionFixedSelector: '.tocbot',
+    positionFixedClass: 'is-position-fixed',
+    fixedSidebarOffset: 'auto'
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-modal@0.9.2/jquery.modal.min.css">
+<script src="https://cdn.jsdelivr.net/npm/justifiedGallery@3.7.0/dist/js/jquery.justifiedGallery.min.js"></script>
+
+<script src="/dist/main.js"></script>
+
+<!-- ImageViewer -->
+
+<!-- Root element of PhotoSwipe. Must have class pswp. -->
+<div class="pswp" tabindex="-1" role="dialog" aria-hidden="true">
+
+    <!-- Background of PhotoSwipe. 
+         It's a separate element as animating opacity is faster than rgba(). -->
+    <div class="pswp__bg"></div>
+
+    <!-- Slides wrapper with overflow:hidden. -->
+    <div class="pswp__scroll-wrap">
+
+        <!-- Container that holds slides. 
+            PhotoSwipe keeps only 3 of them in the DOM to save memory.
+            Don't modify these 3 pswp__item elements, data is added later on. -->
+        <div class="pswp__container">
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+            <div class="pswp__item"></div>
+        </div>
+
+        <!-- Default (PhotoSwipeUI_Default) interface on top of sliding area. Can be changed. -->
+        <div class="pswp__ui pswp__ui--hidden">
+
+            <div class="pswp__top-bar">
+
+                <!--  Controls are self-explanatory. Order can be changed. -->
+
+                <div class="pswp__counter"></div>
+
+                <button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+
+                <button class="pswp__button pswp__button--share" style="display:none" title="Share"></button>
+
+                <button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+
+                <button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button>
+
+                <!-- Preloader demo http://codepen.io/dimsemenov/pen/yyBWoR -->
+                <!-- element will get class pswp__preloader--active when preloader is running -->
+                <div class="pswp__preloader">
+                    <div class="pswp__preloader__icn">
+                        <div class="pswp__preloader__cut">
+                            <div class="pswp__preloader__donut"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap">
+                <div class="pswp__share-tooltip"></div>
+            </div>
+
+            <button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+            </button>
+
+            <button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)">
+            </button>
+
+            <div class="pswp__caption">
+                <div class="pswp__caption__center"></div>
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css">
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js"></script>
+
+<script>
+    function viewer_init() {
+        let pswpElement = document.querySelectorAll('.pswp')[0];
+        let $imgArr = document.querySelectorAll(('.article-entry img:not(.reward-img)'))
+
+        $imgArr.forEach(($em, i) => {
+            $em.onclick = () => {
+                // slider展开状态
+                // todo: 这样不好，后面改成状态
+                if (document.querySelector('.left-col.show')) return
+                let items = []
+                $imgArr.forEach(($em2, i2) => {
+                    let img = $em2.getAttribute('data-idx', i2)
+                    let src = $em2.getAttribute('data-target') || $em2.getAttribute('src')
+                    let title = $em2.getAttribute('alt')
+                    // 获得原图尺寸
+                    const image = new Image()
+                    image.src = src
+                    items.push({
+                        src: src,
+                        w: image.width || $em2.width,
+                        h: image.height || $em2.height,
+                        title: title
+                    })
+                })
+                var gallery = new PhotoSwipe(pswpElement, PhotoSwipeUI_Default, items, {
+                    index: parseInt(i)
+                });
+                gallery.init()
+            }
+        })
+    }
+    viewer_init()
+</script>
+
+<!-- MathJax -->
+
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+      tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }
+  });
+
+  MathJax.Hub.Queue(function() {
+      var all = MathJax.Hub.getAllJax(), i;
+      for(i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+      }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.6/unpacked/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script>
+  var ayerConfig = {
+    mathjax: true
+  }
+</script>
+
+<!-- Katex -->
+
+<!-- busuanzi  -->
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+<!-- ClickLove -->
+
+<!-- ClickBoom1 -->
+
+<!-- ClickBoom2 -->
+
+
+<script src="/js/clickBoom2.js"></script>
+
+
+<!-- CodeCopy -->
+
+
+<link rel="stylesheet" href="/css/clipboard.css">
+
+<script src="https://cdn.jsdelivr.net/npm/clipboard@2/dist/clipboard.min.js"></script>
+<script>
+  function wait(callback, seconds) {
+    var timelag = null;
+    timelag = window.setTimeout(callback, seconds);
+  }
+  !function (e, t, a) {
+    var initCopyCode = function(){
+      var copyHtml = '';
+      copyHtml += '<button class="btn-copy" data-clipboard-snippet="">';
+      copyHtml += '<i class="ri-file-copy-2-line"></i><span>COPY</span>';
+      copyHtml += '</button>';
+      $(".highlight .code pre").before(copyHtml);
+      $(".article pre code").before(copyHtml);
+      var clipboard = new ClipboardJS('.btn-copy', {
+        target: function(trigger) {
+          return trigger.nextElementSibling;
+        }
+      });
+      clipboard.on('success', function(e) {
+        let $btn = $(e.trigger);
+        $btn.addClass('copied');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-checkbox-circle-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPIED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-checkbox-circle-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+      clipboard.on('error', function(e) {
+        e.clearSelection();
+        let $btn = $(e.trigger);
+        $btn.addClass('copy-failed');
+        let $icon = $($btn.find('i'));
+        $icon.removeClass('ri-file-copy-2-line');
+        $icon.addClass('ri-time-line');
+        let $span = $($btn.find('span'));
+        $span[0].innerText = 'COPY FAILED';
+        
+        wait(function () { // 等待两秒钟后恢复
+          $icon.removeClass('ri-time-line');
+          $icon.addClass('ri-file-copy-2-line');
+          $span[0].innerText = 'COPY';
+        }, 2000);
+      });
+    }
+    initCopyCode();
+  }(window, document);
+</script>
+
+
+<!-- CanvasBackground -->
+
+
+<script src="/js/dz.js"></script>
+
+
+<!-- mermaid -->
+
+  <script src='https://cdn.bootcdn.net/ajax/libs/mermaid/8.5.2/mermaid.min.js'></script>
+  <script>
+    if (window.mermaid) {
+      mermaid.initialize({theme: 'forest'});
+    }
+  </script>
+
+<!-- baiduSpider auto push -->
+
+  <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https'){
+       bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+      }
+      else{
+      bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+      }
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
+
+
+    
+  </div>
+</body>
+
+</html>
