@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Notes — AMM 与 MEV</title>
+<style>
+  :root{
+    --bg:#0f1117;--bg2:#161b27;--bg3:#1e2535;
+    --border:#2a3347;--text:#e2e8f0;--muted:#7c8fa6;
+    --blue:#60a5fa;--green:#34d399;--orange:#fb923c;
+    --red:#f87171;--cyan:#22d3ee;--purple:#a78bfa;
+    --yellow:#fbbf24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:var(--bg);color:var(--text);
+    display:flex;height:100vh;font-size:15px;line-height:1.7;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar{
+    width:260px;min-width:260px;background:var(--bg2);
+    border-right:1px solid var(--border);
+    position:sticky;top:0;height:100vh;overflow-y:auto;
+    padding:20px 0;flex-shrink:0;
+  }
+  #sidebar h2{
+    font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--muted);padding:0 20px 12px;
+  }
+  .nav-section{margin-bottom:4px}
+  .nav-section-title{
+    font-size:.82rem;font-weight:600;color:var(--muted);
+    padding:6px 20px;cursor:pointer;
+    display:flex;align-items:center;gap:6px;
+    transition:color .15s;
+  }
+  .nav-section-title:hover{color:var(--text)}
+  .nav-section-title .arrow{font-size:.65rem;transition:transform .2s}
+  .nav-section-title.open .arrow{transform:rotate(90deg)}
+  .nav-items{display:none}
+  .nav-items.open{display:block}
+  .nav-item{
+    display:block;font-size:.82rem;padding:5px 20px 5px 32px;
+    color:var(--muted);text-decoration:none;
+    border-left:2px solid transparent;transition:all .15s;
+  }
+  .nav-item:hover,.nav-item.active{
+    color:var(--blue);border-left-color:var(--blue);
+    background:rgba(96,165,250,.06);
+  }
+  .nav-divider{height:1px;background:var(--border);margin:10px 20px}
+
+  /* ── Main ── */
+  #main{flex:1;overflow-y:auto;padding:40px 48px 80px}
+
+  /* ── Quick Ref Memo ── */
+  .memo{
+    background:var(--bg2);border:1px solid var(--border);
+    border-radius:12px;padding:24px;margin-bottom:40px;
+  }
+  .memo h2{font-size:1rem;color:var(--yellow);margin-bottom:16px}
+  .memo-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.memo-grid{grid-template-columns:1fr}}
+  .memo-block h3{
+    font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--muted);margin-bottom:8px;
+  }
+  .memo-block ul{list-style:none;font-size:.85rem}
+  .memo-block li{padding:3px 0;border-bottom:1px solid var(--border)}
+  .memo-block li:last-child{border-bottom:none}
+
+  /* ── Section heading ── */
+  .section-heading{
+    display:flex;align-items:center;gap:12px;
+    margin:48px 0 20px;
+  }
+  .section-num{
+    background:var(--blue);color:#0f1117;
+    font-weight:700;font-size:.8rem;
+    padding:4px 10px;border-radius:6px;white-space:nowrap;
+  }
+  .section-heading h2{font-size:1.4rem;font-weight:700}
+  h3{font-size:1.05rem;font-weight:600;margin:28px 0 12px;color:var(--text)}
+  h4{font-size:.9rem;font-weight:600;margin:20px 0 8px;color:var(--muted)}
+
+  /* ── Prose ── */
+  p{margin:10px 0;color:var(--text)}
+  strong{color:#fff}
+  em{color:var(--cyan);font-style:normal}
+
+  /* ── Callout boxes ── */
+  .callout{
+    border-radius:8px;padding:10px 14px;margin:10px 0;
+    font-size:.88rem;display:flex;gap:10px;align-items:flex-start;
+  }
+  .callout .icon{font-size:1rem;flex-shrink:0;margin-top:1px}
+  .callout-page{background:rgba(96,165,250,.08);border:1px solid rgba(96,165,250,.25)}
+  .callout-page .icon::after{content:'📄'}
+  .callout-demo{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.25)}
+  .callout-demo .icon::after{content:'🖥️'}
+  .callout-interact{background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25)}
+  .callout-interact .icon::after{content:'🙋'}
+  .callout-whisper{background:rgba(124,143,166,.06);border:1px solid rgba(124,143,166,.2);font-style:italic;color:var(--muted)}
+  .callout-whisper .icon::after{content:'💭'}
+
+  /* ── Code ── */
+  pre{
+    background:var(--bg3);border:1px solid var(--border);
+    border-radius:8px;padding:14px 16px;overflow-x:auto;
+    font-family:'JetBrains Mono','Cascadia Code',monospace;
+    font-size:.82rem;line-height:1.6;margin:12px 0;
+  }
+  code{
+    font-family:'JetBrains Mono','Cascadia Code',monospace;
+    background:var(--bg3);padding:1px 5px;border-radius:4px;font-size:.88em;
+  }
+  pre code{background:none;padding:0;font-size:1em}
+
+  /* ── Tables ── */
+  .tbl-wrap{overflow-x:auto;margin:14px 0}
+  table{border-collapse:collapse;width:100%;font-size:.88rem}
+  th{
+    background:var(--bg3);text-align:left;
+    padding:9px 14px;font-weight:600;font-size:.8rem;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+    border-bottom:1px solid var(--border);
+  }
+  td{padding:9px 14px;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:rgba(255,255,255,.02)}
+
+  /* ── Horizontal rule ── */
+  hr{border:none;border-top:1px solid var(--border);margin:28px 0}
+
+  /* ── Appendix ── */
+  .qa-block{
+    background:var(--bg2);border:1px solid var(--border);
+    border-radius:10px;padding:18px 20px;margin:14px 0;
+  }
+  .qa-q{font-weight:700;color:var(--orange);margin-bottom:8px;font-size:.95rem}
+  .qa-a{font-size:.9rem;color:var(--text)}
+
+  /* ── Timeline section ── */
+  #toc-link{
+    display:inline-block;margin-top:6px;font-size:.8rem;
+    color:var(--muted);text-decoration:none;
+  }
+  #toc-link:hover{color:var(--blue)}
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ SIDEBAR ══════════════════ -->
+<nav id="sidebar">
+  <h2>讲稿导航</h2>
+
+  <div class="nav-section">
+    <div class="nav-section-title open" onclick="toggleNav(this)">
+      <span class="arrow">▶</span> 备忘录
+    </div>
+    <div class="nav-items open">
+      <a class="nav-item" href="#memo">快速备忘</a>
+    </div>
+  </div>
+
+  <div class="nav-divider"></div>
+
+  <div class="nav-section">
+    <div class="nav-section-title open" onclick="toggleNav(this)">
+      <span class="arrow">▶</span> 正文
+    </div>
+    <div class="nav-items open">
+      <a class="nav-item" href="#s0">0. 开场钩子</a>
+      <a class="nav-item" href="#s1">1. DEX 与 AMM</a>
+      <a class="nav-item" href="#s2">2. Uniswap V2</a>
+      <a class="nav-item" href="#s3">3. Uniswap V3</a>
+      <a class="nav-item" href="#s4">4. Uniswap V4</a>
+      <a class="nav-item" href="#s5">5. MEV</a>
+      <a class="nav-item" href="#s6">6. 攻击案例</a>
+      <a class="nav-item" href="#s7">7. Quiz + 总结</a>
+    </div>
+  </div>
+
+  <div class="nav-divider"></div>
+
+  <div class="nav-section">
+    <div class="nav-section-title open" onclick="toggleNav(this)">
+      <span class="arrow">▶</span> 附录
+    </div>
+    <div class="nav-items open">
+      <a class="nav-item" href="#appendix">常见问题</a>
+      <a class="nav-item" href="#timeline">时间轴速查</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ══════════════════ MAIN ══════════════════ -->
+<main id="main">
+
+  <h1 style="font-size:1.8rem;font-weight:800;margin-bottom:6px">讲稿：链上交易所与 AMM 流动性池</h1>
+  <p style="color:var(--muted);font-size:.88rem;margin-bottom:32px">
+    时长：约 50 分钟 &nbsp;·&nbsp;
+    <code>【页面】</code> = 滚动位置 &nbsp;
+    <code>【互动】</code> = 观众参与 &nbsp;
+    <code>【演示】</code> = 浏览器操作 &nbsp;
+    <code>（小声）</code> = 心理提醒
+  </p>
+
+  <!-- ── MEMO ── -->
+  <div class="memo" id="memo">
+    <h2>📋 演讲者备忘录（讲前快速扫一遍）</h2>
+    <div class="memo-grid">
+      <div class="memo-block">
+        <h3>必背数字</h3>
+        <ul>
+          <li><strong>Balancer V2</strong> — $1.28 亿 · 2025-11-03 · <code>mulDown→mulUp</code></li>
+          <li><strong>KyberSwap</strong> — $4,700 万 · 2023-11-23 · Tick off-by-one</li>
+          <li><strong>Curve Finance</strong> — $7,000 万 · 2023-07-30 · Vyper 编译器</li>
+          <li><strong>Euler Finance</strong> — $1.97 亿 · 2023-03-13 · 缺健康因子检查</li>
+        </ul>
+      </div>
+      <div class="memo-block">
+        <h3>必会公式</h3>
+        <ul>
+          <li>V2 价格影响：<code>Δy = y·Δx / (x + Δx)</code></li>
+          <li>无常损失：<code>IL = 2√r/(1+r) − 1</code>，r = P新/P初</li>
+          <li>V3 Tick：<code>price = 1.0001^i</code>，每 tick ≈ 1 bp</li>
+          <li>V3 资本效率：<code>√(P_h/P_l) / (√(P_h/P_l) − 1)</code></li>
+        </ul>
+      </div>
+      <div class="memo-block">
+        <h3>网站快捷键</h3>
+        <ul>
+          <li><code>?</code> → 键盘帮助覆盖层</li>
+          <li><code>← / →</code> → Presenter 翻页</li>
+          <li><code>P</code> → 切换 Presenter 模式</li>
+          <li><code>Home</code> → 滚回顶部</li>
+        </ul>
+      </div>
+      <div class="memo-block">
+        <h3>演示节奏</h3>
+        <ul>
+          <li>Sec 1：A 滑块 1→2000，重点 A=2000 低滑点</li>
+          <li>Sec 2：先手算，再计算器验证；讲深度图颜色</li>
+          <li>Sec 3：拖 range-low/high，点「模拟价格游走」</li>
+          <li>Sec 5：6 步逐步演示三明治，每步等 2 秒</li>
+          <li>Sec 6：拖 N 滑块（1–100）观察 D 压缩红条</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       0. 开场
+  ══════════════════════════════════════════ -->
+  <div id="s0">
+    <div class="section-heading">
+      <span class="section-num">0</span>
+      <h2>开场钩子（0–3 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>滚动到最顶部 Hero 页，大屏幕显示动态 AMM 曲线背景</div>
+
+    <hr/>
+
+    <p>好，我们开始吧。</p>
+    <p>首先我想问大家一个问题——<strong>2025 年 11 月 3 日，发生了什么？</strong></p>
+    <p>大家可能不记得了，我来告诉你们。</p>
+    <p>那一天，在短短 <strong>30 分钟</strong>以内，跨越<strong>六条区块链</strong>，有 <strong>1.28 亿美元</strong>从一个叫做 Balancer 的 DeFi 协议里被盗走了。</p>
+    <p>这不是黑客侵入了服务器，不是有人骗到了私钥，也不是什么复杂的零日漏洞。</p>
+    <p>攻击者利用的是<strong>一个数学函数里一个舍入方向的问题</strong>。</p>
+    <p>说具体一点：有一行代码，本来应该调用 <code>mulUp()</code>，用的是向上取整，但实际代码用的是 <code>mulDown()</code>，向下取整。</p>
+    <p>就这一个字的差别——<code>Up</code> 变 <code>Down</code>——1.28 亿美元没了。</p>
+
+    <div class="callout callout-whisper"><span class="icon"></span>停顿三秒，让大家消化</div>
+
+    <p>今天这次分享结束的时候，大家会<strong>完全明白</strong>这个攻击是怎么运作的，为什么一行代码能造成这么大的损失，以及链上 DeFi 协议有哪些常见的攻击面。</p>
+
+    <hr/>
+
+    <div class="callout callout-interact"><span class="icon"></span>举手调查，活跃气氛</div>
+
+    <p>不过在开始之前，我先了解一下大家的背景——</p>
+    <p><strong>有没有人亲手用过 Uniswap 或者其他去中心化交易所的，举一下手？</strong></p>
+    <p>好，有几个。<strong>知道"三明治攻击"是什么的？</strong> 举手。<strong>听说过"无常损失"的？</strong></p>
+    <p>好，不管你们之前有没有接触过，今天我都会从头讲起。大家都有编程基础，所以我不会回避数学细节，该推公式的地方我们照推，但我会尽量讲清楚每一步的直觉。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       1. DEX
+  ══════════════════════════════════════════ -->
+  <div id="s1">
+    <div class="section-heading">
+      <span class="section-num">1</span>
+      <h2>DEX 与 AMM 是什么（3–11 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 1「DEX 基础」，Slide 1</div>
+
+    <h3>1.1 先理解 CEX 是怎么工作的</h3>
+    <p>好，我们先从大家比较熟悉的东西开始——<strong>中心化交易所，CEX</strong>，比如币安、OKX。</p>
+    <p>CEX 里面有个东西叫<strong>订单簿</strong>，你可以在屏幕上看到——</p>
+    <div class="callout callout-page"><span class="icon"></span>指向代码块里的订单簿示意</div>
+<pre>卖 1.0 ETH  @  $2,005
+卖 2.5 ETH  @  $2,008
+── 当前中间价 ──
+买 0.8 ETH  @  $2,000
+买 3.0 ETH  @  $1,998</pre>
+    <p>买方挂"买单"，卖方挂"卖单"，交易所负责把合适的买卖单撮合在一起。那些持续挂单的人叫做<strong>做市商</strong>，他们每天要挂撤几百上千笔单，从极小的买卖价差里赚钱。</p>
+    <p>这在传统金融里运转得很好。<strong>但在区块链上，这套逻辑完全行不通。</strong></p>
+    <p>原因很简单——<strong>每一笔链上操作都要消耗 Gas 费</strong>。你在以太坊上挂一个单，要花 Gas；撤单，也要花 Gas；成交，还要花 Gas。做市商每天几百笔挂撤，光 Gas 成本就把收益全吃完了。</p>
+    <p>更糟糕的是，以太坊每 12 秒才出一个区块。高频做市策略在这个延迟下根本跑不起来。</p>
+    <p>所以<strong>链上需要一个完全不同的机制</strong>——不需要做市商，价格由数学公式自动计算，任何人随时都能交易。这就是 <strong>AMM，Automated Market Maker，自动做市商</strong>。</p>
+
+    <hr/>
+
+    <h3>1.2 三种主要 AMM 类型</h3>
+    <div class="callout callout-page"><span class="icon"></span>Section 1，Slide 2「三种主要 AMM 类型」</div>
+    <p>AMM 用一个数学不变量来代替订单簿。主流的有三种：</p>
+    <p><strong>第一种是 CPMM，恒定乘积</strong>，Uniswap 就是这个，公式是 <code>x · y = k</code>。两种代币储备量的乘积保持恒定。你买了一些 ETH，ETH 储备减少，USDC 储备增加，乘积不变，价格自动调整。</p>
+    <p><strong>第二种是 CSMM，恒定和</strong>，公式是 <code>x + y = k</code>。这种零滑点，交换比例永远 1:1，听起来很好对不对？<strong>但有个致命问题</strong>——它能被完全榨干。比如一个 USDC/DAI 池，某一天 DAI 脱锚跌到 $0.99，套利者马上发现这个池还在按 1:1 换，于是把池里的 USDC 全换走，DAI 清空，池子就废了。</p>
+    <p><strong>第三种是 Curve 的混合型</strong>，聪明地把两者结合在一起——在价格接近 1:1 的中心区域，曲线几乎是直线，滑点极低；当储备偏离均衡时，曲线变陡，防止被榨干。专门为稳定币对优化。</p>
+
+    <hr/>
+
+    <h3>1.3 稳定币曲线可视化</h3>
+    <div class="callout callout-page"><span class="icon"></span>Section 1，Slide 3「稳定币曲线可视化」</div>
+    <div class="callout callout-demo"><span class="icon"></span>
+      1. 指向 SVG 图表，说明三条线：红色虚线=CSMM，蓝色虚线=CPMM，青色实线=Curve StableSwap<br/>
+      2. A 滑块拖到最左（A=1）：「退化成 CPMM，几乎完全一样」<br/>
+      3. 慢慢拖到 A=200：「曲线越来越平，中间区域滑点越来越低」<br/>
+      4. 拖到 A=2000：「这就是 Curve 3pool 实际用的 A 值，两端还是有保护」
+    </div>
+    <div class="callout callout-interact"><span class="icon"></span>指着右边的价格影响表格</div>
+    <p>大家看这个表格——当 A=2000 的时候，买入 20% 的储备量，StableSwap 的价格影响只有 <strong>0.10%</strong>，而同样的操作在 CPMM 里价格影响是 <strong>16.67%</strong>。这就是为什么 Curve 每天能处理几十亿美元的稳定币交易。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       2. V2
+  ══════════════════════════════════════════ -->
+  <div id="s2">
+    <div class="section-heading">
+      <span class="section-num">2</span>
+      <h2>Uniswap V2：x · y = k（11–23 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 2「Uniswap V2」，Slide 1</div>
+
+    <h3>2.1 恒定乘积公式的直觉</h3>
+    <p>好，现在我们深入讲 Uniswap V2。先从直觉开始。</p>
+    <p>我喜欢用<strong>跷跷板</strong>来理解这个公式。想象一个跷跷板，左边放 ETH，右边放 USDC。有人往左边加了 ETH（把更多 ETH 放进池子），为了维持乘积不变，右边的 USDC 就必须减少——就像跷跷板保持平衡。</p>
+    <p>这个"平衡"不是真正的等价，而是乘积恒定：<code>x · y = k</code>。</p>
+    <p>有一个非常重要的性质：<strong>这个池子永远不会被掏空</strong>。当 ETH 储备趋向于 0 的时候，你需要支付无穷多的 USDC 才能再买走哪怕 1 wei 的 ETH——数学上阻止了完全榨干。这是双曲线的核心特性。</p>
+
+    <hr/>
+
+    <h3>2.2 推导价格和价格影响</h3>
+    <p>来，我们做一道具体的数学题。</p>
+    <p>假设池子里有 <strong>1000 ETH</strong> 和 <strong>2,000,000 USDC</strong>，所以 k = 1000 × 2,000,000 = <strong>2 × 10⁹</strong>。</p>
+    <p><strong>现在的价格是多少？</strong> 就是 USDC/ETH 的比值：2,000,000 / 1000 = <strong>$2,000 每 ETH</strong>。</p>
+    <p>好，我想用 <strong>10 ETH</strong> 来换 USDC，能换多少？</p>
+    <p>Uniswap 有 0.3% 手续费，扣完之后实际进入池子的是 <strong>9.97 ETH</strong>。</p>
+<pre>新的 ETH 储备  = 1000 + 9.97 = 1009.97 ETH
+新的 USDC 储备 = k / 1009.97 ≈ 1,980,236 USDC
+你拿到的 USDC  = 2,000,000 − 1,980,236 = 19,764 USDC
+有效价格       = 19,764 / 10 = $1,976.4 每 ETH
+价格影响       ≈ 1.18%</pre>
+    <p>意思是：你买了 10 ETH，每个 ETH 只值 1976 美元，比池子给的"应该"价格 $2000 少了 1.18%。这就叫<strong>价格影响（Price Impact）</strong>，也叫滑点。</p>
+
+    <hr/>
+
+    <h3>2.3 演示：价格影响计算器 + 深度图</h3>
+    <div class="callout callout-page"><span class="icon"></span>Section 2，价格影响计算器组件</div>
+    <div class="callout callout-demo"><span class="icon"></span>
+      1. 展示默认值（1000 ETH，2,000,000 USDC，交换 10 ETH）：「这就是我们刚才手算的例子」<br/>
+      2. ETH 储备量改到 100 ETH：「当池子流动性变少，价格影响会急剧上升」<br/>
+      3. 交换量拖到 200 ETH：「你要买的越多，价格影响越大」
+    </div>
+    <div class="callout callout-interact"><span class="icon"></span>「如果我想用 100 ETH 换 USDC，在一个 1000 ETH 的池子里，大家猜猜价格影响大概是多少？」—— 让大家喊答案，再演示。答案：约 9.1%</div>
+    <div class="callout callout-demo"><span class="icon"></span>
+      4. 指着深度图：绿色=安全 ≤2%；橙色=可接受 2–5%；红色=危险 >5%<br/>
+      5. 把储备改小：「深度图整体变红，这就是小池子流动性差的直观体现」
+    </div>
+
+    <hr/>
+
+    <h3>2.4 LP Token 和无常损失</h3>
+    <div class="callout callout-page"><span class="icon"></span>Section 2，向下滚动到 LP Token 部分</div>
+    <p>好，那流动性怎么来的？这些人叫做<strong>流动性提供者（LP）</strong>。他们把等价值的两种代币放进池子，作为回报，拿到 <strong>LP Token</strong>。</p>
+    <p>LP Token 代表你在这个池子里的<strong>份额</strong>。每次有人交易，会产生 0.3% 的手续费，这些手续费自动积累在池子里。等你把 LP Token 还回去（叫"移除流动性"），你就能拿回你的本金加上积累的手续费收益。</p>
+    <p><strong>但有个大坑叫无常损失（Impermanent Loss）。</strong></p>
+    <p>举个例子：你往池子里放了 1 ETH + $2000 USDC（ETH 价格 $2000），过了一段时间 ETH 涨到了 $4000。</p>
+    <p>套利者会来把池子里的 ETH 买走，直到池子的隐含价格也变成 $4000。此时你的 LP 仓位价值约 $5,657，但如果你当时直接拿着不动，1 ETH + $2000 = $6,000。</p>
+    <p><strong>你少赚了 $343，差不多 5.7%。</strong> 这就是无常损失。</p>
+    <p>公式：<code>IL = 2√r/(1+r) − 1</code>，其中 r 是价格比值的变化倍数。</p>
+    <div class="callout callout-demo"><span class="icon"></span>滚动到 IL 计算器，拖动滑块演示不同价格变化的 IL。「价格变化越大，无常损失越严重。」</div>
+
+    <hr/>
+
+    <h3>2.5 Flash Swap：闪电贷</h3>
+    <p>Uniswap V2 有个功能叫<strong>闪电贷</strong>，允许你在<strong>一笔交易</strong>里，不需要任何抵押，借走池子里的任意数量代币——条件是在<strong>同一笔交易结束之前</strong>还回去。</p>
+    <p>怎么用？比如套利：你发现 A 交易所 ETH 是 $2000，B 交易所是 $2010。你可以用闪电贷，从 Uniswap 借出 100 ETH，去 B 交易所卖掉得到 $201,000，再归还 Uniswap 100 ETH + 0.3% 手续费（约 $600），净赚约 $400，整个过程在一笔交易里完成，不需要任何本金。</p>
+    <p>这听起来是好事，但也是很多攻击的手段——我们后面会讲到。</p>
+    <div class="callout callout-demo"><span class="icon"></span>
+      1. 点击「▶ 运行模拟」，让四个阶段依次点亮<br/>
+      2. 阶段一：「Uniswap 借出 100 ETH，此时钱已在你合约里」<br/>
+      3. 阶段二：「合约立刻去 DEX-B 卖掉，共得到 $201,000 USDC」<br/>
+      4. 阶段三：「在同一笔 tx 结束前，把 100 ETH + 手续费还回去」<br/>
+      5. 阶段四：「净赚约 $400，没用自己一分钱本金」<br/>
+      6. 「如果第三步还不了——整个 tx 自动回滚，就像什么都没发生」
+    </div>
+    <div class="callout callout-whisper"><span class="icon"></span>可以问观众「那攻击者为什么喜欢用 flash loan？」—— 因为不需要本金，攻击成本极低，失败也没有损失</div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       3. V3
+  ══════════════════════════════════════════ -->
+  <div id="s3">
+    <div class="section-heading">
+      <span class="section-num">3</span>
+      <h2>Uniswap V3：集中流动性（23–30 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 3「Uniswap V3」</div>
+
+    <h3>3.1 V2 的资本效率问题</h3>
+    <p>好，V2 有一个很大的问题。</p>
+    <p>在 V2 里，你的流动性分布在 <strong>0 到无穷大</strong>的整个价格区间。但是 ETH/USDC 在绝大多数时间里都在某个范围内波动，比如 $1800 到 $2200。价格跑到 $1000 以下或者 $5000 以上是极少数情况。</p>
+    <p>这意味着你提供的大部分流动性，99% 的时间都躺在那里没有用，<strong>不赚手续费，还承担价格风险</strong>。</p>
+    <p>V3 的解决方案是：<strong>让你指定你愿意在哪个价格区间提供流动性。</strong> 这叫<strong>集中流动性（Concentrated Liquidity）</strong>。</p>
+
+    <hr/>
+
+    <h3>3.2 资本效率倍数</h3>
+    <div class="callout callout-page"><span class="icon"></span>V3 集中流动性可视化组件</div>
+    <div class="callout callout-demo"><span class="icon"></span>
+      1. 默认值：当前价格 $2000，区间 $1800–$2200<br/>
+      2. 指着蓝色高亮区域：「这是你提供流动性的范围」<br/>
+      3. 指着资本效率显示：「在这个范围内，你的资金效率是 V2 的 ×11 倍」
+    </div>
+    <p>「×11 是什么意思？就是说，你放 1 万美元在 V3 里，产生的交易深度和手续费收益，相当于在 V2 里放 11 万美元。」</p>
+    <p>如果 Uniswap V3 ETH/USDC 池有 1 亿美元的流动性，大家提供的范围集中在当前价格附近，那等效的 V2 深度可能达到 <strong>10–20 亿美元</strong>。</p>
+
+    <hr/>
+
+    <h3>3.3 Tick 系统和 LP NFT</h3>
+    <p>V3 里有个概念叫 <strong>Tick</strong>。价格区间不能随便设，必须是 Tick 的整数倍。</p>
+    <p>价格和 Tick 的关系是：<code>price(i) = 1.0001^i</code>，每个 Tick 对应大约 0.01% 的价格变化，就是 1 bp（basis point）。</p>
+    <p>还有一点，V3 的 LP 仓位是 <strong>NFT（ERC-721）</strong>，不是像 V2 那样的同质化代币（ERC-20）。</p>
+    <p>为什么要用 NFT？因为每个人的 LP 仓位都不一样——价格区间不同、金额不同、手续费累积不同，不再"同质化"，所以用 NFT 来表示每个独特的仓位。</p>
+    <div class="callout callout-demo"><span class="icon"></span>点击「模拟价格波动」：「价格线在波动，当价格在蓝色区间内时，手续费计数器在滚动；当价格跑出区间，手续费停止积累。」</div>
+
+    <hr/>
+
+    <h3>3.4 V3 的风险：无常损失放大</h3>
+    <p>最后一点要注意：<strong>V3 的集中流动性会放大无常损失</strong>。</p>
+    <p>V2 里流动性分散在全价格区间，价格大幅变动时损失是平摊的。V3 里你把流动性全压在一个小区间，价格一旦跑出去，你的损失会更集中、更大。</p>
+    <p>所以 V3 LP 需要更主动地管理仓位，经常调整范围。这催生了一批专门做 V3 LP 管理的协议，比如 Arrakis Finance、Gamma Strategies 等。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       4. V4
+  ══════════════════════════════════════════ -->
+  <div id="s4">
+    <div class="section-heading">
+      <span class="section-num">4</span>
+      <h2>Uniswap V4：可编程 AMM（30–34 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 4「Uniswap V4」</div>
+
+    <h3>4.1 两个核心改变：Singleton + Hooks</h3>
+    <p>V4 在 2024 年发布，有两个最重要的改变。</p>
+    <p><strong>第一个是 Singleton 架构。</strong></p>
+    <p>V2 和 V3 里，每个交易对都是一个独立的合约。如果你要做一个三跳套利，比如 ETH → USDC → DAI → ETH，需要依次调用三个合约，三次转账，三次 Gas。</p>
+    <p>V4 把<strong>所有的池子都放进一个合约</strong>，叫 PoolManager。这样多跳交易只需要调用一次合约，Gas 降低大约 99%。</p>
+    <p><strong>第二个是 Hooks 系统。</strong></p>
+    <p>V4 允许你给池子挂上自定义的逻辑，在交易的各个生命周期节点执行：</p>
+<pre>beforeSwap / afterSwap        — 交易前后
+beforeAddLiquidity / afterAddLiquidity — 加流动性前后
+...共 8 个钩子</pre>
+    <p>这让 AMM 变得可编程。比如你可以：实现动态手续费、实现限价单功能、内置 TWAP 价格预言机、实现 KYC 门控的合规池子。</p>
+
+    <hr/>
+
+    <h3>4.2 Hooks 的安全风险</h3>
+    <p>但 Hooks 也带来新的安全风险：<strong>如果 Hook 合约本身有漏洞怎么办？</strong></p>
+    <p>在 V3 里，池子合约是 Uniswap 团队审计过的，安全性有保证。V4 里，任何人都可以部署一个 Hook，如果这个 Hook 有恶意代码或者漏洞，用户的资金就有风险。</p>
+    <p>这和手机 App Store 里的 App 一样——平台本身是安全的，但恶意 App 可以骗你的钱。V4 Hook 生态里，用户需要仔细审核他们交互的 Hook 合约。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       5. MEV
+  ══════════════════════════════════════════ -->
+  <div id="s5">
+    <div class="section-heading">
+      <span class="section-num">5</span>
+      <h2>MEV：最大可提取价值（34–44 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 5「MEV」</div>
+
+    <h3>5.1 Mempool：一个透明的等候室</h3>
+    <p>现在来讲最有意思的部分——<strong>MEV</strong>。</p>
+    <p>先解释一下以太坊的交易流程。当你在 Uniswap 上发出一笔交易，这笔交易<strong>不会立刻被打包进区块</strong>。它首先进入一个叫做 <strong>Mempool（内存池）</strong> 的地方等候，等矿工/验证者来打包。</p>
+    <p>关键点来了：<strong>Mempool 是公开可见的。</strong> 全网所有人都可以看到你的这笔待确认交易——包括你买什么、买多少、设了多大的滑点容忍度。</p>
+    <p>一些专门的 MEV Bot 会 24 小时监控 Mempool，一旦发现可以从中获利的交易，就立刻插入自己的操作。</p>
+
+    <hr/>
+
+    <h3>5.2 三种 MEV 类型</h3>
+    <p><strong>Front-run（抢跑）</strong>：看到你要买 ETH，在你的交易之前插入自己的买单，拉高价格，等你的单成交之后再卖出套利。</p>
+    <p><strong>Sandwich（三明治攻击）</strong>：把你的交易"夹"在两笔 Bot 交易之间——Bot 先买，然后你的交易在更高的价格成交，最后 Bot 再卖。</p>
+    <p><strong>Back-run（跟跑）</strong>：不影响你的交易，但在你的大单之后立刻套利。比如你的大单让某个池子价格偏离，Bot 马上来套利恢复价格，赚取差价。</p>
+    <p>三明治攻击是最常见也最直接损害普通用户的一种。</p>
+
+    <hr/>
+
+    <h3>5.3 三明治攻击深度演示</h3>
+    <div class="callout callout-page"><span class="icon"></span>三明治攻击模拟器组件</div>
+    <p>「好，我们来一步步演示一个真实的三明治攻击。默认参数：1000 ETH / 2M USDC 的池子，受害者要卖出 <strong>50 ETH</strong>，滑点容忍 10%。」</p>
+    <div class="callout callout-whisper"><span class="icon"></span>可以先重置一次确保状态干净，然后逐步演示</div>
+    <div class="callout callout-demo"><span class="icon"></span>逐步点击「下一步」，每步解说；讲完全部步骤后可点「⏯ 自动播放」连续演示</div>
+
+    <h4>Step 0 — 初始状态</h4>
+    <p>「池子里有 1000 ETH 和 2,000,000 USDC，价格 $2,000/ETH。一切正常。」</p>
+    <h4>Step 1 — 受害者交易出现</h4>
+    <p>「有人想卖出 <strong>50 ETH</strong> 换 USDC，滑点容忍 10%。这笔交易广播到了 Mempool，全网可见。Bot 立刻检测到了这笔大单，开始计算：我能在前面插入多少买单，让受害者的交易恰好用完他 10% 的滑点容忍度？」</p>
+    <h4>Step 2 — Bot 计算最优前跑量</h4>
+    <p>「Bot 用二分搜索法，算出最优前跑量，能把池子价格推到恰好是受害者滑点容忍边界。Bot 用更高的 Gas 价格，确保自己的交易排在受害者前面。」</p>
+    <h4>Step 3 — Bot 抢先买入</h4>
+    <p>「Bot 先买入了一批 ETH，池子价格被推高，现在受害者面对的是一个更贵的 ETH。」</p>
+    <h4>Step 4 — 受害者成交</h4>
+    <p>「受害者的 ETH 卖单在更差的价格成交，他拿到的 USDC 比正常情况少了一些，达到了他设置的 10% 滑点上限。」</p>
+    <h4>Step 5 — Bot 卖出套利</h4>
+    <p>「受害者的大单进一步推高了 ETH 价格，Bot 现在把之前买的 ETH 卖掉，利用价差净赚——整个过程在同一个区块里完成，毫秒级。」</p>
+
+    <div class="callout callout-whisper"><span class="icon"></span>点击「⏯ 自动播放」后整个流程会自动演示，适合现场投影展示</div>
+    <div class="callout callout-interact"><span class="icon"></span>「大家想想，谁是这笔交易的真正受害者？」—— 「对，是普通用户。Bot 不需要特别强的技术，只需要有足够的资金，写一个监控 Mempool 的程序，就能持续地从普通用户的交易里薅羊毛。」</div>
+
+    <hr/>
+
+    <h3>5.4 MEV 的规模和防御</h3>
+    <div class="callout callout-page"><span class="icon"></span>指向三明治攻击模拟器下方的 MEV 类型分布图</div>
+    <p>MEV 分三大类：三明治攻击是比例最高的一种，其次是套利，最后是清算。每一笔 MEV 的背后都意味着普通用户的亏损。</p>
+    <p>防御手段主要有：</p>
+    <p><strong>1. Flashbots / 私有 Mempool</strong>：你可以把交易发给 Flashbots 而不是公开 Mempool，Flashbots 直接把你的交易发给矿工，绕过了公开 Mempool 的监视。</p>
+    <p><strong>2. 设置合适的滑点</strong>：滑点设太大，Bot 有更大的操作空间；设太小，你的交易可能因为价格稍微动了就失败。一般建议 0.5% 以下，对于大单可以分批执行。</p>
+    <p><strong>3. 使用 MEV-aware DEX</strong>：一些新的 DEX 设计了抗 MEV 机制，比如批量竞价（batch auction）。</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       6. 攻击案例
+  ══════════════════════════════════════════ -->
+  <div id="s6">
+    <div class="section-heading">
+      <span class="section-num">6</span>
+      <h2>真实攻击案例（44–49 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>Section 6「真实攻击案例」</div>
+
+    <h3>6.1 Balancer V2 — $1.28 亿（2025.11.03）★ 重点</h3>
+    <p>「好，现在我们回到开场的那个故事，来把它讲完。」</p>
+    <p>Balancer 是一种支持多资产的 AMM，它维护一个叫做<strong>不变量 D</strong>的值。</p>
+    <p>攻击的根因是：Balancer 在处理「指定输出量（GIVEN_OUT）」类型的交易时，有一步叫 <code>_upscale()</code> 的操作，把代币数量从它的原始精度放大到内部计算精度。</p>
+    <p>这一步用了 <code>mulDown()</code>，也就是整数除法向下截断。</p>
+    <p><strong>什么意思？举个例子：</strong></p>
+<pre>假设需要计算 8 × 1.114e18
+正确答案：8.912e18
+mulDown 截断后：8
+单次损失约 10%</pre>
+    <p>单次损失 10% 看起来不多，但这个计算在内部<strong>被迭代多次</strong>，损失会累积。攻击者发现，通过反复的小额交易，每次都让协议在精度上吃亏，可以把不变量 D 人为压低。</p>
+    <p>压低了 D 之后，攻击者用<strong>极低的价格</strong>把 Balancer 的 BPT（池子份额代币）回购，相当于以打折价拿走了所有人的流动性。</p>
+    <p>整个攻击在 30 分钟内，跨 6 条链重复执行，卷走 $1.28 亿。修复方案只需要把 <code>mulDown()</code> 改成 <code>mulUp()</code>——<strong>一行代码</strong>。</p>
+
+    <div class="callout callout-demo"><span class="icon"></span>
+      1. 「单次 mulDown 截断」— 默认 amount=8，scalingFactor≈1.114e18<br/>
+      2. 「精确值是 8.912，被截断成 8，<strong>单次损失 10.23%</strong>」<br/>
+      3. 拖动 N 滑块（范围 1–100）<br/>
+      4. N=1：「第一轮攻击，$128M 池子被压缩了 10%，攻击者套利约 $13M」<br/>
+      5. N=10：「十轮之后，$84M 已经可以被套走，差不多 66% 的池子」<br/>
+      6. 「红色那条'攻击者看见的 D'越来越短，就是不变量 D 被人为压低的可视化」
+    </div>
+
+    <hr/>
+
+    <h3>6.2 KyberSwap Elastic — $4,700 万（2023.11）</h3>
+    <div class="callout callout-page"><span class="icon"></span>快速翻到 KyberSwap 案例</div>
+    <p>KyberSwap 是一个 Uniswap V3 风格的 DEX。</p>
+    <p>攻击的根因是 Tick 边界跨越时的一个数学 bug。在计算一次 swap 中能用多少流动性的时候，有一个叫 <code>computeSwapStep()</code> 的函数。当 swap 量恰好等于 <code>amountSwapToCrossTick - 1</code> 这个边界值时，会触发一个 bug，导致某段区间的流动性被<strong>计算了两次（double-count）</strong>。</p>
+    <p>攻击者精确控制每笔交易的数量，让它刚好触发这个边界条件，从而以远低于正常价格完成兑换。这个攻击的精妙之处在于：攻击者需要非常精确地计算每笔交易的参数，普通人甚至难以发现这个漏洞的存在。</p>
+
+    <hr/>
+
+    <h3>6.3 Curve Finance — $7,000 万（2023.07.30）</h3>
+    <div class="callout callout-page"><span class="icon"></span>翻到 Curve 重入案例</div>
+    <p>这个攻击不是 AMM 逻辑的 bug，而是<strong>编译器的 bug</strong>。</p>
+    <p>Curve 的部分池子是用 <strong>Vyper</strong> 语言写的（一种面向合约的 Python 风格语言）。</p>
+    <p>Vyper 里有个装饰器 <code>@nonreentrant</code>，本来是用来防止重入攻击的——在函数执行期间设置一个锁，阻止同一个函数被嵌套调用。</p>
+    <p>但是 Vyper 0.2.15/0.2.16/0.3.0 这三个版本有一个编译器 bug：<strong>命名重入锁</strong>的<strong>存储槽被分配错了</strong>，导致锁根本没起作用。</p>
+    <p>攻击者发现，可以在一个 Curve 池的 <code>remove_liquidity()</code> 函数执行过程中，再次调用 <code>add_liquidity()</code>，绕过了本应存在的重入保护，实现了对池子资金的超额提取。</p>
+    <p>多个池子相继遭到攻击，总损失约 $7000 万。幸运的是，白帽黑客抢先帮一些池子做了"救援式抢跑"，追回了约 70% 的资金。</p>
+    <p><em>教训：即使你的合约逻辑是对的，也可能因为语言或工具链的 bug 而出问题。</em></p>
+
+    <hr/>
+
+    <h3>6.4 其他值得关注的案例（快速过）</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>项目</th><th>时间</th><th>损失</th><th>攻击类型</th></tr></thead>
+        <tbody>
+          <tr><td>Beanstalk</td><td>2022.04</td><td style="color:var(--red)">$1.82 亿</td><td>闪电贷 + 治理攻击</td></tr>
+          <tr><td>Euler Finance</td><td>2023.03</td><td style="color:var(--red)">$1.97 亿</td><td>缺少健康因子检查</td></tr>
+          <tr><td>Balancer V2</td><td>2025.11</td><td style="color:var(--red)">$1.28 亿</td><td>精度损失</td></tr>
+          <tr><td>KyberSwap Elastic</td><td>2023.11</td><td style="color:var(--red)">$4,700 万</td><td>Tick 边界 double-count</td></tr>
+          <tr><td>Curve Finance</td><td>2023.07</td><td style="color:var(--red)">$7,000 万</td><td>Vyper 编译器重入锁 bug</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>「大家注意一个规律：DeFi 里金额最大的攻击，往往不是什么神秘的黑魔法，而是<strong>非常底层、非常细节的问题</strong>——舍入方向、边界条件、锁的存储槽、for 循环里差一的误差。这就是为什么 DeFi 智能合约审计是一个高价值的职业。」</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       7. Quiz
+  ══════════════════════════════════════════ -->
+  <div id="s7">
+    <div class="section-heading">
+      <span class="section-num">7</span>
+      <h2>Quiz + 总结（49–50 min）</h2>
+    </div>
+
+    <div class="callout callout-page"><span class="icon"></span>滚动到最底部 Quiz 区域</div>
+    <div class="callout callout-demo"><span class="icon"></span>点击每道题的选项，让观众先回答，再揭示答案</div>
+
+    <h3>Quiz 答案</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>题号</th><th>问题</th><th>答案</th></tr></thead>
+        <tbody>
+          <tr><td>Q1</td><td>100 ETH + 400,000 USDC 的池子，ETH 价格是多少？</td><td>$4,000（400000/100）</td></tr>
+          <tr><td>Q2</td><td>100 ETH / 200,000 USDC 的池子里买入 10 ETH，价格影响？</td><td>约 9.1%</td></tr>
+          <tr><td>Q3</td><td>三明治攻击的攻击者在哪里发现了受害者的交易？</td><td>Mempool（公开内存池）</td></tr>
+          <tr><td>Q4</td><td>Uniswap V3 的 LP 仓位为什么是 NFT 而不是可替代代币？</td><td>每个仓位的价格区间、金额不同，不再同质化</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <hr/>
+
+    <h3>结语</h3>
+    <p>「好，今天的内容到这里。我们从 CEX 的订单簿出发，理解了为什么链上需要 AMM；从 Uniswap V2 的 <code>x·y=k</code> 开始，推导了价格影响和无常损失；然后看了 V3 的集中流动性如何大幅提高资本效率；看了 V4 的 Hooks 如何让 AMM 可编程；深度演示了 MEV 三明治攻击的每一步；最后用三个真实案例——Balancer、KyberSwap、Curve——展示了这些机制里藏着的安全风险。」</p>
+    <p>「回到开头那个问题：一行代码，<code>mulDown</code> 换 <code>mulUp</code>，$1.28 亿的差距。这不是运气问题，也不是资金问题，是<strong>对底层机制理解的深度</strong>决定了你能不能发现这些漏洞。」</p>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       APPENDIX
+  ══════════════════════════════════════════ -->
+  <div id="appendix">
+    <div class="section-heading">
+      <span class="section-num" style="background:var(--purple)">Q&amp;A</span>
+      <h2>常见问题 &amp; 追问预案</h2>
+    </div>
+
+    <div class="qa-block">
+      <div class="qa-q">Q: 无常损失能完全避免吗？</div>
+      <div class="qa-a">不能完全避免，只能选择流动性范围更宽的仓位（接近 V2 的效果）来降低，或者选择流动性挖矿奖励足够高的池子来弥补。</div>
+    </div>
+    <div class="qa-block">
+      <div class="qa-q">Q: 为什么不直接用私有 Mempool，Flashbots 不就解决了？</div>
+      <div class="qa-a">Flashbots 确实能防三明治，但：1. 并非所有链都有 Flashbots；2. 使用 Flashbots 需要用户主动配置 RPC；3. 也存在 Flashbots 捆绑包本身被内部 MEV 的情况。</div>
+    </div>
+    <div class="qa-block">
+      <div class="qa-q">Q: Uniswap V4 的 Hooks 有没有已经发生的安全事件？</div>
+      <div class="qa-a">截至 2025 年，V4 还比较新，已知问题主要是理论层面的风险（恶意 Hook 可以在 afterSwap 里做额外操作），还没有大规模的公开攻击事件，但安全社区已经在密切关注。</div>
+    </div>
+    <div class="qa-block">
+      <div class="qa-q">Q: AMM 和传统做市商相比，谁更"公平"？</div>
+      <div class="qa-a">各有利弊。AMM 没有信息不对称，规则完全透明且在链上可验证；但 AMM 的价格发现效率低于传统做市商，并且存在无常损失这一特有风险。MEV 的存在也让 AMM 的"公平"打了折扣。</div>
+    </div>
+    <div class="qa-block">
+      <div class="qa-q">Q: Curve 的 A 值是谁决定的，可以随意改吗？</div>
+      <div class="qa-a">A 值由 Curve DAO 治理投票决定，可以修改，但有时间延迟（通常 24–72 小时的缓冲期）。突然提高 A 值会让曲线变平，增加对脱锚的暴露；突然降低会影响流动性。</div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════
+       TIMELINE
+  ══════════════════════════════════════════ -->
+  <div id="timeline">
+    <div class="section-heading">
+      <span class="section-num" style="background:var(--green)">⏱</span>
+      <h2>时间轴速查</h2>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>章节</th><th>时间</th><th>核心操作</th></tr></thead>
+        <tbody>
+          <tr><td>开场钩子</td><td>0:00–3:00</td><td>讲 Balancer 故事，举手调查</td></tr>
+          <tr><td>DEX 基础</td><td>3:00–11:00</td><td>讲 CEX vs DEX；演示 StableSwap 曲线（拖 A 滑块）</td></tr>
+          <tr><td>Uniswap V2</td><td>11:00–23:00</td><td>手推公式；演示价格影响计算器 + 深度图；演示 IL 计算器；演示 Flash Swap 动画</td></tr>
+          <tr><td>Uniswap V3</td><td>23:00–30:00</td><td>演示 V3 集中流动性图表；点击模拟价格波动</td></tr>
+          <tr><td>Uniswap V4</td><td>30:00–34:00</td><td>讲 Singleton + Hooks，无需演示</td></tr>
+          <tr><td>MEV</td><td>34:00–44:00</td><td>逐步演示三明治攻击 6 步模拟器；指向 MEV 分布条形图</td></tr>
+          <tr><td>攻击案例</td><td>44:00–49:00</td><td>演示精度损失迭代图（拖 N 滑块）；讲 KyberSwap/Curve；过对比表格</td></tr>
+          <tr><td>Quiz</td><td>49:00–50:00</td><td>让观众回答，点击揭示答案</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+function toggleNav(el) {
+  el.classList.toggle('open');
+  el.nextElementSibling.classList.toggle('open');
+}
+
+// Highlight active nav item on scroll
+var sections = ['memo','s0','s1','s2','s3','s4','s5','s6','s7','appendix','timeline'];
+var navItems = document.querySelectorAll('.nav-item');
+var main = document.getElementById('main');
+
+main.addEventListener('scroll', function() {
+  var scrollTop = main.scrollTop + 80;
+  var active = sections[0];
+  sections.forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el && el.offsetTop <= scrollTop) active = id;
+  });
+  navItems.forEach(function(a) {
+    a.classList.toggle('active', a.getAttribute('href') === '#' + active);
+  });
+});
+
+// Smooth scroll within main
+navItems.forEach(function(a) {
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    var id = a.getAttribute('href').slice(1);
+    var target = document.getElementById(id);
+    if (!target) return;
+    var mainRect = main.getBoundingClientRect();
+    var targetRect = target.getBoundingClientRect();
+    main.scrollTo({top: main.scrollTop + targetRect.top - mainRect.top - 20, behavior: 'smooth'});
+  });
+});
+</script>
+</body>
+</html>
